@@ -33,7 +33,6 @@ export class Game {
         if (speed === 0) store.getState().setPaused(true);
         else store.getState().setSpeed(speed);
       },
-      setView: (view) => store.getState().setView(view),
       pitch: (defId, offerId, team) => act(() => sim.pitch(defId, offerId, team)),
       workOn: (projectId) => act(() => sim.workOn(projectId)),
       stopWork: () => act(() => sim.stopWork()),
@@ -52,7 +51,7 @@ export class Game {
       moveJob: (machineId, jobId, dir) => act(() => sim.moveJob(machineId, jobId, dir)),
       cancelJob: (machineId, jobId) => act(() => sim.cancelJob(machineId, jobId)),
       buyFilament: () => act(() => sim.buyFilament()),
-      slots: () => ({ used: sim.slotsUsed, total: sim.slotsTotal }),
+      allocation: () => sim.allocation,
       totalHours: () => sim.totalHours,
     });
 

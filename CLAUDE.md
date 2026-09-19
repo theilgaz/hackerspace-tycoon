@@ -92,8 +92,9 @@ members to it. This is the player's most direct lever, and it is deliberately no
 
 - **Asking is free, but they can say no.** Acceptance is `0.42 + 0.75 × passion match`, plus 0.3
   if the project carries a live bounty. A refusal sticks for 14 hours — you cannot badger anyone.
-- **One project per person.** That is what makes concurrent projects cost something real. Slots
-  are generous (2 / 4 / 6 by era) precisely so that *people*, not an arbitrary cap, are the limit.
+- **One project per person, and no cap on projects.** You may start as many as you like; the
+  limit is bodies, plus the two hours a pitch costs you. An artificial slot count only ever made
+  the job list inert while something was in progress — see §13.
 - **The team persists across stages.** Only drift removes someone, which makes interest decay the
   thing that actually costs you a team member.
 - **Volunteers still volunteer.** An unallocated member may join something themselves if it
@@ -104,6 +105,21 @@ members to it. This is the player's most direct lever, and it is deliberately no
 **Weekend builds exist for this.** A one-person, two-to-four-day project (phone stand, cable tidy,
 LED badge, fume extractor) runs alongside a long build without consuming the space, and teaches
 the whole pipeline in a couple of days. First ship lands around day 4.
+
+## 4c. The Jobs menu
+
+The backlog is not a tab. It lives behind **Jobs** in the build menu along the bottom of the
+screen — the bar that will also hold Shop, Events and the space builder in later phases. Jobs
+opens a four-step wizard:
+
+1. **Kind of work** — the ten genres as tiles, each showing how many projects it currently
+   offers, plus an **Offers** tile at the top for proposals, sponsors and trends.
+2. **Size** — team-size buckets (1-2 / 3-4 / 5+ people), each showing the match count. This is
+   the filter that matters, because team size is what decides how much of the space a job eats.
+3. **Project** — the shortlist.
+4. **Crew** — pick who to ask, then pitch.
+
+Offers skip step 2; there are never many of them.
 
 **Crews are picked on the pitch screen.** Each backlog and catalog card carries a crew selector
 listing unallocated members ranked by passion match, capped at the project's team size. Pitching
@@ -321,11 +337,12 @@ machine maintenance. Note there are no wages — that is the volunteer model's o
 Each era raises rent and unlocks project scale. Eras gate content and pacing; the milestone is a
 checkpoint, not an instant transition — the player chooses when to sign the next lease.
 
-**Implemented so far:** eras grant **concurrent project slots** (2 / 4 / 6), gate the catalog, and
-advance on **cumulative reputation** (550, then 2600) — the sum of the hype of everything shipped.
+**Implemented so far:** eras gate the catalog and advance on **cumulative reputation** (1800,
+then 6000) — the sum of the hype of everything shipped.
 Reputation rather than a project count, because three weekend builds otherwise unlocked Era 2 by
-day six; ambition should advance you and volume should barely move the needle. In practice Era 2
-lands around day 60. The space itself grows in Phase 4, and the real milestones — member count,
+day six; ambition should advance you and volume should barely move the needle. The thresholds
+were rescaled when the slot cap came off — throughput roughly quadrupled. `npm run era-pace`
+measures it: Era 2 lands around day 40 and Era 3 around day 80-110. The space itself grows in Phase 4, and the real milestones — member count,
 break-even, front page — arrive with Phases 3 and 5.
 
 ## 9. Failure (selected: real, hard failure)
@@ -448,6 +465,14 @@ arrived yet" fired on every rejected action and buried the log. `pushLog` now co
 consecutive identical messages into one line with a `×N` counter. Any new log call that can fire
 from a persistent state needs this, and it is now free.
 
+**The shelf, not a cap.** With no limit on concurrent projects, the balance runs showed a player
+could pitch the entire catalog: twenty-seven projects open, every one of them crewless, all the
+cash sunk into bills of materials, and the printer starved. The answer was not to put the cap
+back. A project nobody has touched for fourteen days is **quietly shelved**, and whatever you
+already spent on its parts is gone. It punishes over-pitching without ever refusing a pitch, and
+it is exactly what a real hackerspace's shelf looks like. A project counts as alive if it has
+crew, has you, *or* has parts on a machine — jobs running on the clock are the whole point of §5.
+
 **A gate the player cannot act on reads as a bug, not as pacing.** Era 1 originally allowed one
 concurrent project, so the whole backlog sat there with every Pitch button greyed out for the
 length of a build. It rendered correctly and was still, in effect, broken. Two fixes, both of
@@ -476,6 +501,12 @@ Two further findings, both now fixed and worth not re-introducing:
   `Machine.starved` blocks job *start*; running out mid-job still fails the print, as it should.
 
 ## 14. Development Priority
+
+**Phase 1.10 — The Jobs menu, and no cap on projects — BUILT.**
+Concurrent projects are unlimited; people are the constraint, one project each. The backlog moved
+out of a tab and into a **Jobs** wizard on a bottom build menu: genre → size → project → crew
+(§4c). Unattended projects get shelved after a fortnight instead of piling up. Era thresholds
+rescaled for the higher throughput.
 
 **Phase 1.9 — Input reliability — BUILT.**
 Every button in the game was dead while the clock ran; see §13. Panels keep their DOM unless the
@@ -534,6 +565,8 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     elapsed days per stage. Use it whenever a stage feels the wrong length.
   - `npm run project-times` — best-case length of every catalog entry against its declared
     tier. Run it after any change to `catalog.ts`; `TOO LONG` is a failure, not an opinion.
+  - `npm run era-pace` — what day each era arrives for a committed player. Run it after
+    changing throughput, team sizes or the catalog.
   - `npm run click-check` — needs `npm run dev` running. Drives the real UI with real mouse
     press/release pairs while the sim runs, and counts DOM rebuilds. Run it after touching
     anything in `src/ui/`.

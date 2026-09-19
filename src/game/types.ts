@@ -237,6 +237,8 @@ export interface ProjectData {
   hypeMultiplier: number;
   proposerId?: string;
   startedOnDay: number;
+  /** Consecutive days with nobody — crew or player — working on it. */
+  idleDays: number;
 }
 
 // ---------------------------------------------------------------------------

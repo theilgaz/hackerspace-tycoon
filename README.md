@@ -34,12 +34,18 @@ npm run build
 npm run sim-check      # replay full playthroughs headlessly, under three player archetypes
 npm run time-budget    # where a volunteer's day actually goes
 npm run project-times  # every project measured against its declared length tier
+npm run era-pace       # what day each era arrives for a committed player
 npm run click-check    # drives the real UI with real mouse events (needs `npm run dev`)
 ```
 
 The simulation imports neither `three` nor the DOM, so a whole playthrough replays in Node
 in milliseconds. That is what makes the balance testable — and it has already caught a
 fabrication soft-lock and a bug where volunteers spent 80% of every visit walking.
+
+Start as many projects at once as you like — there's no cap. The limit is people: somebody can
+only be on one project at a time, and writing a pitch costs two hours of your day. Start more than
+the space can carry and the untouched ones end up on the shelf, along with the money you spent on
+their parts.
 
 Every project has a team size, and you allocate people to it — but they're volunteers, so they can
 turn you down, and a refusal sticks. Someone can only be on one project at a time, which is what
@@ -57,7 +63,7 @@ nothing to print, and never touches the machine queue. It also pays several time
 pays while earning a fraction of the reputation. **Software pays the bills; hardware builds the
 name.**
 
-**Current state:** Phase 1.9. One garage, six people to start, nine more who show up as your
+**Current state:** Phase 1.10. One garage, six people to start, nine more who show up as your
 reputation grows, one printer — and you. Thirty projects from a desk cable tidy to a
 3D-printed motorcycle, arriving through a backlog of catalog picks, member proposals, sponsor
 offers and Reddit trends. You're a maker too, with about seven hours a day shared between building

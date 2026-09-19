@@ -32,6 +32,7 @@ import {
   APPLICANTS,
   PLAYER,
   RECRUIT,
+  SHELVE,
   ROSTER,
   TEAM,
   SOURCING,
@@ -168,12 +169,42 @@ export class Simulation {
   }
 
   private endOfDay() {
+    this.shelveAbandoned();
     for (const m of this.members) {
       if (m.present) m.leave();
       m.data.energy = Math.min(100, m.data.energy + 45);
       if (this.plans.get(m.id)?.attending && m.hasTrait('ghost')) {
         m.ghostFactor *= GHOST_DECAY;
       }
+    }
+  }
+
+  /**
+   * The shelf. Nothing stops you starting a dozen projects, but the ones nobody ever
+   * picks up quietly die, and the money you spent on their parts dies with them.
+   */
+  private shelveAbandoned() {
+    for (const project of [...this.projects]) {
+      // A project with parts on a machine is alive even with nobody standing over it —
+      // that is the whole point of jobs running on the clock.
+      const onAMachine = this.machines.some(
+        (machine) =>
+          machine.current?.projectId === project.id ||
+          machine.queue.some((job) => job.projectId === project.id),
+      );
+      const worked = project.team.length > 0 || this.player.project === project.id || onAMachine;
+      if (worked) {
+        project.idleDays = 0;
+        continue;
+      }
+      project.idleDays += 1;
+      if (project.idleDays < SHELVE.afterIdleDays) continue;
+      this.projects = this.projects.filter((p) => p.id !== project.id);
+      this.seeded.delete(project.id);
+      this.log(
+        `Nobody touched ${project.name} for ${SHELVE.afterIdleDays} days. It is on the shelf now.`,
+        'bad',
+      );
     }
   }
 
@@ -810,7 +841,7 @@ export class Simulation {
     store.getState().recordShipped(Math.round(def.hype * project.hypeMultiplier));
     const after = store.getState().era;
     if (after > before) {
-      this.log(`You can take on ${eraDef(after).slots} projects at once now — ${eraDef(after).name}.`, 'good');
+      this.log(`Word is getting around — ${eraDef(after).name}. New projects are open to you.`, 'good');
     }
   }
 
@@ -930,12 +961,9 @@ export class Simulation {
   // Player verbs (CLAUDE.md §3) — every one costs hours
   // -------------------------------------------------------------------------
 
-  get slotsUsed(): number {
-    return this.projects.length;
-  }
-
-  get slotsTotal(): number {
-    return eraDef(store.getState().era).slots;
+  /** People on a team right now, and the roster they come from — the real constraint. */
+  get allocation(): { used: number; total: number } {
+    return { used: this.members.filter((m) => m.team).length, total: this.members.length };
   }
 
   /**
@@ -945,10 +973,6 @@ export class Simulation {
    */
   pitch(defId: string, offerId?: string, draftTeam: string[] = []): boolean {
     const state = store.getState();
-    if (this.slotsUsed >= this.slotsTotal) {
-      this.log(`No room for another project right now.`, 'bad');
-      return false;
-    }
     const def = CATALOG_MAP[defId];
     if (!def || !canBuild(def, state.ownedMachines)) {
       this.log(`The space can't build that yet.`, 'bad');

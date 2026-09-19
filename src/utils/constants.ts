@@ -264,8 +264,6 @@ export const VERB_HOURS: Record<string, number> = {
 export interface EraDef {
   era: number;
   name: string;
-  /** Concurrent projects. Era 1 is deliberately one: learn the pipeline first. */
-  slots: number;
   /**
    * Cumulative reputation before the next era opens. Deliberately *not* a project count:
    * three weekend builds would otherwise unlock Era 2 by day six. Reputation is a
@@ -279,14 +277,16 @@ export interface EraDef {
  * the real milestones (member count, break-even, front page) arrive with Phases 3/5.
  */
 /**
- * Slots are deliberately generous: the honest limit on how much you can run at once is
- * *people*, since a member can only be on one team and every project has a team size.
- * A hard slot cap of 1 made the whole backlog inert while anything was in progress.
+ * There is no cap on concurrent projects. The honest limit is *people*: somebody can only
+ * be on one team at a time, and pitching costs two of your own hours. An artificial slot
+ * count only ever made the job list inert while something was in progress.
  */
 export const ERAS: EraDef[] = [
-  { era: 1, name: 'The Garage', slots: 2, repToAdvance: 550 },
-  { era: 2, name: 'Unit 4B', slots: 4, repToAdvance: 2600 },
-  { era: 3, name: 'The Warehouse', slots: 6, repToAdvance: Number.POSITIVE_INFINITY },
+  // Rescaled when the slot cap came off: throughput roughly quadrupled, and the old
+  // 550/2600 put a committed player in Era 3 by about day 40.
+  { era: 1, name: 'The Garage', repToAdvance: 1800 },
+  { era: 2, name: 'Unit 4B', repToAdvance: 6000 },
+  { era: 3, name: 'The Warehouse', repToAdvance: Number.POSITIVE_INFINITY },
 ];
 
 export function eraDef(era: number): EraDef {
@@ -310,6 +310,18 @@ export const BACKLOG = {
   /** A proposer arrives already committed to the project. */
   proposerInterestBonus: 0.5,
   maxOffers: 5,
+};
+
+/**
+ * Every hackerspace has a shelf of projects nobody ever finished. With no cap on how many
+ * you can start, this is what pushes back: a project nobody has touched for a fortnight is
+ * quietly shelved, and whatever you already spent on its parts is gone. It punishes
+ * over-pitching without ever refusing a pitch.
+ */
+export const SHELVE = {
+  afterIdleDays: 14,
+  /** Warn on the project card once it has been idle this long. */
+  warnAfterIdleDays: 7,
 };
 
 /** Waiting on parts is its own bottleneck, and it is what makes IoT builds feel different. */

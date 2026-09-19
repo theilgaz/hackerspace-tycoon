@@ -17,6 +17,7 @@ export default defineConfig({
         'sim-check': 'tools/sim-check.ts',
         'time-budget': 'tools/time-budget.ts',
         'project-times': 'tools/project-times.ts',
+        'era-pace': 'tools/era-pace.ts',
       },
     },
   },

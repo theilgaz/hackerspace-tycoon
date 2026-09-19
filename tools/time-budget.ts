@@ -42,7 +42,8 @@ while (sim.day <= DAYS) {
   for (const p of sim.projects) stageHours[p.stage] = (stageHours[p.stage] ?? 0) + H;
 
   const state = store.getState();
-  if (sim.slotsUsed < sim.slotsTotal && sim.player.hoursLeft >= VERB_HOURS.pitch) {
+  // Only start something there are actually free hands for.
+    if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 2) {
     const offer = state.backlog[0];
     if (offer) sim.pitch(offer.defId, offer.id);
     else {

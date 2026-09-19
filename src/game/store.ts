@@ -27,15 +27,12 @@ export interface GameState {
   backlog: BacklogEntry[];
   runtime: RuntimeSnapshot;
   log: LogEntry[];
-  /** UI: which panel tab is open. */
-  view: 'projects' | 'backlog';
 
   setSpeed: (speed: number) => void;
   togglePause: () => void;
   setPaused: (paused: boolean) => void;
   setClock: (day: number, simTime: number) => void;
   setRuntime: (runtime: RuntimeSnapshot) => void;
-  setView: (view: GameState['view']) => void;
   spend: (amount: number) => boolean;
   earn: (amount: number) => void;
   pushLog: (text: string, kind?: LogEntry['kind']) => void;
@@ -67,14 +64,12 @@ export const store = createStore<GameState>((set, get) => ({
   backlog: [],
   runtime: emptyRuntime(),
   log: [],
-  view: 'projects',
 
   setSpeed: (speed) => set({ speed, paused: false }),
   togglePause: () => set((s) => ({ paused: !s.paused })),
   setPaused: (paused) => set({ paused }),
   setClock: (day, simTime) => set({ day, simTime }),
   setRuntime: (runtime) => set({ runtime }),
-  setView: (view) => set({ view }),
 
   spend: (amount) => {
     if (get().cash < amount) return false;

@@ -56,6 +56,7 @@ export function startProject(entry: BacklogEntry, day: number): ProjectData {
     hypeMultiplier: entry.hypeMultiplier ?? 1,
     proposerId: entry.proposerId,
     startedOnDay: day,
+    idleDays: 0,
   };
 }
 

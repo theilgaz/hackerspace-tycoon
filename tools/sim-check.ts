@@ -41,6 +41,8 @@ const HOURS_PER_TICK = (DT * SPEED) / 2.5;
 type Mode = 'aggressive' | 'attentive' | 'hands-off';
 
 interface Result {
+  era: number;
+  reputation: number;
   members: number;
   shipped: number;
   firstShipDay: number | null;
@@ -83,7 +85,8 @@ function runOnce(seed: number, mode: Mode): Result {
     if (firstShipDay === null && state.shippedCount > 0) firstShipDay = sim.day;
 
     // --- every archetype does the unavoidable ------------------------------
-    if (sim.slotsUsed < sim.slotsTotal && sim.player.hoursLeft >= VERB_HOURS.pitch) {
+    // Only start something there are actually free hands for.
+    if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 2) {
       const offer = state.backlog[0];
       if (offer) sim.pitch(offer.defId, offer.id, draftCrew(sim, offer.defId));
       else {
@@ -173,6 +176,8 @@ function runOnce(seed: number, mode: Mode): Result {
   const starved = sim.printer.starved && store.getState().cash < FILAMENT.spoolCost;
   const stuck = starved ? 'broke, no filament' : waiting ? `${waiting.name} waiting on parts` : null;
   return {
+    era: store.getState().era,
+    reputation: store.getState().reputation,
     members: sim.members.length,
     shipped: store.getState().shippedCount,
     firstShipDay,
@@ -217,7 +222,8 @@ for (const mode of ['aggressive', 'attentive', 'hands-off'] as Mode[]) {
   summary.push(
     `  ${mode.padEnd(11)} ${avg((r) => r.shipped).toFixed(1)} shipped   first ship ` +
       `${firstShips.length ? (firstShips.reduce((s, r) => s + r.firstShipDay!, 0) / firstShips.length).toFixed(1) : '—'}   ` +
-      `${avg((r) => r.playerHoursWorked).toFixed(0)}h you   ${avg((r) => r.members).toFixed(1)} people`,
+      `${avg((r) => r.playerHoursWorked).toFixed(0)}h you   era ${avg((r) => r.era).toFixed(1)}   ` +
+      `rep ${Math.round(avg((r) => r.reputation))}`,
   );
   if (!firstShips.length) problems += 1;
 }

@@ -140,23 +140,32 @@ const check = async (name, fn) => {
 
 console.log('\n  Clicking the real UI while the sim runs\n');
 
-await click('[data-action="view"][data-value="backlog"]');
-await click('#left [data-action="pitch"]:not([disabled])');
+// Walk the Jobs wizard the way a player does: open it, pick a genre, a size, a project,
+// then pitch.
+await click('[data-action="jobs-open"]');
+await click('#modal [data-action="jobs-category"]:not([disabled])');
+await click('#modal [data-action="jobs-size"]:not([disabled])');
+await click('#modal [data-action="jobs-project"]:not([disabled])');
+await click('#modal [data-action="pitch"]:not([disabled])');
 await evaluate(`window.__store.getState().setSpeed(4)`);
 await sleep(500);
 
-await check('a project actually started', async () => (await evaluate(`__game.sim.projects.length`)) > 0);
-await check('tab → projects', async () => {
-  await click('[data-action="view"][data-value="projects"]');
-  return (await evaluate(`__store.getState().view`)) === 'projects';
+await check('the wizard pitched a project', async () => (await evaluate(`__game.sim.projects.length`)) > 0);
+await check('Jobs opens while a project runs', async () => {
+  await click('[data-action="jobs-open"]');
+  return (await evaluate(`document.querySelectorAll('#modal .modal').length`)) === 1;
 });
-await check('tab → backlog while a project runs', async () => {
-  await click('[data-action="view"][data-value="backlog"]');
-  return (await evaluate(`__store.getState().view`)) === 'backlog';
+await check('a second project can be started with one already running', async () => {
+  await click('#modal [data-action="jobs-category"]:not([disabled])');
+  await click('#modal [data-action="jobs-size"]:not([disabled])');
+  await click('#modal [data-action="jobs-project"]:not([disabled])');
+  await click('#modal [data-action="pitch"]:not([disabled])');
+  return (await evaluate(`__game.sim.projects.length`)) >= 2;
 });
-await check('tab → projects again', async () => {
-  await click('[data-action="view"][data-value="projects"]');
-  return (await evaluate(`__store.getState().view`)) === 'projects';
+await check('closing the wizard', async () => {
+  await click('[data-action="jobs-open"]');
+  await click('#modal header [data-action="jobs-close"]');
+  return (await evaluate(`document.querySelectorAll('#modal .modal').length`)) === 0;
 });
 await check('speed button', async () => {
   await click('[data-action="speed"][data-value="2"]');
@@ -201,11 +210,11 @@ await check('player stays on the project across stage changes', async () =>
 // press and release and the browser never fired `click` — every button went dead on
 // unpause. Counting rebuilds catches that directly, where a click test only catches it
 // by luck of timing.
-await check('unchanged panels keep their DOM (tabs and top bar)', async () => {
+await check('unchanged panels keep their DOM (build menu and top bar)', async () => {
   await evaluate(`window.__store.getState().setSpeed(4)`);
   const churn = await evaluate(`
     new Promise((resolve) => {
-      const watch = ['#left-tabs', '#topbar .speeds'].map((sel) => document.querySelector(sel));
+      const watch = ['#bottombar', '#topbar .speeds'].map((sel) => document.querySelector(sel));
       let mutations = 0;
       const observer = new MutationObserver((records) => { mutations += records.length; });
       for (const el of watch) if (el) observer.observe(el, { childList: true, subtree: true });

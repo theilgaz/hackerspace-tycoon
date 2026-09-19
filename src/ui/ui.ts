@@ -31,10 +31,10 @@ import {
   eraDef,
 } from '@/utils/constants';
 import { clock, dayName, hours, money, pct } from '@/utils/format';
+import { SHELVE } from '@/utils/constants';
 
 export interface UIHandlers {
   setSpeed(speed: number): void;
-  setView(view: GameState['view']): void;
   pitch(defId: string, offerId: string | undefined, team: string[]): void;
   workOn(projectId: string): void;
   stopWork(): void;
@@ -53,7 +53,7 @@ export interface UIHandlers {
   moveJob(machineId: string, jobId: string, dir: -1 | 1): void;
   cancelJob(machineId: string, jobId: string): void;
   buyFilament(): void;
-  slots(): { used: number; total: number };
+  allocation(): { used: number; total: number };
   totalHours(): number;
 }
 
@@ -92,6 +92,17 @@ const SOURCE_BADGE: Record<BacklogEntry['source'], { label: string; cls: string 
   trending: { label: 'trending', cls: 'src-trending' },
 };
 
+type JobStep = 'category' | 'size' | 'project' | 'crew';
+type SizeFilter = 'any' | 'solo' | 'small' | 'big';
+
+/** Team-size buckets for narrowing the job list (CLAUDE.md §4c). */
+const SIZE_FILTERS: { key: SizeFilter; label: string; hint: string; test: (team: number) => boolean }[] = [
+  { key: 'any', label: 'Any size', hint: 'everything on offer', test: () => true },
+  { key: 'solo', label: '1-2 people', hint: 'fits alongside a long build', test: (t) => t <= 2 },
+  { key: 'small', label: '3-4 people', hint: 'most of the space', test: (t) => t >= 3 && t <= 4 },
+  { key: 'big', label: '5+ people', hint: 'everyone you have', test: (t) => t >= 5 },
+];
+
 /** The promise each tier makes about length (CLAUDE.md §4). */
 const TIER_DAYS: Record<ProjectDef['tier'], string> = {
   small: '1-5d',
@@ -124,6 +135,16 @@ export class UI {
   /** Last HTML written per section, so unchanged sections keep their DOM nodes. */
   private htmlCache = new Map<string, string>();
 
+  /** The Jobs wizard: pick a genre, narrow by size, choose the build, crew it up. */
+  private jobs: {
+    open: boolean;
+    step: JobStep;
+    source: ProjectCategory | 'offers' | null;
+    size: SizeFilter;
+    defId: string | null;
+    offerId: string | null;
+  } = { open: false, step: 'category', source: null, size: 'any', defId: null, offerId: null };
+
   /**
    * Write HTML only when it actually differs. Replacing innerHTML destroys nodes, which
    * cancels in-flight clicks and drops hover/tooltips — and the clock alone would
@@ -135,8 +156,9 @@ export class UI {
     el.innerHTML = html;
   }
   private topbar!: HTMLElement;
+  private bottombar!: HTMLElement;
+  private modal!: HTMLElement;
   private left!: HTMLElement;
-  private leftTabs!: HTMLElement;
   private you!: HTMLElement;
   private members!: HTMLElement;
   private machines!: HTMLElement;
@@ -152,19 +174,19 @@ export class UI {
   private build() {
     this.root.innerHTML = `
       <div class="panel" id="topbar"></div>
-      <div class="panel" id="left">
-        <div class="tabs" id="left-tabs"></div>
-        <div class="body"></div>
-      </div>
+      <div class="panel" id="left"><h2>On the bench</h2><div class="body"></div></div>
       <div id="right">
         <div class="panel" id="you"><h2>You</h2><div class="body"></div></div>
         <div class="panel" id="members"><h2>The People</h2><div class="body"></div></div>
         <div class="panel" id="machines"><h2>Machines</h2><div class="body"></div></div>
       </div>
       <div class="panel" id="log"><h2>Log</h2><div class="body"></div></div>
+      <div id="bottombar"></div>
+      <div id="modal"></div>
     `;
     this.topbar = this.root.querySelector('#topbar')!;
-    this.leftTabs = this.root.querySelector('#left-tabs')!;
+    this.bottombar = this.root.querySelector('#bottombar')!;
+    this.modal = this.root.querySelector('#modal')!;
     this.left = this.root.querySelector('#left .body')!;
     this.you = this.root.querySelector('#you .body')!;
     this.members = this.root.querySelector('#members .body')!;
@@ -186,14 +208,50 @@ export class UI {
         case 'speed':
           h.setSpeed(Number(value));
           break;
-        case 'view':
-          h.setView(value as GameState['view']);
+        case 'noop':
+          break;
+        case 'jobs-open':
+          this.jobs = { open: true, step: 'category', source: null, size: 'any', defId: null, offerId: null };
+          this.rerender();
+          break;
+        case 'jobs-close':
+          this.jobs.open = false;
+          this.rerender();
+          break;
+        case 'jobs-back':
+          this.jobs.step =
+            this.jobs.step === 'crew'
+              ? 'project'
+              : this.jobs.step === 'project'
+                ? this.jobs.source === 'offers'
+                  ? 'category'
+                  : 'size'
+                : 'category';
+          this.rerender();
+          break;
+        case 'jobs-category':
+          this.jobs.source = value === 'offers' ? 'offers' : (value as ProjectCategory);
+          this.jobs.step = value === 'offers' ? 'project' : 'size';
+          this.rerender();
+          break;
+        case 'jobs-size':
+          this.jobs.size = value as SizeFilter;
+          this.jobs.step = 'project';
+          this.rerender();
+          break;
+        case 'jobs-project':
+          this.jobs.defId = id ?? null;
+          this.jobs.offerId = id2 || null;
+          this.jobs.step = 'crew';
+          this.rerender();
           break;
         case 'pitch': {
           if (!id) break;
           const draft = [...(this.draftTeams.get(id) ?? [])];
           h.pitch(id, id2 || undefined, draft);
           this.draftTeams.delete(id);
+          this.jobs.open = false;
+          this.rerender();
           break;
         }
         case 'draft': {
@@ -203,7 +261,7 @@ export class UI {
           if (set.has(id2)) set.delete(id2);
           else if (set.size < def.teamSize) set.add(id2);
           this.draftTeams.set(id, set);
-          this.render(this.lastState!);
+          this.rerender();
           break;
         }
         case 'work':
@@ -258,16 +316,20 @@ export class UI {
     });
   }
 
+  private rerender() {
+    if (this.lastState) this.render(this.lastState);
+  }
+
   render(state: GameState) {
     this.lastState = state;
     this.renderTopbar(state);
-    this.renderTabs(state);
-    if (state.view === 'projects') this.renderProjects(state);
-    else this.renderBacklog(state);
+    this.renderProjects(state);
     this.renderYou(state);
     this.renderMembers(state);
     this.renderMachines(state);
     this.renderLog(state);
+    this.renderBottomBar(state);
+    this.renderJobs(state);
   }
 
   // --- top bar --------------------------------------------------------------
@@ -277,7 +339,7 @@ export class UI {
       const active = value === 0 ? state.paused : !state.paused && state.speed === value;
       return `<button data-action="speed" data-value="${value}" class="tiny ${active ? 'active' : ''}">${label}</button>`;
     };
-    const slots = this.handlers.slots();
+    const allocation = this.handlers.allocation();
     const era = eraDef(state.era);
     this.setHTML(this.topbar, 'topbar', `
       <div class="stat">
@@ -291,7 +353,10 @@ export class UI {
       </div>
       <div class="sep"></div>
       <div class="stat"><b>${money(state.cash)}</b><span>cash</span></div>
-      <div class="stat"><b>${slots.used}/${slots.total}</b><span>projects</span></div>
+      <div class="stat"><b>${state.runtime.projects.length}</b><span>projects</span></div>
+      <div class="stat" title="somebody can only be on one project at a time">
+        <b>${allocation.used}/${allocation.total}</b><span>allocated</span>
+      </div>
       <div class="stat"><b>${state.shippedCount}</b><span>shipped</span></div>
       <div class="stat" title="cumulative hype from everything you've shipped">
         <b>${state.reputation}${Number.isFinite(era.repToAdvance) ? `<span class="muted" style="font-size:10px">/${era.repToAdvance}</span>` : ''}</b>
@@ -304,16 +369,216 @@ export class UI {
     if (clockEl) clockEl.textContent = clock(state.simTime);
   }
 
-  private renderTabs(state: GameState) {
+  /**
+   * The build menu. Jobs is the only corner for now; Shop, Events and the space builder
+   * land here in later phases (CLAUDE.md §14).
+   */
+  private renderBottomBar(state: GameState) {
     const offers = state.backlog.length;
-    this.setHTML(this.leftTabs, 'tabs', `
-      <button data-action="view" data-value="projects" class="${state.view === 'projects' ? 'active' : ''}">
-        Projects
+    const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
+    const canPitch = hoursLeft >= VERB_HOURS.pitch;
+    this.setHTML(
+      this.bottombar,
+      'bottombar',
+      `<button class="bar-item ${this.jobs.open ? 'active' : ''}" data-action="jobs-open"
+         title="${canPitch ? 'Start something new' : 'No hours left today to write a pitch'}">
+         <span class="bar-icon">🧾</span>
+         <span class="bar-label">Jobs</span>
+         ${offers ? `<i class="pip">${offers}</i>` : ''}
+       </button>`,
+    );
+  }
+
+  // --- the Jobs wizard ------------------------------------------------------
+
+  private renderJobs(state: GameState) {
+    if (!this.jobs.open) {
+      this.setHTML(this.modal, 'modal', '');
+      return;
+    }
+    const steps: { key: JobStep; label: string }[] = [
+      { key: 'category', label: 'Kind of work' },
+      { key: 'size', label: 'Size' },
+      { key: 'project', label: 'Project' },
+      { key: 'crew', label: 'Crew' },
+    ];
+    const current = steps.findIndex((x) => x.key === this.jobs.step);
+    const trail = steps
+      .filter((x) => !(x.key === 'size' && this.jobs.source === 'offers'))
+      .map((x, index) => {
+        const at = steps.findIndex((y) => y.key === x.key);
+        return `<span class="step ${at === current ? 'now' : at < current ? 'done' : ''}">
+          <i>${index + 1}</i>${x.label}</span>`;
+      })
+      .join('<span class="step-sep">›</span>');
+
+    const body =
+      this.jobs.step === 'category'
+        ? this.jobsCategoryStep(state)
+        : this.jobs.step === 'size'
+          ? this.jobsSizeStep(state)
+          : this.jobs.step === 'project'
+            ? this.jobsProjectStep(state)
+            : this.jobsCrewStep(state);
+
+    this.setHTML(
+      this.modal,
+      'modal',
+      `<div class="modal-backdrop" data-action="jobs-close">
+        <div class="modal" data-action="noop">
+          <header>
+            <div class="steps">${trail}</div>
+            <button class="tiny" data-action="jobs-close">Close</button>
+          </header>
+          <div class="modal-body">${body}</div>
+          <footer>
+            ${this.jobs.step === 'category' ? '' : `<button class="tiny" data-action="jobs-back">← Back</button>`}
+            <span class="muted" style="font-size:10.5px">
+              A pitch costs ${VERB_HOURS.pitch}h of your day. No limit on how many projects run at once —
+              people are the limit.
+            </span>
+          </footer>
+        </div>
+      </div>`,
+    );
+  }
+
+  /** Step 1: what kind of work, or one of the offers that came to you. */
+  private jobsCategoryStep(state: GameState): string {
+    const available = this.availableDefs(state);
+    const offers = state.backlog.length;
+    const tiles = CATEGORY_ORDER.map((category) => {
+      const count = available.filter((def) => def.category === category).length;
+      const profile = profileOf(category);
+      return `<button class="tile ${count ? '' : 'empty'}" style="--cat:${profile.accent}"
+        data-action="jobs-category" data-value="${category}" ${count ? '' : 'disabled'}>
+        <span class="tile-icon">${profile.icon}</span>
+        <b>${profile.label}</b>
+        <span class="tile-count">${count} project${count === 1 ? '' : 's'}</span>
+        <span class="tile-blurb">${esc(profile.blurb)}</span>
+      </button>`;
+    }).join('');
+
+    return `
+      ${
+        offers
+          ? `<button class="tile offers" data-action="jobs-category" data-value="offers">
+              <span class="tile-icon">✉️</span>
+              <b>Offers</b>
+              <span class="tile-count">${offers} waiting</span>
+              <span class="tile-blurb">Proposals, sponsors and whatever Reddit is excited about</span>
+            </button>`
+          : ''
+      }
+      <div class="section">Kind of work</div>
+      <div class="tile-grid">${tiles}</div>
+    `;
+  }
+
+  /** Step 2: how much of the space do you want to commit? */
+  private jobsSizeStep(state: GameState): string {
+    const defs = this.availableDefs(state).filter((def) => def.category === this.jobs.source);
+    const free = state.runtime.members.filter((m) => !m.team).length;
+    return `
+      <div class="section">How big a job?</div>
+      <p class="blurb" style="margin-bottom:10px">
+        ${free} ${free === 1 ? 'person is' : 'people are'} unallocated right now. Nobody can be on two
+        projects at once, so team size is what really decides how much you can run.
+      </p>
+      <div class="tile-grid wide">
+        ${SIZE_FILTERS.map((filter) => {
+          const count = defs.filter((def) => filter.test(def.teamSize)).length;
+          return `<button class="tile" data-action="jobs-size" data-value="${filter.key}" ${count ? '' : 'disabled'}>
+            <b>${filter.label}</b>
+            <span class="tile-count">${count} project${count === 1 ? '' : 's'}</span>
+            <span class="tile-blurb">${filter.hint}</span>
+          </button>`;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  /** Step 3: the shortlist. */
+  private jobsProjectStep(state: GameState): string {
+    if (this.jobs.source === 'offers') {
+      return `<div class="section">Offers</div>${state.backlog
+        .map((entry) => this.jobCard(CATALOG_MAP[entry.defId], state, entry))
+        .join('')}`;
+    }
+    const filter = SIZE_FILTERS.find((f) => f.key === this.jobs.size)!;
+    const defs = this.availableDefs(state)
+      .filter((def) => def.category === this.jobs.source && filter.test(def.teamSize))
+      .sort((a, b) => a.teamSize - b.teamSize);
+    if (!defs.length) return `<p class="empty">Nothing matches. Try a different size.</p>`;
+    const profile = profileOf(this.jobs.source as ProjectCategory);
+    return `<div class="section">${profile.icon} ${profile.label} · ${filter.label}</div>
+      ${defs.map((def) => this.jobCard(def, state)).join('')}`;
+  }
+
+  /** Step 4: who is going to do it. */
+  private jobsCrewStep(state: GameState): string {
+    const def = this.jobs.defId ? CATALOG_MAP[this.jobs.defId] : null;
+    if (!def) return `<p class="empty">Pick a project first.</p>`;
+    const entry = this.jobs.offerId
+      ? state.backlog.find((candidate) => candidate.id === this.jobs.offerId)
+      : undefined;
+    const picked = this.draftTeams.get(def.id) ?? new Set<string>();
+    const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
+
+    return `
+      <div class="row between" style="margin-bottom:6px">
+        <b style="font-size:15px">${esc(def.name)}</b>
+        ${categoryChip(def.category)}
+      </div>
+      <p class="blurb">${esc(def.blurb)}</p>
+      ${this.defStats(def)}
+      ${entry ? this.offerMeta(entry, state) : ''}
+      ${this.draftPicker(def, state)}
+      <button class="primary" style="width:100%;margin-top:4px" data-action="pitch"
+        data-id="${def.id}" data-id2="${entry?.id ?? ''}"
+        ${hoursLeft >= VERB_HOURS.pitch ? '' : 'disabled'}>
+        ${
+          hoursLeft >= VERB_HOURS.pitch
+            ? `Pitch ${esc(def.name)}${picked.size ? ` with ${picked.size}` : ' solo'} · ${VERB_HOURS.pitch}h`
+            : 'No hours left today'
+        }
       </button>
-      <button data-action="view" data-value="backlog" class="${state.view === 'backlog' ? 'active' : ''}">
-        Backlog${offers ? ` <i class="pip">${offers}</i>` : ''}
-      </button>
-    `);
+    `;
+  }
+
+  /** Projects the space could start right now: era-visible, buildable, not already running. */
+  private availableDefs(state: GameState): ProjectDef[] {
+    const active = new Set(state.runtime.projects.map((p) => p.defId));
+    return catalogForEra(state.era).filter(
+      (def) => canBuild(def, state.ownedMachines) && !active.has(def.id),
+    );
+  }
+
+  private offerMeta(entry: BacklogEntry, state: GameState): string {
+    const proposer = entry.proposerId ? MEMBER_DATA[entry.proposerId]?.name : null;
+    const daysLeft = entry.expiresOnDay ? entry.expiresOnDay - state.day : null;
+    return `<div class="offer-meta">
+      ${proposer ? `<span>👤 ${proposer} will take a stage</span>` : ''}
+      ${entry.sponsorCash ? `<span class="good">💰 ${money(entry.sponsorCash)} up front</span>` : ''}
+      ${entry.hypeMultiplier ? `<span class="hot">🔥 ×${entry.hypeMultiplier} hype while it lasts</span>` : ''}
+      ${daysLeft !== null ? `<span class="${daysLeft <= 3 ? 'bad' : ''}">expires in ${daysLeft}d</span>` : ''}
+    </div>`;
+  }
+
+  private jobCard(def: ProjectDef, state: GameState, entry?: BacklogEntry): string {
+    const badge = entry ? SOURCE_BADGE[entry.source] : null;
+    const missing = missingMachines(def, state.ownedMachines);
+    return `<button class="job ${badge?.cls ?? ''}" data-action="jobs-project"
+      data-id="${def.id}" data-id2="${entry?.id ?? ''}" ${missing.length ? 'disabled' : ''}>
+      <div class="row between">
+        <b>${esc(def.name)}</b>
+        ${badge?.label ? `<span class="chip ${badge.cls}">${badge.label}</span>` : categoryChip(def.category)}
+      </div>
+      <p class="blurb">${esc(def.blurb)}</p>
+      ${this.defStats(def)}
+      ${entry ? this.offerMeta(entry, state) : ''}
+      ${missing.length ? `<div class="locked-note">needs ${missing.join(', ')}</div>` : ''}
+    </button>`;
   }
 
   // --- active projects ------------------------------------------------------
@@ -323,8 +588,8 @@ export class UI {
     if (!projects.length) {
       this.setHTML(this.left, 'left', `
         <p class="empty">Nothing on the bench.</p>
-        <p class="blurb">Open the backlog and pitch something. It costs ${VERB_HOURS.pitch}h of your day
-        to write a pitch up properly.</p>
+        <p class="blurb">Open <b>Jobs</b> at the bottom of the screen and pitch something. Writing a
+        pitch up properly costs ${VERB_HOURS.pitch}h of your day.</p>
       `);
       return;
     }
@@ -499,96 +764,18 @@ export class UI {
         </button>
         ${project.stage === 'simulation' ? `<button class="tiny" data-action="skip-sim" data-id="${project.id}">Skip sim</button>` : ''}
       </div>
+      ${
+        project.idleDays >= SHELVE.warnAfterIdleDays
+          ? `<p class="defect">⚠ Nobody has touched this for ${project.idleDays} days — shelved in
+             ${SHELVE.afterIdleDays - project.idleDays}.</p>`
+          : ''
+      }
       ${project.defects.length ? `<p class="defect">⚠ ${esc(project.defects[project.defects.length - 1])}</p>` : ''}
       ${parts}
     </div>`;
   }
 
   // --- backlog --------------------------------------------------------------
-
-  private renderBacklog(state: GameState) {
-    const slots = this.handlers.slots();
-    const full = slots.used >= slots.total;
-    const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
-    const canPitch = !full && hoursLeft >= VERB_HOURS.pitch;
-    const activeDefs = new Set(state.runtime.projects.map((p) => p.defId));
-
-    const offerCard = (entry: BacklogEntry) => {
-      const def = CATALOG_MAP[entry.defId];
-      const badge = SOURCE_BADGE[entry.source];
-      const proposer = entry.proposerId ? ROSTER.find((r) => r.id === entry.proposerId)?.name : null;
-      const daysLeft = entry.expiresOnDay ? entry.expiresOnDay - state.day : null;
-      const buildable = canBuild(def, state.ownedMachines);
-      return `<div class="offer ${badge.cls}">
-        <div class="row between">
-          <b>${esc(def.name)}</b>
-          <span class="chip ${badge.cls}">${badge.label}</span>
-        </div>
-        <p class="blurb">${esc(def.blurb)}</p>
-        <div class="offer-meta">
-          ${proposer ? `<span>👤 ${proposer} will take a stage</span>` : ''}
-          ${entry.sponsorCash ? `<span class="good">💰 ${money(entry.sponsorCash)} up front</span>` : ''}
-          ${entry.hypeMultiplier ? `<span class="hot">🔥 ×${entry.hypeMultiplier} hype while it lasts</span>` : ''}
-          ${daysLeft !== null ? `<span class="${daysLeft <= 3 ? 'bad' : ''}">expires in ${daysLeft}d</span>` : ''}
-        </div>
-        ${this.defStats(def)}
-        ${buildable && !activeDefs.has(def.id) ? this.draftPicker(def, state) : ''}
-        <button class="tiny primary" data-action="pitch" data-id="${def.id}" data-id2="${entry.id}"
-          ${canPitch && buildable && !activeDefs.has(def.id) ? '' : 'disabled'}>
-          Pitch${(this.draftTeams.get(def.id)?.size ?? 0) ? ` with ${this.draftTeams.get(def.id)!.size}` : ''} · ${VERB_HOURS.pitch}h
-        </button>
-      </div>`;
-    };
-
-    const catalogCard = (def: ProjectDef) => {
-      const missing = missingMachines(def, state.ownedMachines);
-      const active = activeDefs.has(def.id);
-      return `<div class="offer ${missing.length ? 'locked' : ''}">
-        <div class="row between">
-          <b>${esc(def.name)}</b>
-          ${categoryChip(def.category)}
-        </div>
-        <p class="blurb">${esc(def.blurb)}</p>
-        ${this.defStats(def)}
-        ${
-          missing.length
-            ? `<div class="locked-note">needs ${missing.join(', ')}</div>`
-            : `${active ? '' : this.draftPicker(def, state)}
-               <button class="tiny" data-action="pitch" data-id="${def.id}" ${canPitch && !active ? '' : 'disabled'}>
-                 ${active ? 'In progress' : `Pitch${(this.draftTeams.get(def.id)?.size ?? 0) ? ` with ${this.draftTeams.get(def.id)!.size}` : ''} · ${VERB_HOURS.pitch}h`}
-               </button>`
-        }
-      </div>`;
-    };
-
-    const offers = state.backlog.map(offerCard).join('');
-    const available = catalogForEra(state.era).filter(
-      (def) => !state.backlog.some((e) => e.defId === def.id),
-    );
-
-    const byCategory = CATEGORY_ORDER.map((category) => {
-      const defs = available.filter((def) => def.category === category);
-      if (!defs.length) return '';
-      const profile = profileOf(category);
-      return `<div class="cat-group" style="--cat:${profile.accent}">
-        <div class="cat-head">
-          <span class="cat-icon">${profile.icon}</span>
-          <b>${profile.label}</b>
-          <span class="muted">${defs.length}</span>
-          <span class="cat-blurb">${esc(profile.blurb)}</span>
-        </div>
-        ${defs.map(catalogCard).join('')}
-      </div>`;
-    }).join('');
-
-    this.setHTML(this.left, 'left', `
-      ${full ? `<p class="warn-note">All ${slots.total} project slot(s) in use. Ship something first.</p>` : ''}
-      ${hoursLeft < VERB_HOURS.pitch ? `<p class="warn-note">No hours left today to write a pitch.</p>` : ''}
-      ${offers ? `<div class="section">Offers</div>${offers}` : ''}
-      <div class="section">Catalog · era ${state.era}</div>
-      ${byCategory}
-    `);
-  }
 
   /** Pick the crew before you commit — they are asked the moment you pitch (§3b). */
   private draftPicker(def: ProjectDef, state: GameState): string {
