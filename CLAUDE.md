@@ -46,7 +46,7 @@ push back against drift — they are the game's clock, not decoration.
 
 ## 3. The Influence Model (§1 consequence)
 
-### Members (the space starts with three; the rest arrive — see §5)
+### Members (the space starts with six; nine more arrive — see §5)
 ```
 Member {
   id, name,
@@ -101,9 +101,15 @@ members to it. This is the player's most direct lever, and it is deliberately no
 - Extra hands help less each time: the second contributes 0.6, and each further one decays by
   0.85. Eight people are ~3.7× one person, not 8×.
 
-**Weekend builds exist for this.** A one-person, three-day project (phone stand, cable tidy, LED
-badge, fume extractor) can run alongside a long build without consuming the space. They are also
-the early game's teaching tool: a whole pipeline in three days.
+**Weekend builds exist for this.** A one-person, two-to-four-day project (phone stand, cable tidy,
+LED badge, fume extractor) runs alongside a long build without consuming the space, and teaches
+the whole pipeline in a couple of days. First ship lands around day 4.
+
+**Crews are picked on the pitch screen.** Each backlog and catalog card carries a crew selector
+listing unallocated members ranked by passion match, capped at the project's team size. Pitching
+asks each of them — so a crew you picked can still turn up short, which is the volunteer model
+surviving contact with a convenience feature. Mid-project changes still happen on the project
+card.
 
 ## 3a. You (the player character)
 
@@ -144,6 +150,24 @@ space — the point is that they stop being able to.
 A project carries `quality`, `scope`, `hypeEarned`, and a `defects[]` list. **Test is the teeth**:
 skipping Simulation to save time is a real, tempting, punishable decision.
 
+### Length tiers — a promise the catalog has to keep
+
+| Tier | Length | Team | Typical work | Lead time |
+|---|---|---|---|---|
+| **small** | 1-5 days | 1-2 | 27-76 units | 0-3 days |
+| **medium** | 5-10 days | 2-3 | 102-188 units | 4-6 days |
+| **large** | 10-30 days | 4-8 | 208-500 units | 7-12 days |
+
+Every `ProjectDef` declares its `tier`, and **`npm run project-times` measures every entry
+against it** — best case, with a full team, every machine and parts ordered on day one. Treat a
+`TOO LONG` row as a build failure, not a matter of taste.
+
+The measurement earned its keep immediately: it showed that a project's length was essentially
+its **lead time plus two days**, not its work content. Nixie Clock had a 21-day lead and took
+24.8 days; LoRaWAN had 24 and took 28.6. Sourcing was designed as *a* bottleneck and had quietly
+become *the* bottleneck. Lead times were cut by roughly three-quarters and 24/24 projects now
+land inside their tier. **Before tuning work numbers, check lead times.**
+
 ### Bought parts and lead times
 
 Printed parts are only half of a build; the other half arrives in a box. Every project carries a
@@ -157,7 +181,7 @@ print-heavy and arrives in twelve days. The bottleneck moves.
 
 ### The catalog (`src/utils/catalog.ts`)
 
-Eighteen projects across four categories, gated by era and by what the space owns:
+Twenty-four projects across four categories, gated by era and by what the space owns:
 
 - **electronics / IoT** — Macropad, E-ink Dashboard, Nixie Clock, Cyberdeck, LoRaWAN Gateway,
   Home Assistant Hub, SDR Ground Station
@@ -354,6 +378,11 @@ of stay (×1.45), the same spread became:
 Apply this test to every verb added in later phases: **events, policies and tool purchases
 must be checked against attendance, not against interest.**
 
+**A repeated log line means a condition, not an event.** "The parts for Cyberdeck haven't
+arrived yet" fired on every rejected action and buried the log. `pushLog` now collapses
+consecutive identical messages into one line with a `×N` counter. Any new log call that can fire
+from a persistent state needs this, and it is now free.
+
 **A gate the player cannot act on reads as a bug, not as pacing.** Era 1 originally allowed one
 concurrent project, so the whole backlog sat there with every Pitch button greyed out for the
 length of a build. It rendered correctly and was still, in effect, broken. Two fixes, both of
@@ -382,6 +411,11 @@ Two further findings, both now fixed and worth not re-introducing:
   `Machine.starved` blocks job *start*; running out mid-job still fails the print, as it should.
 
 ## 14. Development Priority
+
+**Phase 1.7 — Length tiers and crew-at-pitch — BUILT.**
+Every project declares a length tier and `npm run project-times` enforces it; lead times were the
+real driver of project length and were cut hard. Crews are picked on the pitch screen. Six starting
+members instead of three.
 
 **Phase 1.6 — Teams, weekend builds and a growing roster — BUILT.**
 Projects have team sizes and you allocate members to them, with the right to refuse (§3b). Six
@@ -423,6 +457,8 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     if any run cannot ship. Run it after touching anything in `constants.ts` or the sim.
   - `npm run time-budget` — person-hour breakdown (working / walking / idle / resting) and
     elapsed days per stage. Use it whenever a stage feels the wrong length.
+  - `npm run project-times` — best-case length of every catalog entry against its declared
+    tier. Run it after any change to `catalog.ts`; `TOO LONG` is a failure, not an opinion.
   - Harness sources live in `tools/`, built via `vite.headless.config.ts` to `dist-headless/`.
 - Debugging in the browser: `window.__store.getState()` and `window.__game.sim`.
 - Layout:

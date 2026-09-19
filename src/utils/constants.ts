@@ -374,6 +374,39 @@ export const ROSTER: MemberData[] = [
     traits: ['ghost'],
     window: [13, 21],
   },
+  {
+    id: 'mehmet',
+    name: 'Mehmet',
+    skills: skills({ electronics: 3, machining: 3, docs: 2 }),
+    passions: { iot: 0.7, electronics: 0.6, fpv: 0.45 },
+    energy: 88,
+    mood: 72,
+    commitment: 15,
+    traits: [],
+    window: [9, 18],
+  },
+  {
+    id: 'bektas',
+    name: 'Bektaş',
+    skills: skills({ machining: 3, welding: 4, electronics: 2 }),
+    passions: { fpv: 0.7, machining: 0.6, robotics: 0.45 },
+    energy: 90,
+    mood: 66,
+    commitment: 14,
+    traits: [],
+    window: [12, 20],
+  },
+  {
+    id: 'safa',
+    name: 'Safa',
+    skills: skills({ software: 4, electronics: 3, docs: 3 }),
+    passions: { iot: 0.8, software: 0.7, civic: 0.4 },
+    energy: 85,
+    mood: 72,
+    commitment: 12,
+    traits: ['documenter'],
+    window: [18, 24],
+  },
 ];
 
 /**
@@ -382,13 +415,6 @@ export const ROSTER: MemberData[] = [
  * is the "projects and tools are magnets" idea made concrete.
  */
 export const APPLICANTS: MemberData[] = [
-  {
-    id: 'safa',
-    name: 'Safa',
-    skills: skills({ software: 4, electronics: 3, docs: 3 }),
-    passions: { iot: 0.8, software: 0.7, civic: 0.4 },
-    energy: 85, mood: 72, commitment: 12, traits: ['documenter'], window: [18, 24],
-  },
   {
     id: 'zahid',
     name: 'Zahid',
@@ -439,25 +465,11 @@ export const APPLICANTS: MemberData[] = [
     energy: 80, mood: 76, commitment: 8, traits: ['documenter'], window: [10, 18],
   },
   {
-    id: 'bektas',
-    name: 'Bektaş',
-    skills: skills({ machining: 3, welding: 4, electronics: 2 }),
-    passions: { fpv: 0.7, machining: 0.6, robotics: 0.45 },
-    energy: 90, mood: 66, commitment: 14, traits: [], window: [12, 20],
-  },
-  {
     id: 'safa-kemal',
     name: 'Safa Kemal',
     skills: skills({ cad: 5, software: 4 }),
     passions: { cad: 0.8, design: 0.7, robotics: 0.5 },
     energy: 76, mood: 80, commitment: 6, traits: ['mentor'], window: [20, 24],
-  },
-  {
-    id: 'mehmet',
-    name: 'Mehmet',
-    skills: skills({ electronics: 3, machining: 3, docs: 2 }),
-    passions: { iot: 0.7, electronics: 0.6, fpv: 0.45 },
-    energy: 88, mood: 72, commitment: 15, traits: [], window: [9, 18],
   },
   {
     id: 'abdullah',

@@ -1,6 +1,7 @@
 import { store } from '@/game/store';
 import type {
   BacklogEntry,
+  MemberData,
   MachineSnapshot,
   MachineType,
   ProjectData,
@@ -797,7 +798,7 @@ export class Simulation {
     }
   }
 
-  private installMachine(type: MachineType) {
+  installMachine(type: MachineType) {
     const def = installStation(type, `${type}-${this.machines.length + 1}`);
     if (!def) {
       this.log(`No room left for the new machine. It lives in the corridor.`, 'warn');
@@ -876,6 +877,14 @@ export class Simulation {
     this.log(`${member.name} left ${project.name}.`, 'info');
   }
 
+  /** Bring somebody into the space as a member. */
+  joinMember(data: MemberData): MemberEntity {
+    const entity = new MemberEntity({ ...data }, DOOR);
+    this.members.push(entity);
+    this.plans.set(data.id, { attending: false, arriveAt: 0, leaveAt: 0 });
+    return entity;
+  }
+
   /** §5 — a shipped project pulls in people who care about that kind of thing. */
   private recruit(project: ProjectData) {
     const known = new Set(this.members.map((m) => m.id));
@@ -895,8 +904,7 @@ export class Simulation {
     const count = Math.min(rng.int(lo, hi), tempted.length);
     for (let i = 0; i < count; i += 1) {
       const { data } = tempted[i];
-      this.members.push(new MemberEntity({ ...data }, DOOR));
-      this.plans.set(data.id, { attending: false, arriveAt: 0, leaveAt: 0 });
+      this.joinMember(tempted[i].data);
       this.log(`${data.name} turned up after seeing the ${project.name} write-up.`, 'good');
     }
   }
@@ -913,8 +921,12 @@ export class Simulation {
     return eraDef(store.getState().era).slots;
   }
 
-  /** Start something. `offerId` is set when taking a backlog offer rather than the catalog. */
-  pitch(defId: string, offerId?: string): boolean {
+  /**
+   * Start something. `offerId` is set when taking a backlog offer rather than the catalog;
+   * `draftTeam` is the crew picked on the pitch screen — each of them is *asked*, so some
+   * may still say no (§3b).
+   */
+  pitch(defId: string, offerId?: string, draftTeam: string[] = []): boolean {
     const state = store.getState();
     if (this.slotsUsed >= this.slotsTotal) {
       this.log(`No room for another project right now.`, 'bad');
@@ -953,6 +965,12 @@ export class Simulation {
       }
     }
     this.log(`Pitched ${def.name}. ${def.blurb}`, 'info');
+
+    // Ask the crew you picked on the pitch screen. They can still decline.
+    for (const memberId of draftTeam) {
+      if (project.team.length >= project.teamSize) break;
+      this.inviteMember(project.id, memberId);
+    }
     return true;
   }
 

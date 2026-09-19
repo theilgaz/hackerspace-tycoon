@@ -28,7 +28,7 @@ import { clock, dayName, hours, money, pct } from '@/utils/format';
 export interface UIHandlers {
   setSpeed(speed: number): void;
   setView(view: GameState['view']): void;
-  pitch(defId: string, offerId?: string): void;
+  pitch(defId: string, offerId: string | undefined, team: string[]): void;
   workOn(projectId: string, stage: StageKey): void;
   stopWork(): void;
   calibrate(): void;
@@ -85,6 +85,13 @@ const SOURCE_BADGE: Record<BacklogEntry['source'], { label: string; cls: string 
   trending: { label: 'trending', cls: 'src-trending' },
 };
 
+/** The promise each tier makes about length (CLAUDE.md §4). */
+const TIER_DAYS: Record<ProjectDef['tier'], string> = {
+  small: '1-5d',
+  medium: '5-10d',
+  large: '10-30d',
+};
+
 const CATEGORY_LABEL: Record<ProjectDef['category'], string> = {
   electronics: 'electronics',
   mechanical: 'mechanical',
@@ -104,6 +111,9 @@ function esc(text: string): string {
 export class UI {
   private readonly root: HTMLElement;
   private readonly handlers: UIHandlers;
+  /** Crews picked on the pitch screen but not yet pitched. Survives the 5 Hz re-render. */
+  private draftTeams = new Map<string, Set<string>>();
+  private lastState: GameState | null = null;
   private topbar!: HTMLElement;
   private left!: HTMLElement;
   private leftTabs!: HTMLElement;
@@ -155,9 +165,23 @@ export class UI {
         case 'view':
           h.setView(value as GameState['view']);
           break;
-        case 'pitch':
-          if (id) h.pitch(id, id2);
+        case 'pitch': {
+          if (!id) break;
+          const draft = [...(this.draftTeams.get(id) ?? [])];
+          h.pitch(id, id2 || undefined, draft);
+          this.draftTeams.delete(id);
           break;
+        }
+        case 'draft': {
+          if (!id || !id2) break;
+          const def = CATALOG_MAP[id];
+          const set = this.draftTeams.get(id) ?? new Set<string>();
+          if (set.has(id2)) set.delete(id2);
+          else if (set.size < def.teamSize) set.add(id2);
+          this.draftTeams.set(id, set);
+          this.render(this.lastState!);
+          break;
+        }
         case 'work':
           if (id && stage) h.workOn(id, stage as StageKey);
           break;
@@ -211,6 +235,7 @@ export class UI {
   }
 
   render(state: GameState) {
+    this.lastState = state;
     this.renderTopbar(state);
     this.renderTabs(state);
     if (state.view === 'projects') this.renderProjects(state);
@@ -422,6 +447,10 @@ export class UI {
       </div>
       <div class="row wrap" style="gap:5px;margin-bottom:7px">
         <span class="chip">${CATEGORY_LABEL[project.category]}</span>
+        ${(() => {
+          const def = CATALOG_MAP[project.defId];
+          return def ? `<span class="chip tier ${def.tier}">${def.tier} · ${TIER_DAYS[def.tier]}</span>` : '';
+        })()}
         ${project.hypeMultiplier > 1 ? `<span class="chip hot">🔥 ×${project.hypeMultiplier}</span>` : ''}
         ${project.sponsorCash ? `<span class="chip cash">sponsored</span>` : ''}
       </div>
@@ -474,9 +503,10 @@ export class UI {
           ${daysLeft !== null ? `<span class="${daysLeft <= 3 ? 'bad' : ''}">expires in ${daysLeft}d</span>` : ''}
         </div>
         ${this.defStats(def)}
+        ${buildable && !activeDefs.has(def.id) ? this.draftPicker(def, state) : ''}
         <button class="tiny primary" data-action="pitch" data-id="${def.id}" data-id2="${entry.id}"
           ${canPitch && buildable && !activeDefs.has(def.id) ? '' : 'disabled'}>
-          Pitch · ${VERB_HOURS.pitch}h
+          Pitch${(this.draftTeams.get(def.id)?.size ?? 0) ? ` with ${this.draftTeams.get(def.id)!.size}` : ''} · ${VERB_HOURS.pitch}h
         </button>
       </div>`;
     };
@@ -494,8 +524,9 @@ export class UI {
         ${
           missing.length
             ? `<div class="locked-note">needs ${missing.join(', ')}</div>`
-            : `<button class="tiny" data-action="pitch" data-id="${def.id}" ${canPitch && !active ? '' : 'disabled'}>
-                 Pitch · ${VERB_HOURS.pitch}h
+            : `${active ? '' : this.draftPicker(def, state)}
+               <button class="tiny" data-action="pitch" data-id="${def.id}" ${canPitch && !active ? '' : 'disabled'}>
+                 ${active ? 'In progress' : `Pitch${(this.draftTeams.get(def.id)?.size ?? 0) ? ` with ${this.draftTeams.get(def.id)!.size}` : ''} · ${VERB_HOURS.pitch}h`}
                </button>`
         }
       </div>`;
@@ -516,10 +547,48 @@ export class UI {
     `;
   }
 
+  /** Pick the crew before you commit — they are asked the moment you pitch (§3b). */
+  private draftPicker(def: ProjectDef, state: GameState): string {
+    const picked = this.draftTeams.get(def.id) ?? new Set<string>();
+    const free = state.runtime.members
+      .filter((m) => !m.team)
+      .map((m) => ({ m, match: Math.max(0, ...def.tags.map((t) => MEMBER_DATA[m.id]?.passions[t] ?? 0)) }))
+      .sort((a, b) => b.match - a.match);
+
+    if (!free.length) {
+      return `<div class="draft"><span class="muted" style="font-size:10.5px">Everybody is already on something.</span></div>`;
+    }
+    return `<div class="draft">
+      <div class="row between" style="margin-bottom:5px">
+        <span class="muted" style="font-size:10px;letter-spacing:.07em;text-transform:uppercase">
+          Crew ${picked.size}/${def.teamSize}
+        </span>
+        ${picked.size ? `<span class="muted" style="font-size:10px">they can still say no</span>` : ''}
+      </div>
+      <div class="row wrap" style="gap:4px">
+        ${free
+          .slice(0, 8)
+          .map(({ m, match }) => {
+            const on = picked.has(m.id);
+            const tone = match >= 0.6 ? 'keen' : match >= 0.3 ? '' : 'cold';
+            const full = !on && picked.size >= def.teamSize;
+            return `<button class="person ask ${tone} ${on ? 'picked' : ''} ${full ? 'full' : ''}"
+                      data-action="draft" data-id="${def.id}" data-id2="${m.id}"
+                      title="passion match ${pct(match)}${m.present ? '' : ' · not in today'}">
+                      ${on ? '✓' : '+'} ${m.name} <i>${pct(match)}</i>
+                    </button>`;
+          })
+          .join('')}
+      </div>
+    </div>`;
+  }
+
   private defStats(def: ProjectDef): string {
     const printHours = def.parts.reduce((sum, p) => sum + p.hours, 0);
     const workUnits = STAGE_ORDER.reduce((sum, key) => sum + (def.work[key] ?? STAGE_MAP[key].work), 0);
+    const window = TIER_DAYS[def.tier];
     return `<div class="stats-row mono">
+      <span class="tier ${def.tier}" title="typical length">${def.tier} · ${window}</span>
       <span title="team size">👥 ${def.teamSize}</span>
       <span title="hand work units">✋ ${workUnits}</span>
       <span title="machine hours">🖨 ${printHours.toFixed(0)}h</span>
@@ -673,7 +742,9 @@ export class UI {
     this.log.innerHTML = state.log
       .map(
         (entry) =>
-          `<div class="entry ${entry.kind}"><time>d${entry.day} ${clock(entry.time)}</time><span>${esc(entry.text)}</span></div>`,
+          `<div class="entry ${entry.kind}"><time>d${entry.day} ${clock(entry.time)}</time><span>${esc(entry.text)}${
+            entry.repeats ? ` <i class="repeats">×${entry.repeats}</i>` : ''
+          }</span></div>`,
       )
       .join('');
   }

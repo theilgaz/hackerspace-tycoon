@@ -139,6 +139,13 @@ export interface PartData {
 
 export type ProjectCategory = 'electronics' | 'mechanical' | 'tool' | 'civic';
 
+/**
+ * Declared size, and a promise about length (CLAUDE.md §4):
+ *   small 1-5 days · medium 5-10 days · large 10-30 days
+ * `npm run project-times` checks every entry against its declared tier.
+ */
+export type ProjectTier = 'small' | 'medium' | 'large';
+
 /** A buildable thing. Content, not state — see ProjectData for a live one. */
 export interface ProjectDef {
   id: string;
@@ -146,6 +153,7 @@ export interface ProjectDef {
   category: ProjectCategory;
   tags: Tag[];
   era: number;
+  tier: ProjectTier;
   blurb: string;
   /** How many people can work it at once. The real constraint on running projects. */
   teamSize: number;
@@ -274,4 +282,6 @@ export interface LogEntry {
   time: number;
   text: string;
   kind: 'info' | 'good' | 'bad' | 'warn';
+  /** Consecutive repeats, collapsed into one line rather than flooding the log. */
+  repeats?: number;
 }

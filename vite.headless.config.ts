@@ -16,6 +16,7 @@ export default defineConfig({
       input: {
         'sim-check': 'tools/sim-check.ts',
         'time-budget': 'tools/time-budget.ts',
+        'project-times': 'tools/project-times.ts',
       },
     },
   },

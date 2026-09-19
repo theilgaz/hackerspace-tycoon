@@ -17,7 +17,17 @@ import { Simulation } from '@/systems/Simulation';
 import { store, emptyRuntime } from '@/game/store';
 import { rng } from '@/utils/rng';
 import { FILAMENT, START_CASH, STAGE_MAP, VERB_HOURS } from '@/utils/constants';
-import { catalogForEra, canBuild } from '@/utils/catalog';
+import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
+
+/** Pick a crew on the pitch screen the way a player would: best passion match first. */
+function draftCrew(sim: Simulation, defId: string): string[] {
+  const def = CATALOG_MAP[defId];
+  return sim.members
+    .filter((m) => !m.team)
+    .sort((a, b) => b.passionMatch(def.tags) - a.passionMatch(def.tags))
+    .slice(0, def.teamSize)
+    .map((m) => m.id);
+}
 import { STAGE_STATION } from '@/machines/layout';
 import { partsPending } from '@/systems/ProjectSystem';
 
@@ -75,12 +85,12 @@ function runOnce(seed: number, mode: Mode): Result {
     // --- every archetype does the unavoidable ------------------------------
     if (sim.slotsUsed < sim.slotsTotal && sim.player.hoursLeft >= VERB_HOURS.pitch) {
       const offer = state.backlog[0];
-      if (offer) sim.pitch(offer.defId, offer.id);
+      if (offer) sim.pitch(offer.defId, offer.id, draftCrew(sim, offer.defId));
       else {
         const def = catalogForEra(state.era).find(
           (d) => canBuild(d, state.ownedMachines) && !sim.projects.some((p) => p.defId === d.id),
         );
-        if (def) sim.pitch(def.id);
+        if (def) sim.pitch(def.id, undefined, draftCrew(sim, def.id));
       }
     }
     for (const project of sim.projects) {

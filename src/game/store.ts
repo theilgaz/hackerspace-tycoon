@@ -85,6 +85,14 @@ export const store = createStore<GameState>((set, get) => ({
 
   pushLog: (text, kind = 'info') => {
     const { day, simTime, log } = get();
+    const head = log[0];
+    // A repeated message means a condition persists, not that something happened again.
+    // Collapse it instead of flooding — "parts haven't arrived" once fired every tick.
+    if (head && head.text === text) {
+      const merged: LogEntry = { ...head, repeats: (head.repeats ?? 1) + 1, day, time: simTime };
+      set({ log: [merged, ...log.slice(1)] });
+      return;
+    }
     const entry: LogEntry = { id: uid('log'), day, time: simTime, text, kind };
     set({ log: [entry, ...log].slice(0, MAX_LOG) });
   },

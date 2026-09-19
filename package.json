@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "sim-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/sim-check.js",
-    "time-budget": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/time-budget.js"
+    "time-budget": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/time-budget.js",
+    "project-times": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/project-times.js"
   },
   "dependencies": {
     "three": "^0.186.0",

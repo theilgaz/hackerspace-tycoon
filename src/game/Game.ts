@@ -34,7 +34,7 @@ export class Game {
         else store.getState().setSpeed(speed);
       },
       setView: (view) => store.getState().setView(view),
-      pitch: (defId, offerId) => act(() => sim.pitch(defId, offerId)),
+      pitch: (defId, offerId, team) => act(() => sim.pitch(defId, offerId, team)),
       workOn: (projectId, stage) => act(() => sim.workOn(projectId, stage)),
       stopWork: () => act(() => sim.stopWork()),
       calibrate: () => act(() => sim.calibratePrinter()),
