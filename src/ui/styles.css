@@ -114,7 +114,8 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 
 /* --- project ------------------------------------------------------------ */
 
-#project { top: 12px; left: 12px; width: 296px; }
+#left { top: 12px; left: 12px; width: 330px; max-height: calc(100vh - 250px); display: flex; flex-direction: column; }
+#left .body { overflow-y: auto; }
 .pipeline { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
 .stage {
   display: flex;
@@ -146,7 +147,7 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 
 /* --- members ------------------------------------------------------------ */
 
-#members { top: 12px; right: 12px; width: 268px; }
+#members .body { max-height: 40vh; }
 .member { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .member:last-child { border-bottom: none; padding-bottom: 0; }
 .member .head { display: flex; align-items: center; gap: 7px; }
@@ -172,7 +173,7 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 
 /* --- printer ------------------------------------------------------------ */
 
-#printer { right: 12px; width: 268px; }
+#machines .body { max-height: 42vh; overflow-y: auto; }
 .jobline { display: flex; align-items: center; gap: 7px; font-size: 11.5px; padding: 3px 0; }
 .jobline .jname { flex: 1; }
 .jobline .ctrl { display: flex; gap: 3px; }
@@ -247,3 +248,132 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 }
 #right .panel { position: relative; top: auto; right: auto; width: 100%; }
 #members .body { overflow-y: auto; }
+
+
+/* --- tabs ---------------------------------------------------------------- */
+
+.tabs { display: flex; gap: 2px; padding: 6px 6px 0; border-bottom: 1px solid var(--line); }
+.tabs button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  padding: 7px 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+.tabs button:hover { background: #1e242d; }
+.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+.pip {
+  display: inline-block;
+  font-style: normal;
+  background: var(--accent);
+  color: #0e1a19;
+  border-radius: 8px;
+  padding: 0 5px;
+  font-size: 9.5px;
+  margin-left: 3px;
+  vertical-align: 1px;
+}
+
+/* --- shared bits --------------------------------------------------------- */
+
+.section {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 12px 0 6px;
+}
+.section:first-child { margin-top: 0; }
+.rule { height: 1px; background: var(--line); margin: 10px 0; }
+.empty { font-size: 12.5px; color: var(--muted); margin: 4px 0 8px; }
+.warn-note {
+  font-size: 11px;
+  color: var(--warn);
+  background: #2a2413;
+  border: 1px solid #473c17;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin: 0 0 10px;
+}
+.defect { font-size: 11px; color: var(--bad); margin: 8px 0 0; line-height: 1.4; }
+
+.chip {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #242b35;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.chip.hot, .chip.src-trending { background: #33241a; color: #f3a05f; border-color: #55341f; }
+.chip.cash, .chip.src-sponsor { background: #1f2f22; color: #8fd88f; border-color: #2f4a33; }
+.chip.src-member { background: #22283a; color: #9db4e8; border-color: #333c55; }
+
+/* --- project cards ------------------------------------------------------- */
+
+.project { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.project:first-child { padding-top: 2px; }
+.project:last-child { border-bottom: none; padding-bottom: 2px; }
+
+.sourcing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  background: #1e242e;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 7px;
+  margin-bottom: 8px;
+}
+.sourcing.urgent { background: #2c1f1b; border-color: #56342a; color: #f0a48f; }
+
+/* --- backlog ------------------------------------------------------------- */
+
+.offer {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  margin-bottom: 8px;
+  background: #1a1f28;
+}
+.offer.locked { opacity: 0.55; }
+.offer b { font-size: 12.5px; }
+.offer .blurb { margin: 5px 0 7px; font-size: 11px; }
+.offer-meta { display: flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: var(--muted); margin-bottom: 7px; }
+.offer-meta .good { color: #8fd88f; }
+.offer-meta .hot { color: #f3a05f; }
+.offer-meta .bad { color: var(--bad); }
+.offer.src-sponsor { border-color: #2f4a33; }
+.offer.src-trending { border-color: #55341f; }
+.offer.src-member { border-color: #333c55; }
+.stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.stats-row .good { color: #8fd88f; }
+.locked-note { font-size: 10.5px; color: var(--warn); }
+
+/* --- you ----------------------------------------------------------------- */
+
+#you .note { margin-left: 0; }
+#you .meters { margin-left: 0; }
+
+/* --- machines ------------------------------------------------------------ */
+
+.machine .meters { margin-left: 0; }

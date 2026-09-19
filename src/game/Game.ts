@@ -19,20 +19,39 @@ export class Game {
     this.view = new SpaceView(this.scene.scene);
     this.labels = labels;
 
+    const sim = this.sim;
+    // Every action publishes a fresh snapshot: the game is often paused while you decide,
+    // and the UI only ever reads the store (CLAUDE.md §11).
+    const act = <T>(fn: () => T): T => {
+      const result = fn();
+      sim.publish();
+      return result;
+    };
+
     this.ui = new UI(uiRoot, {
       setSpeed: (speed) => {
         if (speed === 0) store.getState().setPaused(true);
         else store.getState().setSpeed(speed);
       },
-      repitch: () => this.sim.repitch(),
-      bounty: () => this.sim.postBounty(),
-      bountyCost: () => this.sim.bountyCost(),
-      skipSim: () => this.sim.skipSimulation(),
-      queueAll: () => this.sim.queueAllPending(),
-      queuePart: (id) => this.sim.queuePart(id),
-      moveJob: (id, dir) => this.sim.moveJob(id, dir),
-      cancelJob: (id) => this.sim.cancelJob(id),
-      buyFilament: () => this.sim.buyFilament(),
+      setView: (view) => store.getState().setView(view),
+      pitch: (defId, offerId) => act(() => sim.pitch(defId, offerId)),
+      workOn: (projectId, stage) => act(() => sim.workOn(projectId, stage)),
+      stopWork: () => act(() => sim.stopWork()),
+      calibrate: () => act(() => sim.calibratePrinter()),
+      repitch: (projectId) => act(() => sim.repitch(projectId)),
+      bounty: (projectId) => act(() => sim.postBounty(projectId)),
+      bountyCost: (projectId) => sim.bountyCost(projectId),
+      orderParts: (projectId) => act(() => sim.orderParts(projectId)),
+      expedite: (projectId) => act(() => sim.expediteParts(projectId)),
+      expediteCost: (projectId) => sim.expediteCostFor(projectId),
+      skipSim: (projectId) => act(() => sim.skipSimulation(projectId)),
+      queueAll: (projectId) => act(() => sim.queueAllPending(projectId)),
+      queuePart: (projectId, partId) => act(() => sim.queuePart(projectId, partId)),
+      moveJob: (machineId, jobId, dir) => act(() => sim.moveJob(machineId, jobId, dir)),
+      cancelJob: (machineId, jobId) => act(() => sim.cancelJob(machineId, jobId)),
+      buyFilament: () => act(() => sim.buyFilament()),
+      slots: () => ({ used: sim.slotsUsed, total: sim.slotsTotal }),
+      totalHours: () => sim.totalHours,
     });
 
     // UI reads the store and nothing else (CLAUDE.md §11).
@@ -74,17 +93,22 @@ export class Game {
     const runtime = store.getState().runtime;
     const parts: string[] = [];
 
+    const personLabel = (id: string, name: string) => {
+      const world = this.view.personWorld(id);
+      if (!world) return;
+      const p = this.scene.project(world);
+      parts.push(`<div class="label" style="left:${p.x}px;top:${p.y}px">${name}</div>`);
+    };
+
     for (const member of runtime.members) {
-      if (!member.present) continue;
-      const world = this.view.memberWorld(member.id);
+      if (member.present) personLabel(member.id, member.name);
+    }
+    if (runtime.player?.present) personLabel('player', 'You');
+
+    for (const machine of runtime.machines) {
+      const world = this.view.machineWorld(machine.id);
       if (!world) continue;
       const p = this.scene.project(world);
-      parts.push(`<div class="label" style="left:${p.x}px;top:${p.y}px">${member.name}</div>`);
-    }
-
-    const machine = runtime.machines[0];
-    if (machine) {
-      const p = this.scene.project(this.view.printerWorld());
       let text = 'idle';
       let tone = '';
       if (machine.current) {
@@ -92,7 +116,7 @@ export class Game {
         text = `${machine.current.partName} · ${left.toFixed(1)}h left`;
         if (machine.risk > 0.3) tone = 'warn';
       }
-      if (machine.consumable <= 0) {
+      if (machine.consumableMax > 0 && machine.consumable <= 0) {
         text = 'out of filament';
         tone = 'bad';
       }
@@ -102,4 +126,3 @@ export class Game {
     this.labels.innerHTML = parts.join('');
   }
 }
-

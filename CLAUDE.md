@@ -17,10 +17,14 @@ to a shipped, working object — an FPV drone, a pizza oven, a 3D-printed motorc
 **Tone:** Warm, nerdy comedy-of-errors with real stakes. Prints fail at hour 19. The one person who
 knows CAD just discovered resin printing and stopped answering.
 **Perspective:** Isometric (orthographic) camera, grid-based space. No character control.
-**Player control model:** **Indirect / influence-based.** Members are **volunteers, not employees.**
-The player never drags a person onto a task. The player creates *conditions* (§3) and members
-self-assign based on their passions. This is the single most important design decision and it
-distinguishes the game from Game Corp DX / Game Dev Tycoon, where staff obey.
+**Player control model:** **Indirect / influence-based, with one exception: yourself.** Members
+are **volunteers, not employees** — the player never drags one onto a task, but creates
+*conditions* (§3) and they self-assign by passion. This is the single most important design
+decision and it distinguishes the game from Game Corp DX / Game Dev Tycoon, where staff obey.
+The exception is the player character (§3a): you are a member of your own hackerspace and you
+*can* be told what to do. Your hours are strictly budgeted, and managing spends the same hours
+as building — which is what stops the game collapsing into "tycoon where you are simply the
+best employee".
 
 Architectural consequence: the 3D scene is largely an observed diorama. Real interaction happens in
 HTML/CSS overlay panels (projects, members, machines, Reddit, funding).
@@ -80,6 +84,28 @@ for a deadline. The player raises commitment with mood, not money.
 **Design rule:** there must never be an "assign to task" button. If the player is stuck, the answer
 is always one of the five verbs above, not more direct control.
 
+## 3a. You (the player character)
+
+You are on the grid, you are always in the building, and you can work. That matters because
+§13 established that **attendance is the binding constraint** — and you are the one person
+whose attendance is guaranteed.
+
+The counterweight is the hour budget:
+
+- You get roughly 7 hours a day, scaled by energy. Working flat out drains energy, which
+  shrinks *tomorrow's* budget — overwork is a decision with a delayed bill, not an immediate one.
+- **Every management verb spends the same pool**: pitching a project costs 2h, a bounty 1h,
+  ordering parts 1h, expediting 1h, re-pitching 1h, going out for filament 0.5h.
+- So each hour spent doing the CAD yourself is an hour not spent recruiting the person who
+  would have done it faster. That trade is the daily decision the game is built around.
+- You never drift, and you take no passion penalty — it is your space, you work on what needs
+  working on.
+
+**The intended arc across the eras:** in Era 1 you are the best maker in the room and your hands
+carry the project. By Era 3 your personal output is a rounding error and you are the person who
+buys filament and keeps the lease. Do not balance later eras so the player can out-build the
+space — the point is that they stop being able to.
+
 ## 4. Projects & the Fab Pipeline
 
 ### Stages
@@ -97,8 +123,49 @@ is always one of the five verbs above, not more direct control.
 A project carries `quality`, `scope`, `hypeEarned`, and a `defects[]` list. **Test is the teeth**:
 skipping Simulation to save time is a real, tempting, punishable decision.
 
-### Launch projects (Era 1-3)
-FPV Drone · Pizza Oven · CNC Router · E-bike Conversion · 3D-Printed Motorcycle (Era 3 capstone)
+### Bought parts and lead times
+
+Printed parts are only half of a build; the other half arrives in a box. Every project carries a
+**bill of materials** with a cost and a lead time (10-30 days), and **Assembly cannot start until
+the order lands**. Ordering is cheap and early; forgetting is expensive and late. You can pay to
+expedite a late order, at a punitive multiple.
+
+This is what makes the catalog's electronics projects play differently from its mechanical ones:
+a cyberdeck is print-light and spends three weeks waiting on an order, while a drone is
+print-heavy and arrives in twelve days. The bottleneck moves.
+
+### The catalog (`src/utils/catalog.ts`)
+
+Eighteen projects across four categories, gated by era and by what the space owns:
+
+- **electronics / IoT** — Macropad, E-ink Dashboard, Nixie Clock, Cyberdeck, LoRaWAN Gateway,
+  Home Assistant Hub, SDR Ground Station
+- **mechanical** — FPV Drone, Pizza Oven, Robot Arm, E-bike Conversion, and the
+  **3D-Printed Motorcycle** as the Era 3 capstone
+- **tools that upgrade the space** — Reflow Oven (unlocks SMD, cutting electronics assembly work
+  by a quarter) and CNC Router (unlocks the CNC, which in turn unlocks the e-bike and the
+  motorcycle). Building a tool is cheaper than buying one and ties up the space for weeks.
+- **civic** — Air Quality Node, Repair Café Rig, Neighbourhood Mesh, City Air Quality Network.
+  Low payout, heavy documentation stages, high reputation. These are what grants will key off in
+  Phase 3.
+
+A project's `work` map overrides the default per-stage effort, so a civic project can have a
+punishing Release stage and a cyberdeck a punishing Assembly stage without new machinery.
+
+## 4a. Where projects come from (the backlog)
+
+The player chooses what to build. Offers arrive from four sources and the choice between a safe
+catalog pick and a timed opportunity is the decision:
+
+| Source | What it carries |
+|---|---|
+| **Catalog** | Anything the era and the machines allow. Always available, no bonus. |
+| **Member proposal** | Somebody suggests a thing they are already excited about and signs up the moment you pitch it. Solves the attendance problem for free. |
+| **Sponsor** | Cash up front, a deadline on the offer, and you are building *their* thing. |
+| **Trending** | Reddit is briefly obsessed; ship inside the window for a hype multiplier. Phase 2 will consume this. |
+
+Offers expire. Concurrent project slots come from the era (§8): **one** in Era 1, three in Era 2.
+Era 1 being a single slot is deliberate — learn the pipeline before juggling.
 
 ## 5. Machines & the Job Queue — the signature system
 
@@ -161,6 +228,12 @@ machine maintenance. Note there are no wages — that is the volunteer model's o
 Each era raises rent and unlocks project scale. Eras gate content and pacing; the milestone is a
 checkpoint, not an instant transition — the player chooses when to sign the next lease.
 
+**Implemented so far:** eras grant **concurrent project slots** (1 / 3 / 4) and gate the catalog,
+and advance on projects shipped (1, then 4). The space itself grows in Phase 4 and the real
+milestones — member count, break-even, front page — arrive with Phases 3 and 5. Era 2's three
+slots against one printer is where machine contention starts to bite, and that is the intended
+shape of the mid-game.
+
 ## 9. Failure (selected: real, hard failure)
 
 - **Rent** is due monthly. Miss it twice → **eviction → run over.**
@@ -204,16 +277,26 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
 ## 12. Core Data Models
 
 ```ts
-Member    { id, name, skills, passions, energy, mood, commitment, traits, currentActivity }
-Project   { id, name, tags, stage, scope, quality, parts[], defects[], signups[], deadline?, hypeEarned }
-Part      { id, name, machineType, hours, material, status: 'pending'|'queued'|'done'|'failed' }
-Machine   { id, type, tier, calibration, currentJob?, queue[], consumable, running }
-Job       { id, projectId, partName, hoursRequired, progress, failureChance, materialCost }
-Post      { id, projectId, subreddit, stage, claim, upvotes, comments[], hypeDelta }
-Campaign  { id, projectId, goal, raised, backers, deadline, delivered }
-Space     { era, tiles[][], rooms[], powerCapacity, rent }
-Policy    { id, name, moodDelta, efficiencyDelta, active }
+Member     { id, name, skills, passions, energy, mood, commitment, traits }
+Assignment { projectId, stage }              // a member's claim on one stage of one project
+Player     { hoursToday, hoursLeft, energy, task: Assignment|null, skills }
+ProjectDef { id, name, category, tags, era, work{}, parts[], bomCost, leadDays,
+             requires[], unlocksMachine?, hype, payout }      // content
+ProjectData{ id, defId, stage, progress{}, required{}, quality, parts[], defects[],
+             bounties[], partsOrdered, partsArriveAt, sponsorCash, hypeMultiplier }  // state
+BacklogEntry { id, defId, source: 'catalog'|'member'|'sponsor'|'trending',
+               proposerId?, sponsorCash?, hypeMultiplier?, expiresOnDay? }
+Part       { id, name, machineType, hours, material, status: 'pending'|'queued'|'done'|'failed' }
+Machine    { id, type, calibration, currentJob?, queue[], consumable, starved }
+Job        { id, projectId, partId, partName, hoursRequired, progress, material }
+Post       { id, projectId, subreddit, stage, claim, upvotes, comments[], hypeDelta }   // Phase 2
+Campaign   { id, projectId, goal, raised, backers, deadline, delivered }                // Phase 2
+Space      { era, tiles[][], rooms[], powerCapacity, rent }                             // Phase 4
+Policy     { id, name, moodDelta, efficiencyDelta, active }                             // Phase 5
 ```
+
+Note the ProjectDef / ProjectData split: definitions are content in `catalog.ts`, instances are
+state in the Simulation. Never put balance numbers in ProjectData.
 
 ## 13. Open Questions (resolve during development, numbers in `constants.ts`)
 
@@ -249,6 +332,13 @@ of stay (×1.45), the same spread became:
 Apply this test to every verb added in later phases: **events, policies and tool purchases
 must be checked against attendance, not against interest.**
 
+**Snapshots must be pushed on every action, not only on the clock.** The sim publishes its
+runtime snapshot at 5 Hz from inside `tick()`. Three separate bugs came from that single
+assumption: the shipped state never reached the UI (tick returns early once shipped), every
+pitch button was disabled at game start (no snapshot had been published yet, so the UI read the
+player's hours as zero), and actions taken while paused did not appear until the clock moved.
+`Simulation.publish()` is public and `Game` wraps every UI handler in it. Keep that.
+
 Two further findings, both now fixed and worth not re-introducing:
 
 - **Walking is a time sink.** At a plausible-looking walk speed, volunteers spent 80% of
@@ -258,8 +348,18 @@ Two further findings, both now fixed and worth not re-introducing:
   the player never notices, nothing ever restarts it. A present member now re-queues after
   12 accumulated hours of presence. The timer must accumulate *across visits* — requiring
   continuous presence means it never elapses, because volunteers come in 2-3 hour bursts.
+- **A starved machine must idle, not churn.** With an empty spool, every job failed instantly
+  and was re-queued, producing 361 failed prints in one run instead of one idle printer.
+  `Machine.starved` blocks job *start*; running out mid-job still fails the print, as it should.
 
 ## 14. Development Priority
+
+**Phase 1.5 — The player, and projects as a choice — BUILT.**
+You exist on the grid with a daily hour budget shared between building and managing (§3a).
+Projects come from an 18-entry catalog rather than being hardcoded, arriving through a backlog of
+catalog picks, member proposals, sponsor offers and trends (§4a). Bills of materials and lead
+times gate Assembly. The Simulation runs several projects at once, contending for the same
+machines; eras grant the slots. Tool projects install real machines into the space.
 
 **Phase 1 — Vertical slice: "One project, end to end." — BUILT.**
 Fixed 6×8 garage, 3 volunteers, 1 FDM printer + benches, the FPV Drone run from Concept to
@@ -292,11 +392,13 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
 - Debugging in the browser: `window.__store.getState()` and `window.__game.sim`.
 - Layout:
   - `src/game/` — `Game.ts` (orchestrator), `types.ts`, `store.ts`
-  - `src/entities/` — `MemberEntity.ts` (state machine: idle → walk → work → idle)
+  - `src/entities/` — `MemberEntity.ts` (state machine: idle → walk → work → idle),
+    `PlayerEntity.ts` (you, plus the hour budget)
   - `src/machines/` — `Machine.ts` (queue + job execution), `layout.ts` (grid placement)
-  - `src/systems/` — `Simulation.ts`, `ProjectSystem.ts`, `FabSystem.ts`, later `HypeSystem.ts`
+  - `src/systems/` — `Simulation.ts`, `ProjectSystem.ts`, later `HypeSystem.ts`
   - `src/render/` — `SceneManager.ts`, `SpaceView.ts`
   - `src/ui/` — panels, modals, `styles.css`
-  - `src/utils/` — `constants.ts` (**all balance numbers**), `grid.ts`, `rng.ts`, `format.ts`
+  - `src/utils/` — `constants.ts` (**all balance numbers**), `catalog.ts` (**all project
+    content**), `grid.ts`, `rng.ts`, `format.ts`
 - Balance: every coefficient from §13 starts life in `src/utils/constants.ts`. Never inline a
   tuning number at a call site.

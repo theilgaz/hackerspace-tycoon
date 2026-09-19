@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { RuntimeSnapshot } from '@/game/types';
-import { GRID, STATIONS } from '@/machines/layout';
+import type { MachineType, RuntimeSnapshot } from '@/game/types';
+import { GRID, STATIONS, type StationDef } from '@/machines/layout';
 import { MACHINE } from '@/utils/constants';
 
 const TILE = 1;
@@ -19,6 +19,7 @@ const MEMBER_COLORS: Record<string, string> = {
   ada: '#f0b429',
   kerem: '#e2725b',
 };
+const PLAYER_COLOR = '#dfe6f0';
 
 function mat(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
   return new THREE.MeshStandardMaterial({
@@ -30,23 +31,28 @@ function mat(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> 
   });
 }
 
+interface MachineVisual {
+  light: THREE.Mesh;
+  bar: THREE.Mesh;
+  head?: THREE.Object3D;
+}
+
 /**
- * Builds the garage and keeps it in sync with the sim snapshot. Clean low-poly,
+ * Builds the space and keeps it in sync with the sim snapshot. Clean low-poly,
  * flat-shaded, no textures — machine state must be legible at a glance (CLAUDE.md §11).
  */
 export class SpaceView {
   readonly group = new THREE.Group();
-  private members = new Map<string, THREE.Group>();
-  private printerLight!: THREE.Mesh;
-  private printerBar!: THREE.Mesh;
-  private printerHead!: THREE.Object3D;
+  private people = new Map<string, THREE.Group>();
+  private machineVisuals = new Map<string, MachineVisual>();
+  private builtStations = new Set<string>();
   private elapsed = 0;
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
     this.buildFloor();
     this.buildWalls();
-    this.buildStations();
+    this.syncStations();
   }
 
   private buildFloor() {
@@ -66,9 +72,8 @@ export class SpaceView {
   private buildWalls() {
     const wallMat = mat('#3d4551');
     const h = 1.8;
-    // Back wall (y = -1) and left wall (x = -1), so the iso view stays open.
     const back = new THREE.Mesh(new THREE.BoxGeometry(GRID.width * TILE + 0.3, h, 0.18), wallMat);
-    back.position.copy(toWorld((GRID.width - 1) / 2, -0.6, h / 2));
+    back.position.copy(toWorld((GRID.width - 1) / 2, -0.6));
     back.position.y = h / 2;
     back.castShadow = true;
     back.receiveShadow = true;
@@ -82,40 +87,70 @@ export class SpaceView {
     this.group.add(left);
   }
 
-  private buildStations() {
+  /** Stations can appear mid-game when a tool project ships. */
+  private syncStations() {
     for (const def of STATIONS) {
+      if (this.builtStations.has(def.id)) continue;
+      this.builtStations.add(def.id);
       const node = new THREE.Group();
       node.position.copy(toWorld(def.tile.x, def.tile.y));
-      switch (def.type) {
-        case 'fdm':
-          node.add(this.buildPrinter());
-          break;
-        case 'cad-desk':
-          node.add(this.buildDesk('#3f7ea8'));
-          break;
-        case 'assembly':
-          node.add(this.buildTable('#b07d4a'));
-          break;
-        case 'bench':
-          node.add(this.buildTable('#8a6f52', true));
-          break;
-        case 'lounge':
-          node.add(this.buildLounge());
-          break;
-      }
+      node.add(this.buildStation(def));
       this.group.add(node);
     }
   }
 
-  private buildPrinter(): THREE.Group {
-    const g = new THREE.Group();
+  private buildStation(def: StationDef): THREE.Object3D {
+    switch (def.type) {
+      case 'fdm':
+        return this.buildPrinter(def.id);
+      case 'cnc':
+        return this.buildCnc(def.id);
+      case 'reflow':
+        return this.buildReflow();
+      case 'cad-desk':
+        return this.buildDesk('#3f7ea8');
+      case 'assembly':
+        return this.buildTable('#b07d4a');
+      case 'bench':
+        return this.buildTable('#8a6f52', true);
+      case 'lounge':
+        return this.buildLounge();
+      default:
+        return this.buildTable('#7d8390');
+    }
+  }
 
+  /** Status light + progress bar: the at-a-glance machine readout. */
+  private addReadout(g: THREE.Group, id: string, height: number, head?: THREE.Object3D) {
+    const light = new THREE.Mesh(
+      new THREE.SphereGeometry(0.075, 10, 8),
+      new THREE.MeshStandardMaterial({ color: '#5a636f', emissive: '#000000', flatShading: true }),
+    );
+    light.position.set(0.3, 0.3, 0.34);
+    g.add(light);
+
+    const barBack = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.07, 0.04), mat('#252b34'));
+    barBack.position.set(0, height, -0.3);
+    g.add(barBack);
+
+    const bar = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 0.05, 0.06),
+      new THREE.MeshStandardMaterial({ color: '#5ecfc0', flatShading: true, emissive: '#1d5f57' }),
+    );
+    bar.scale.x = 0;
+    bar.position.set(-0.4, height, -0.3);
+    g.add(bar);
+
+    this.machineVisuals.set(id, { light, bar, head });
+  }
+
+  private buildPrinter(id: string): THREE.Group {
+    const g = new THREE.Group();
     const base = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.22, 0.8), mat('#2b313b'));
     base.position.y = 0.11;
     base.castShadow = true;
     g.add(base);
 
-    // Open frame — two uprights and a crossbar reads as a printer from any angle.
     const post = mat('#8d98a8');
     for (const sx of [-0.33, 0.33]) {
       const upright = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.95, 0.07), post);
@@ -127,15 +162,12 @@ export class SpaceView {
     cross.position.set(0, 1.12, -0.3);
     g.add(cross);
 
-    // Gantry + hotend: animates while a job runs.
     const head = new THREE.Group();
-    const gantry = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.06, 0.1), mat('#6f7b8c'));
-    head.add(gantry);
+    head.add(new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.06, 0.1), mat('#6f7b8c')));
     const hotend = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.14), mat('#d94f3d'));
     hotend.position.y = -0.11;
     head.add(hotend);
     head.position.set(0, 0.62, -0.3);
-    this.printerHead = head;
     g.add(head);
 
     const bed = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.05, 0.6), mat('#1f242c'));
@@ -143,26 +175,45 @@ export class SpaceView {
     bed.receiveShadow = true;
     g.add(bed);
 
-    // Status light — the at-a-glance state readout.
-    this.printerLight = new THREE.Mesh(
-      new THREE.SphereGeometry(0.075, 10, 8),
-      new THREE.MeshStandardMaterial({ color: '#5a636f', emissive: '#000000', flatShading: true }),
-    );
-    this.printerLight.position.set(0.3, 0.3, 0.34);
-    g.add(this.printerLight);
+    this.addReadout(g, id, 1.42, head);
+    return g;
+  }
 
-    // Progress bar floating above the machine.
-    const barBack = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.07, 0.04), mat('#252b34'));
-    barBack.position.set(0, 1.42, -0.3);
-    g.add(barBack);
-    this.printerBar = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 0.05, 0.06),
-      new THREE.MeshStandardMaterial({ color: '#5ecfc0', flatShading: true, emissive: '#1d5f57' }),
-    );
-    this.printerBar.scale.x = 0;
-    this.printerBar.position.set(-0.4, 1.42, -0.3);
-    g.add(this.printerBar);
+  private buildCnc(id: string): THREE.Group {
+    const g = new THREE.Group();
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.3, 0.8), mat('#4a515e'));
+    bed.position.y = 0.15;
+    bed.castShadow = true;
+    g.add(bed);
+    const rail = mat('#99a4b4');
+    for (const sx of [-0.4, 0.4]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.62, 0.09), rail);
+      post.position.set(sx, 0.6, -0.2);
+      g.add(post);
+    }
+    const head = new THREE.Group();
+    head.add(new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.1, 0.12), rail));
+    const spindle = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.26, 8), mat('#d9a441'));
+    spindle.position.y = -0.16;
+    head.add(spindle);
+    head.position.set(0, 0.86, -0.2);
+    g.add(head);
+    this.addReadout(g, id, 1.14, head);
+    return g;
+  }
 
+  private buildReflow(): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.66), mat('#5c4b45'));
+    body.position.y = 0.25;
+    body.castShadow = true;
+    g.add(body);
+    const door = new THREE.Mesh(
+      new THREE.BoxGeometry(0.66, 0.34, 0.05),
+      new THREE.MeshStandardMaterial({ color: '#2a2220', emissive: '#48200c', flatShading: true }),
+    );
+    door.position.set(0, 0.27, 0.34);
+    g.add(door);
     return g;
   }
 
@@ -172,12 +223,7 @@ export class SpaceView {
     top.position.y = 0.62;
     top.castShadow = true;
     g.add(top);
-    for (const [sx, sz] of [
-      [-0.38, -0.22],
-      [0.38, -0.22],
-      [-0.38, 0.22],
-      [0.38, 0.22],
-    ]) {
+    for (const [sx, sz] of [[-0.38, -0.22], [0.38, -0.22], [-0.38, 0.22], [0.38, 0.22]]) {
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.62, 0.07), mat('#4c5360'));
       leg.position.set(sx, 0.31, sz);
       g.add(leg);
@@ -198,12 +244,7 @@ export class SpaceView {
     top.position.y = 0.6;
     top.castShadow = true;
     g.add(top);
-    for (const [sx, sz] of [
-      [-0.39, -0.24],
-      [0.39, -0.24],
-      [-0.39, 0.24],
-      [0.39, 0.24],
-    ]) {
+    for (const [sx, sz] of [[-0.39, -0.24], [0.39, -0.24], [-0.39, 0.24], [0.39, 0.24]]) {
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.6, 0.08), mat('#4c5360'));
       leg.position.set(sx, 0.3, sz);
       g.add(leg);
@@ -235,9 +276,9 @@ export class SpaceView {
     return g;
   }
 
-  private buildMember(id: string): THREE.Group {
+  private buildPerson(id: string, isPlayer: boolean): THREE.Group {
     const g = new THREE.Group();
-    const color = MEMBER_COLORS[id] ?? '#9aa7b8';
+    const color = isPlayer ? PLAYER_COLOR : (MEMBER_COLORS[id] ?? '#9aa7b8');
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.56, 7), mat(color));
     body.position.y = 0.28;
     body.castShadow = true;
@@ -246,75 +287,101 @@ export class SpaceView {
     head.position.y = 0.72;
     head.castShadow = true;
     g.add(head);
+    if (isPlayer) {
+      // A ring so you can always find yourself in the room.
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.3, 0.035, 6, 20),
+        new THREE.MeshStandardMaterial({ color: '#f0b429', emissive: '#5a3f08', flatShading: true }),
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.03;
+      g.add(ring);
+    }
     this.group.add(g);
     return g;
   }
 
+  private placePerson(
+    id: string,
+    isPlayer: boolean,
+    present: boolean,
+    pos: { x: number; y: number },
+    activity: string,
+  ) {
+    let node = this.people.get(id);
+    if (!node) {
+      node = this.buildPerson(id, isPlayer);
+      this.people.set(id, node);
+    }
+    node.visible = present;
+    if (!present) return;
+    const world = toWorld(pos.x, pos.y);
+    node.position.x = world.x;
+    node.position.z = world.z;
+    node.position.y = activity === 'walking' ? Math.abs(Math.sin(this.elapsed * 9)) * 0.07 : 0;
+    node.rotation.y = activity === 'working' ? Math.sin(this.elapsed * 2.5) * 0.18 : 0;
+  }
+
   update(runtime: RuntimeSnapshot, dt: number) {
     this.elapsed += dt;
+    this.syncStations();
 
     for (const m of runtime.members) {
-      let node = this.members.get(m.id);
-      if (!node) {
-        node = this.buildMember(m.id);
-        this.members.set(m.id, node);
-      }
-      node.visible = m.present;
-      if (!m.present) continue;
-      const world = toWorld(m.pos.x, m.pos.y);
-      node.position.x = world.x;
-      node.position.z = world.z;
-      // A little bob while walking, a little sway while working.
-      const walking = m.activity === 'walking';
-      node.position.y = walking ? Math.abs(Math.sin(this.elapsed * 9)) * 0.07 : 0;
-      node.rotation.y = m.activity === 'working' ? Math.sin(this.elapsed * 2.5) * 0.18 : 0;
+      this.placePerson(m.id, false, m.present, m.pos, m.activity);
+    }
+    if (runtime.player) {
+      this.placePerson('player', true, runtime.player.present, runtime.player.pos, runtime.player.activity);
     }
 
-    const printer = runtime.machines.find((m) => m.type === 'fdm');
-    if (printer && this.printerLight) {
-      const light = this.printerLight.material as THREE.MeshStandardMaterial;
+    for (const machine of runtime.machines) {
+      const visual = this.machineVisuals.get(machine.id);
+      if (!visual) continue;
+
+      const light = visual.light.material as THREE.MeshStandardMaterial;
       let color = '#5a636f';
       let emissive = '#000000';
-      if (printer.running) {
+      if (machine.running) {
         color = '#5ecfc0';
         emissive = '#1f7a6d';
       }
-      if (printer.calibration < MACHINE.calibrationWarning) {
+      if (machine.calibration < MACHINE.calibrationWarning) {
         color = '#f0b429';
         emissive = '#6b4d05';
       }
-      if (printer.consumable <= 0) {
+      if (machine.consumableMax > 0 && machine.consumable <= 0) {
         color = '#d94f3d';
         emissive = '#6d1f16';
       }
       light.color.set(color);
       light.emissive.set(emissive);
 
-      const job = printer.current;
+      const job = machine.current;
       const ratio = job ? job.progress / job.hoursRequired : 0;
-      this.printerBar.scale.x = Math.max(0.001, ratio * 0.8);
-      this.printerBar.position.x = -0.4 + (ratio * 0.8) / 2;
-      const bar = this.printerBar.material as THREE.MeshStandardMaterial;
-      bar.color.set(printer.risk > 0.3 ? '#f0b429' : '#5ecfc0');
-      this.printerBar.visible = !!job;
+      visual.bar.scale.x = Math.max(0.001, ratio * 0.8);
+      visual.bar.position.x = -0.4 + (ratio * 0.8) / 2;
+      (visual.bar.material as THREE.MeshStandardMaterial).color.set(machine.risk > 0.3 ? '#f0b429' : '#5ecfc0');
+      visual.bar.visible = !!job;
 
-      if (this.printerHead) {
-        this.printerHead.position.y = job
-          ? 0.34 + ratio * 0.55
-          : 0.62;
-        this.printerHead.position.x = job ? Math.sin(this.elapsed * 6) * 0.12 : 0;
+      if (visual.head) {
+        visual.head.position.y = job ? 0.34 + ratio * 0.55 : 0.62;
+        visual.head.position.x = job ? Math.sin(this.elapsed * 6) * 0.12 : 0;
       }
     }
   }
 
-  memberWorld(id: string): THREE.Vector3 | null {
-    const node = this.members.get(id);
+  personWorld(id: string): THREE.Vector3 | null {
+    const node = this.people.get(id);
     if (!node || !node.visible) return null;
     return new THREE.Vector3(node.position.x, 1.05, node.position.z);
   }
 
-  printerWorld(): THREE.Vector3 {
-    const def = STATIONS.find((s) => s.type === 'fdm')!;
-    return toWorld(def.tile.x, def.tile.y, 1.75);
+  stationWorld(type: MachineType): THREE.Vector3 | null {
+    const def = STATIONS.find((s) => s.type === type);
+    return def ? toWorld(def.tile.x, def.tile.y, 1.75) : null;
+  }
+
+  machineWorld(id: string): THREE.Vector3 | null {
+    const def = STATIONS.find((s) => s.id === id);
+    return def ? toWorld(def.tile.x, def.tile.y, 1.75) : null;
   }
 }

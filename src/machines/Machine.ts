@@ -85,9 +85,18 @@ export class Machine {
     return Math.min(0.9, MACHINE.baseJobFailure * calibrationTerm * operatorTerm * lengthTerm);
   }
 
+  /** True when the machine physically cannot start work: nothing left to make it from. */
+  get starved(): boolean {
+    return this.consumableMax > 0 && this.consumable <= 0;
+  }
+
   /** Advance by `dt` sim-hours. Returns a result when the current job resolves. */
   tick(dt: number): JobResult | null {
     if (!this.current) {
+      // An empty spool means the machine waits, not that it burns through the queue
+      // failing every job instantly. Without this, going broke produces hundreds of
+      // failures in a few days instead of one idle printer.
+      if (this.starved) return null;
       const next = this.queue.shift();
       if (!next) return null;
       this.current = next;
@@ -153,6 +162,7 @@ export class Machine {
   private jobSnapshot(job: Job): JobSnapshot {
     return {
       id: job.id,
+      projectId: job.projectId,
       partName: job.partName,
       hoursRequired: job.hoursRequired,
       progress: job.progress,

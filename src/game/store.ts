@@ -1,9 +1,9 @@
 import { createStore } from 'zustand/vanilla';
-import type { LogEntry, RuntimeSnapshot } from './types';
-import { START_CASH } from '@/utils/constants';
+import type { BacklogEntry, LogEntry, MachineType, RuntimeSnapshot } from './types';
+import { START_CASH, eraDef } from '@/utils/constants';
 import { uid } from '@/utils/format';
 
-const MAX_LOG = 120;
+const MAX_LOG = 140;
 
 /**
  * Management data lives here; sim-time data lives in the Simulation and arrives via
@@ -17,21 +17,40 @@ export interface GameState {
   speed: number;
   paused: boolean;
   cash: number;
+  era: number;
+  shippedCount: number;
+  /** Machine types the space owns; gates what can be attempted. */
+  ownedMachines: MachineType[];
+  /** Offers waiting to be pitched (CLAUDE.md §4a). */
+  backlog: BacklogEntry[];
   runtime: RuntimeSnapshot;
   log: LogEntry[];
-  /** UI: which member's card is expanded. */
-  selectedMember: string | null;
+  /** UI: which panel tab is open. */
+  view: 'projects' | 'backlog';
 
   setSpeed: (speed: number) => void;
   togglePause: () => void;
   setPaused: (paused: boolean) => void;
   setClock: (day: number, simTime: number) => void;
   setRuntime: (runtime: RuntimeSnapshot) => void;
+  setView: (view: GameState['view']) => void;
   spend: (amount: number) => boolean;
   earn: (amount: number) => void;
   pushLog: (text: string, kind?: LogEntry['kind']) => void;
-  selectMember: (id: string | null) => void;
+
+  setBacklog: (backlog: BacklogEntry[]) => void;
+  addOffer: (entry: BacklogEntry) => void;
+  removeOffer: (id: string) => void;
+  ownMachine: (type: MachineType) => void;
+  recordShipped: () => void;
 }
+
+export const emptyRuntime = (): RuntimeSnapshot => ({
+  members: [],
+  machines: [],
+  projects: [],
+  player: null,
+});
 
 export const store = createStore<GameState>((set, get) => ({
   day: 1,
@@ -39,15 +58,20 @@ export const store = createStore<GameState>((set, get) => ({
   speed: 1,
   paused: true,
   cash: START_CASH,
-  runtime: { members: [], machines: [], project: null },
+  era: 1,
+  shippedCount: 0,
+  ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
+  backlog: [],
+  runtime: emptyRuntime(),
   log: [],
-  selectedMember: null,
+  view: 'projects',
 
   setSpeed: (speed) => set({ speed, paused: false }),
   togglePause: () => set((s) => ({ paused: !s.paused })),
   setPaused: (paused) => set({ paused }),
   setClock: (day, simTime) => set({ day, simTime }),
   setRuntime: (runtime) => set({ runtime }),
+  setView: (view) => set({ view }),
 
   spend: (amount) => {
     if (get().cash < amount) return false;
@@ -62,5 +86,17 @@ export const store = createStore<GameState>((set, get) => ({
     set({ log: [entry, ...log].slice(0, MAX_LOG) });
   },
 
-  selectMember: (id) => set({ selectedMember: id }),
+  setBacklog: (backlog) => set({ backlog }),
+  addOffer: (entry) => set((s) => ({ backlog: [entry, ...s.backlog] })),
+  removeOffer: (id) => set((s) => ({ backlog: s.backlog.filter((e) => e.id !== id) })),
+  ownMachine: (type) =>
+    set((s) => (s.ownedMachines.includes(type) ? s : { ownedMachines: [...s.ownedMachines, type] })),
+
+  recordShipped: () =>
+    set((s) => {
+      const shippedCount = s.shippedCount + 1;
+      // Minimal era progression: slots and catalog only (CLAUDE.md §8, Phase 6 completes it).
+      const era = shippedCount >= eraDef(s.era).shipToAdvance ? Math.min(3, s.era + 1) : s.era;
+      return { shippedCount, era };
+    }),
 }));

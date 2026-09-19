@@ -1,96 +1,142 @@
 /**
  * Headless balance run. The Simulation imports neither `three` nor the DOM, so a whole
- * playthrough can be replayed in Node in milliseconds (CLAUDE.md §11).
+ * campaign replays in Node in milliseconds (CLAUDE.md §11).
  *
- *   npm run sim-check -- [runs] [seed]
+ *   npm run sim-check -- [runs] [seed] [days]
  *
- * It plays the game with a naive autoplayer: queue parts when they appear, buy filament
- * when low, and post a bounty when a stage stalls with nobody signed up. If a stage can
- * deadlock, or the economy can't sustain a single drone, this run finds it.
+ * Three player archetypes, all of which do the unavoidable things (pitch something, order
+ * the bill of materials, keep filament in stock) and differ only in how hard they push:
+ *
+ *  'aggressive' — works every available hour personally, bounties every stage, expedites,
+ *                 re-queues instantly. The ceiling on what player effort is worth.
+ *  'attentive'  — works personally, re-queues failures, bounties a visible stall.
+ *  'hands-off'  — pitches, orders parts, buys filament, and otherwise lets the space run
+ *                 itself. The floor, and the mode that catches soft-locks.
  */
 import { Simulation } from '@/systems/Simulation';
-import { store } from '@/game/store';
+import { store, emptyRuntime } from '@/game/store';
 import { rng } from '@/utils/rng';
-import { FILAMENT, START_CASH } from '@/utils/constants';
+import { FILAMENT, START_CASH, STAGE_MAP, VERB_HOURS } from '@/utils/constants';
+import { catalogForEra, canBuild } from '@/utils/catalog';
+import { STAGE_STATION } from '@/machines/layout';
+import { partsPending } from '@/systems/ProjectSystem';
 
-const RUNS = Number(process.argv[2] ?? 8);
+const RUNS = Number(process.argv[2] ?? 6);
 const SEED = Number(process.argv[3] ?? 1);
-const MAX_DAYS = 160;
-const DT = 0.05; // real seconds per tick
+const MAX_DAYS = Number(process.argv[4] ?? 150);
+const DT = 0.05;
 const SPEED = 4;
+const HOURS_PER_TICK = (DT * SPEED) / 2.5;
+
+type Mode = 'aggressive' | 'attentive' | 'hands-off';
 
 interface Result {
-  shipped: boolean;
+  shipped: number;
+  firstShipDay: number | null;
   days: number;
   failedPrints: number;
-  quality: number;
   cash: number;
   bounties: number;
-  spools: number;
-  stalledAt: string | null;
+  playerHoursWorked: number;
+  stuck: string | null;
 }
-
-/**
- * 'aggressive' = spends everything: a standing bounty on every stage, instant re-queue,
- * constant re-pitching. The ceiling on what player agency is worth.
- * 'attentive'  = watches the queue, re-queues failures, bounties a visible stall.
- * 'hands-off'  = only keeps filament stocked. This is the mode that catches fabrication
- *                soft-locks, which an over-helpful autoplayer hides completely.
- */
-type Mode = 'aggressive' | 'attentive' | 'hands-off';
 
 function runOnce(seed: number, mode: Mode): Result {
   rng.reseed(seed);
-  store.setState({ cash: START_CASH, log: [], runtime: { members: [], machines: [], project: null } });
+  store.setState({
+    cash: START_CASH,
+    log: [],
+    era: 1,
+    shippedCount: 0,
+    backlog: [],
+    ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
+    runtime: emptyRuntime(),
+  });
 
   const sim = new Simulation();
   let bounties = 0;
-  let spools = 0;
-  let stallHours = 0;
-  let repitchTimer = 0;
+  let failedPrints = 0;
+  let firstShipDay: number | null = null;
+  let playerHoursWorked = 0;
   let lastSignature = '';
+  let stallHours = 0;
 
-  while (sim.day <= MAX_DAYS && !sim.project.shipped) {
+  while (sim.day <= MAX_DAYS) {
     sim.tick(DT, SPEED);
-
-    // --- autoplayer ---------------------------------------------------------
-    const project = sim.project;
-    const printer = sim.printer;
-
-    if (
-      mode !== 'hands-off' &&
-      project.parts.some((p) => p.status === 'pending') &&
-      project.stage === 'fabrication'
-    ) {
-      sim.queueAllPending();
+    if (sim.player.activity === 'working' || sim.player.activity === 'babysitting') {
+      playerHoursWorked += HOURS_PER_TICK;
     }
+
+    const state = store.getState();
+    if (firstShipDay === null && state.shippedCount > 0) firstShipDay = sim.day;
+
+    // --- every archetype does the unavoidable ------------------------------
+    if (sim.slotsUsed < sim.slotsTotal && sim.player.hoursLeft >= VERB_HOURS.pitch) {
+      const offer = state.backlog[0];
+      if (offer) sim.pitch(offer.defId, offer.id);
+      else {
+        const def = catalogForEra(state.era).find(
+          (d) => canBuild(d, state.ownedMachines) && !sim.projects.some((p) => p.defId === d.id),
+        );
+        if (def) sim.pitch(def.id);
+      }
+    }
+    for (const project of sim.projects) {
+      if (!project.partsOrdered && store.getState().cash >= project.bomCost) sim.orderParts(project.id);
+    }
+    const printer = sim.printer;
     if (printer.consumable < FILAMENT.lowWarning && store.getState().cash >= FILAMENT.spoolCost) {
-      if (sim.buyFilament()) spools += 1;
+      sim.buyFilament();
+    }
+
+    if (mode === 'hands-off') continue;
+
+    // --- the rest is optional effort ---------------------------------------
+    for (const project of sim.projects) {
+      if (project.stage === 'fabrication' && project.parts.some((p) => p.status === 'pending')) {
+        sim.queueAllPending(project.id);
+      }
+    }
+
+    // Put yourself on whatever hand-work is open.
+    if (!sim.player.task && sim.player.present && sim.player.hoursLeft > 0) {
+      const target = sim.projects.find(
+        (p) =>
+          p.required[p.stage] > 0 &&
+          STAGE_STATION[p.stage] !== null &&
+          !(p.stage === 'assembly' && partsPending(p, sim.totalHours)),
+      );
+      if (target) sim.workOn(target.id, target.stage);
     }
 
     if (mode === 'aggressive') {
-      const stage = project.stage;
-      if (!project.bounties.includes(stage) && store.getState().cash >= sim.bountyCost()) {
-        if (sim.postBounty()) bounties += 1;
-      }
-      // Re-pitch at most once a sim-hour when somebody present is on nothing.
-      repitchTimer += (DT * SPEED) / 2.5;
-      if (repitchTimer >= 1) {
-        repitchTimer = 0;
-        if (sim.members.some((m) => m.present && !m.signedUp)) sim.repitch();
+      for (const project of sim.projects) {
+        if (
+          STAGE_MAP[project.stage].work > 0 &&
+          project.required[project.stage] > 0 &&
+          !project.bounties.includes(project.stage) &&
+          store.getState().cash >= sim.bountyCost(project.id) &&
+          sim.player.hoursLeft >= VERB_HOURS.bounty
+        ) {
+          if (sim.postBounty(project.id)) bounties += 1;
+        }
+        if (project.stage === 'assembly' && partsPending(project, sim.totalHours)) {
+          sim.expediteParts(project.id);
+        }
       }
     }
 
-    // Detect a stage sitting still with nobody on it, and throw money at it.
-    const signature = `${project.stage}:${Math.floor(project.progress[project.stage])}:${
-      project.parts.filter((p) => p.status === 'done').length
-    }`;
-    if (signature === lastSignature && mode !== 'hands-off') {
-      stallHours += (DT * SPEED) / 2.5;
+    // Throw money at a stage that has visibly stopped moving.
+    const signature = sim.projects.map((p) => `${p.id}:${p.stage}:${Math.floor(p.progress[p.stage])}`).join('|');
+    if (signature === lastSignature) {
+      stallHours += HOURS_PER_TICK;
       if (stallHours > 36) {
-        if (!project.bounties.includes(project.stage) && sim.postBounty()) bounties += 1;
-        else sim.repitch();
         stallHours = 0;
+        const stalled = sim.projects.find((p) => p.required[p.stage] > 0);
+        if (stalled) {
+          if (!stalled.bounties.includes(stalled.stage) && sim.postBounty(stalled.id)) bounties += 1;
+          else sim.repitch(stalled.id);
+        }
       }
     } else {
       stallHours = 0;
@@ -98,65 +144,67 @@ function runOnce(seed: number, mode: Mode): Result {
     }
   }
 
+  for (const project of sim.projects) {
+    failedPrints += project.parts.reduce((sum, p) => sum + p.attempts, 0);
+  }
+
+  const waiting = sim.projects.find((p) => p.stage === 'assembly' && partsPending(p, sim.totalHours));
+  const starved = sim.printer.starved && store.getState().cash < FILAMENT.spoolCost;
+  const stuck = starved ? 'broke, no filament' : waiting ? `${waiting.name} waiting on parts` : null;
   return {
-    shipped: sim.project.shipped,
+    shipped: store.getState().shippedCount,
+    firstShipDay,
     days: sim.day,
-    failedPrints: sim.project.parts.reduce((sum, p) => sum + p.attempts, 0),
-    quality: sim.project.quality,
+    failedPrints,
     cash: store.getState().cash,
     bounties,
-    spools,
-    stalledAt: sim.project.shipped ? null : sim.project.stage,
+    playerHoursWorked,
+    stuck: stuck ? `${stuck.name} waiting on parts` : null,
   };
 }
 
-let failures = 0;
-
 const summary: string[] = [];
+let problems = 0;
 
 for (const mode of ['aggressive', 'attentive', 'hands-off'] as Mode[]) {
   const results: Result[] = [];
   for (let i = 0; i < RUNS; i += 1) results.push(runOnce(SEED + i, mode));
 
-  const shipped = results.filter((r) => r.shipped);
-  const avg = (pick: (r: Result) => number) =>
-    shipped.length ? shipped.reduce((s, r) => s + pick(r), 0) / shipped.length : NaN;
+  const avg = (pick: (r: Result) => number) => results.reduce((s, r) => s + pick(r), 0) / results.length;
+  const firstShips = results.filter((r) => r.firstShipDay !== null);
 
-  console.log(`\n  FPV Drone — ${RUNS} runs, ${mode} player (seed ${SEED})\n`);
-  console.log('  run   result              days  failed  quality  bounties  spools   cash');
-  console.log('  ' + '-'.repeat(70));
+  console.log(`\n  ${MAX_DAYS} days — ${RUNS} runs, ${mode} player (seed ${SEED})\n`);
+  console.log('  run   shipped  first ship  failed  bounties  your hours   cash');
+  console.log('  ' + '-'.repeat(64));
   results.forEach((r, i) => {
-    const outcome = r.shipped ? 'shipped' : `STALLED @ ${r.stalledAt}`;
     console.log(
-      `  ${String(i + 1).padStart(3)}   ${outcome.padEnd(19)} ${String(r.days).padStart(4)}  ` +
-        `${String(r.failedPrints).padStart(6)}  ${(r.quality * 100).toFixed(0).padStart(6)}%  ` +
-        `${String(r.bounties).padStart(8)}  ${String(r.spools).padStart(6)}  ${String(Math.round(r.cash)).padStart(5)}`,
+      `  ${String(i + 1).padStart(3)}   ${String(r.shipped).padStart(7)}  ` +
+        `${String(r.firstShipDay ?? '—').padStart(10)}  ${String(r.failedPrints).padStart(6)}  ` +
+        `${String(r.bounties).padStart(8)}  ${r.playerHoursWorked.toFixed(0).padStart(10)}  ` +
+        `${String(Math.round(r.cash)).padStart(5)}`,
     );
   });
-  console.log('  ' + '-'.repeat(70));
-  summary.push(
-    `  ${mode.padEnd(11)} ${shipped.length}/${RUNS} shipped   ` +
-      (shipped.length
-        ? `${avg((r) => r.days).toFixed(1)} days   ${Math.round(avg((r) => r.cash))} cash left`
-        : '—'),
-  );
+  console.log('  ' + '-'.repeat(64));
   console.log(
-    `  shipped ${shipped.length}/${RUNS}` +
-      (shipped.length
-        ? `   avg ${avg((r) => r.days).toFixed(1)} days · ${avg((r) => r.failedPrints).toFixed(1)} failed prints · ` +
-          `Q${(avg((r) => r.quality) * 100).toFixed(0)}% · ${avg((r) => r.bounties).toFixed(1)} bounties · ` +
-          `${Math.round(avg((r) => r.cash))} cash left`
-        : ''),
+    `  avg ${avg((r) => r.shipped).toFixed(1)} shipped · first ship day ` +
+      `${firstShips.length ? (firstShips.reduce((s, r) => s + r.firstShipDay!, 0) / firstShips.length).toFixed(1) : '—'} · ` +
+      `${avg((r) => r.playerHoursWorked).toFixed(0)}h of your time · ${Math.round(avg((r) => r.cash))} cash`,
   );
-  if (shipped.length < RUNS) failures += RUNS - shipped.length;
+
+  summary.push(
+    `  ${mode.padEnd(11)} ${avg((r) => r.shipped).toFixed(1)} shipped   first ship ` +
+      `${firstShips.length ? (firstShips.reduce((s, r) => s + r.firstShipDay!, 0) / firstShips.length).toFixed(1) : '—'}   ` +
+      `${avg((r) => r.playerHoursWorked).toFixed(0)}h you`,
+  );
+  if (!firstShips.length) problems += 1;
 }
 
-console.log('  PLAYER AGENCY — what paying attention is worth');
-console.log('  ' + '-'.repeat(52));
+console.log('\n  PLAYER AGENCY — what your hours are worth');
+console.log('  ' + '-'.repeat(56));
 summary.forEach((line) => console.log(line));
 console.log('');
 
-if (failures) {
-  console.error(`  ${failures} run(s) failed to ship — the pipeline can stall.\n`);
+if (problems) {
+  console.error(`  ${problems} archetype(s) never shipped anything — the pipeline can stall.\n`);
   process.exit(1);
 }

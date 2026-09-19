@@ -1,4 +1,4 @@
-import type { MemberData, PartData, SkillKey, StageDef, StageKey, Tag, TraitKey } from '@/game/types';
+import type { MemberData, SkillKey, Skills, StageDef, StageKey, TraitKey } from '@/game/types';
 
 // ---------------------------------------------------------------------------
 // BALANCE CONSTANTS — starting values for the open questions in CLAUDE.md §13.
@@ -208,25 +208,98 @@ export const TEST = {
   attemptBonus: 0.12,
 };
 
-// --- Content: the slice's project and roster --------------------------------
+// --- The player (§3a) -------------------------------------------------------
+
+/**
+ * You are a member too, but a bounded one. Hours are the currency shared between
+ * *making* and *managing*: every hour spent doing the CAD yourself is an hour not spent
+ * recruiting the person who would do it faster. This is the only thing standing between
+ * the influence model and "tycoon where you are simply the best employee".
+ */
+export const PLAYER = {
+  name: 'You',
+  /** Hours available on a full-energy day. */
+  baseHours: 7,
+  minHours: 3,
+  /** Energy per hour of work; restored overnight. Working flat out shrinks tomorrow. */
+  energyDrain: 7,
+  energyRestore: 42,
+  /** Below this you are burnt out: shorter days until you back off. */
+  burnoutEnergy: 30,
+  /** Hour of day you can start; you leave when the budget is gone. */
+  startHour: 9,
+  walkSpeed: 22,
+};
+
+/** What each management verb costs you in hours (§3). */
+export const VERB_HOURS: Record<string, number> = {
+  pitch: 2,
+  repitch: 1,
+  bounty: 1,
+  order: 1,
+  expedite: 1,
+  filament: 0.5,
+};
+
+// --- Eras (§8) --------------------------------------------------------------
+
+export interface EraDef {
+  era: number;
+  name: string;
+  /** Concurrent projects. Era 1 is deliberately one: learn the pipeline first. */
+  slots: number;
+  /** Projects shipped before the next era opens. */
+  shipToAdvance: number;
+}
+
+/**
+ * Minimal era progression: slots and catalog only. The space itself grows in Phase 4 and
+ * the real milestones (member count, break-even, front page) arrive with Phases 3/5.
+ */
+export const ERAS: EraDef[] = [
+  { era: 1, name: 'The Garage', slots: 1, shipToAdvance: 1 },
+  { era: 2, name: 'Unit 4B', slots: 3, shipToAdvance: 4 },
+  { era: 3, name: 'The Warehouse', slots: 4, shipToAdvance: Number.POSITIVE_INFINITY },
+];
+
+export function eraDef(era: number): EraDef {
+  return ERAS[Math.min(ERAS.length, Math.max(1, era)) - 1];
+}
+
+// --- Backlog (§4a) ----------------------------------------------------------
+
+export const BACKLOG = {
+  /** Chance per day that somebody proposes something they are excited about. */
+  memberProposalChance: 0.16,
+  /** Chance per day of a sponsor offer with cash attached. */
+  sponsorChance: 0.07,
+  /** Chance per day that a subreddit gets obsessed with something. */
+  trendingChance: 0.1,
+  /** Sponsor cash as a fraction of the project's bill of materials. */
+  sponsorCashRatio: [0.5, 1.1] as [number, number],
+  sponsorDeadlineDays: [7, 14] as [number, number],
+  trendingDeadlineDays: [5, 12] as [number, number],
+  trendingHypeMultiplier: [1.4, 2.2] as [number, number],
+  /** A proposer arrives already committed to the project. */
+  proposerInterestBonus: 0.5,
+  maxOffers: 5,
+};
+
+/** Waiting on parts is its own bottleneck, and it is what makes IoT builds feel different. */
+export const SOURCING = {
+  /** Expediting costs this multiple of the remaining order value... */
+  expediteCostRatio: 0.8,
+  /** ...and cuts the remaining wait by this much. */
+  expediteFactor: 0.45,
+};
+
+// --- Content: the roster ----------------------------------------------------
 
 /**
  * Print times are deliberately chunky (~43 machine-hours for a full set). At the original
  * ~21h, fabrication was 3% of a playthrough and the machine queue — the game's signature
  * system — never mattered. The frame plate is the one that hurts to lose.
  */
-export const DRONE_PARTS: Omit<PartData, 'id' | 'status' | 'attempts'>[] = [
-  { name: 'Frame Plate', machineType: 'fdm', hours: 11, material: 180 },
-  { name: 'Arm (FL)', machineType: 'fdm', hours: 5, material: 75 },
-  { name: 'Arm (FR)', machineType: 'fdm', hours: 5, material: 75 },
-  { name: 'Arm (RL)', machineType: 'fdm', hours: 5, material: 75 },
-  { name: 'Arm (RR)', machineType: 'fdm', hours: 5, material: 75 },
-  { name: 'Canopy', machineType: 'fdm', hours: 6, material: 95 },
-  { name: 'Camera Mount', machineType: 'fdm', hours: 2.5, material: 30 },
-  { name: 'Battery Tray', machineType: 'fdm', hours: 4, material: 55 },
-];
-
-export const PROJECT_TAGS: Tag[] = ['fpv', 'electronics', 'cad'];
 
 function skills(partial: Partial<Record<SkillKey, number>>): Record<SkillKey, number> {
   return {
@@ -245,7 +318,7 @@ export const ROSTER: MemberData[] = [
     id: 'deniz',
     name: 'Deniz',
     skills: skills({ cad: 3, electronics: 4, software: 2 }),
-    passions: { fpv: 0.9, electronics: 0.55, software: 0.3 },
+    passions: { fpv: 0.9, electronics: 0.6, iot: 0.45, software: 0.35, retro: 0.35, radio: 0.3 },
     energy: 85,
     mood: 70,
     commitment: 14,
@@ -256,7 +329,7 @@ export const ROSTER: MemberData[] = [
     id: 'ada',
     name: 'Ada',
     skills: skills({ cad: 4, machining: 2, docs: 2 }),
-    passions: { cad: 0.75, design: 0.6, fpv: 0.35 },
+    passions: { cad: 0.75, design: 0.65, robotics: 0.45, fpv: 0.35, machining: 0.3 },
     energy: 90,
     mood: 75,
     commitment: 10,
@@ -267,7 +340,7 @@ export const ROSTER: MemberData[] = [
     id: 'kerem',
     name: 'Kerem',
     skills: skills({ machining: 3, welding: 2, electronics: 2, docs: 2 }),
-    passions: { machining: 0.65, fpv: 0.4 },
+    passions: { machining: 0.65, civic: 0.55, woodworking: 0.45, fpv: 0.4, food: 0.35 },
     energy: 80,
     mood: 60,
     commitment: 8,
@@ -275,6 +348,16 @@ export const ROSTER: MemberData[] = [
     window: [13, 21],
   },
 ];
+
+/** A capable generalist — good enough to unblock anything, not good enough to do it all. */
+export const PLAYER_SKILLS: Skills = {
+  cad: 3,
+  electronics: 3,
+  machining: 2,
+  welding: 1,
+  software: 3,
+  docs: 2,
+};
 
 export const TRAIT_LABEL: Record<TraitKey, string> = {
   perfectionist: 'Perfectionist',

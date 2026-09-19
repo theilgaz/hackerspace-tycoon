@@ -1,4 +1,4 @@
-import type { MemberActivity, MemberData, MemberSnapshot, StageDef, StageKey, Tag } from '@/game/types';
+import type { Assignment, MemberActivity, MemberData, MemberSnapshot, StageDef, Tag } from '@/game/types';
 import { MEMBER } from '@/utils/constants';
 import { findPath, sameTile, type Tile } from '@/utils/grid';
 import { GRID, isBlocked } from '@/machines/layout';
@@ -15,7 +15,7 @@ export class MemberEntity {
 
   activity: MemberActivity = 'away';
   present = false;
-  signedUp: StageKey | null = null;
+  signedUp: Assignment | null = null;
   interest = 0;
   note = '';
   /** Ghost trait: multiplier on show-up chance, decaying each day they attend. */
@@ -23,7 +23,7 @@ export class MemberEntity {
   /** Hour of day they will go home. */
   leaveAt = 0;
   /** Stages they have burned out on, with sim-hours left before they will reconsider. */
-  private cooldowns = new Map<StageKey, number>();
+  private cooldowns = new Map<string, number>();
 
   constructor(data: MemberData, startTile: Tile) {
     this.data = data;
@@ -49,7 +49,7 @@ export class MemberEntity {
   }
 
   /** Work units per sim-hour on a given stage. */
-  workRate(stage: StageDef, tags: Tag[]): number {
+  workRate(stage: StageDef, tags: Tag[] = []): number {
     const level = stage.skill ? this.data.skills[stage.skill] : 2;
     let rate = MEMBER.baseWorkRate * (1 + (level - 1) * MEMBER.skillRateBonus);
     rate *= 1 + ((this.data.mood - 50) / 50) * MEMBER.moodRateSwing;
@@ -67,12 +67,13 @@ export class MemberEntity {
     }
   }
 
-  isCoolingOff(stage: StageKey): boolean {
-    return this.cooldowns.has(stage);
+  /** Burnout is remembered per project *and* stage: the drone's docs, not docs in general. */
+  isCoolingOff(assignment: Assignment): boolean {
+    return this.cooldowns.has(`${assignment.projectId}:${assignment.stage}`);
   }
 
-  setCooldown(stage: StageKey, simHours: number) {
-    this.cooldowns.set(stage, simHours);
+  setCooldown(assignment: Assignment, simHours: number) {
+    this.cooldowns.set(`${assignment.projectId}:${assignment.stage}`, simHours);
   }
 
   /** Pizza forgives everything. */
@@ -141,7 +142,7 @@ export class MemberEntity {
       name: this.name,
       present: this.present,
       activity: this.activity,
-      signedUp: this.signedUp,
+      signedUp: this.signedUp ? { ...this.signedUp } : null,
       interest: this.interest,
       energy: this.data.energy,
       mood: this.data.mood,
