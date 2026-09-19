@@ -19,9 +19,19 @@ promised before the rent is due twice.
 
 ```bash
 npm install
-npm run dev        # http://localhost:5174
+npm run dev          # http://localhost:5174
 npm run typecheck
 npm run build
+
+npm run sim-check    # replay full playthroughs headlessly, under three player archetypes
+npm run time-budget  # where a volunteer's day actually goes
 ```
+
+The simulation imports neither `three` nor the DOM, so a whole playthrough replays in Node
+in milliseconds. That is what makes the balance testable — and it has already caught a
+fabrication soft-lock and a bug where volunteers spent 80% of every visit walking.
+
+**Current state:** Phase 1 vertical slice. One garage, three volunteers, one printer, one
+drone, Concept → Release. A run takes 20–36 days depending on how hard you push.
 
 See [CLAUDE.md](./CLAUDE.md) for the full design document.

@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sim-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/sim-check.js",
+    "time-budget": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/time-budget.js"
   },
   "dependencies": {
     "three": "^0.186.0",

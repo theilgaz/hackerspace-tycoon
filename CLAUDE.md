@@ -228,12 +228,47 @@ Policy    { id, name, moodDelta, efficiencyDelta, active }
 9. Does the player character exist on the grid at all, or is the player purely disembodied?
 10. Mood → commitment feedback loop stability (risk: runaway death spiral or runaway utopia).
 
+### Settled by the Phase 1 balance runs (`npm run sim-check`)
+
+**Every player verb must move attendance, or it does nothing.** The binding constraint on
+a volunteer hackerspace is not interest, skill, or money — it is *whether anyone is in the
+building*. Members are present for roughly 11% of their roster hours. A verb that only
+affects somebody already present is worth almost nothing.
+
+Measured: before bounties affected attendance, an aggressive player who spent the entire
+budget finished 1 day faster than a player who did nothing at all (35 vs 36 days, ~3%).
+The game played itself. Once a live bounty raised both show-up chance (×1.75) and length
+of stay (×1.45), the same spread became:
+
+| Player | Days | Cash left |
+|---|---|---|
+| Aggressive (bounty every stage, instant re-queue, constant re-pitch) | 20.0 | 536 |
+| Attentive (re-queues failures, bounties a visible stall) | 33.0 | 3370 |
+| Hands-off (only buys filament) | 35.9 | 4000 |
+
+Apply this test to every verb added in later phases: **events, policies and tool purchases
+must be checked against attendance, not against interest.**
+
+Two further findings, both now fixed and worth not re-introducing:
+
+- **Walking is a time sink.** At a plausible-looking walk speed, volunteers spent 80% of
+  their visit walking and 18% working, which tripled project length. `npm run time-budget`
+  exists to catch this class of bug; keep walking under ~20% of present time.
+- **Manual re-queue can soft-lock fabrication.** A failed part drops to `pending` and, if
+  the player never notices, nothing ever restarts it. A present member now re-queues after
+  12 accumulated hours of presence. The timer must accumulate *across visits* — requiring
+  continuous presence means it never elapses, because volunteers come in 2-3 hour bursts.
+
 ## 14. Development Priority
 
-**Phase 1 — Vertical slice (current): "One project, end to end."**
-Fixed 6×8 garage, 3 volunteers, 1 FDM printer + 1 bench, one project (FPV Drone) run from Concept
-to Test. No building, no Reddit, no hiring, no economy. Proves: the pipeline, the machine queue,
-job failure, and volunteer drift. **This answers the only question that matters: is the loop fun?**
+**Phase 1 — Vertical slice: "One project, end to end." — BUILT.**
+Fixed 6×8 garage, 3 volunteers, 1 FDM printer + benches, the FPV Drone run from Concept to
+Release. No building, no Reddit, no hiring, no rent. Implemented: the eight-stage pipeline,
+the machine job queue with continuous failure rolls and consumables, volunteer attendance,
+self-assignment, drift with burnout cooldowns, the Perfectionist / Ghost / Night Owl traits,
+and the verbs Re-pitch / Bounty / Skip simulation / queue management / buy filament.
+A playthrough runs 20-36 days depending on how hard the player pushes (§13).
+**Still open, and only a human can answer it: is the loop fun?**
 
 Phase 2 — Reddit + hype + crowdfunding (the novel layer, on top of a real project).
 Phase 3 — Economy: dues, rent, consumables, the monthly bill, eviction.
@@ -248,6 +283,13 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
 - This directory is the git root. Working branch: `development`.
 - Commands: `npm run dev` (http://localhost:5174), `npm run build` (tsc + vite build),
   `npm run typecheck`.
+- **Balance harnesses** (these are the reason the sim stays free of `three` and the DOM):
+  - `npm run sim-check` — replays full playthroughs under three player archetypes and fails
+    if any run cannot ship. Run it after touching anything in `constants.ts` or the sim.
+  - `npm run time-budget` — person-hour breakdown (working / walking / idle / resting) and
+    elapsed days per stage. Use it whenever a stage feels the wrong length.
+  - Harness sources live in `tools/`, built via `vite.headless.config.ts` to `dist-headless/`.
+- Debugging in the browser: `window.__store.getState()` and `window.__game.sim`.
 - Layout:
   - `src/game/` — `Game.ts` (orchestrator), `types.ts`, `store.ts`
   - `src/entities/` — `MemberEntity.ts` (state machine: idle → walk → work → idle)
