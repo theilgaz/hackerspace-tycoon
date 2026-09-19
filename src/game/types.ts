@@ -89,7 +89,9 @@ export interface PlayerSnapshot {
   /** Consecutive days of overwork; drives the budget down. */
   strain: number;
   burntOut: boolean;
-  task: Assignment | null;
+  /** Project you have put yourself on, and the stage it is currently at. */
+  project: string | null;
+  stage: StageKey | null;
   tile: Tile;
   pos: { x: number; y: number };
   note: string;

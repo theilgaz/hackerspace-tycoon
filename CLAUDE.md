@@ -127,6 +127,11 @@ The counterweight is the hour budget:
   would have done it faster. That trade is the daily decision the game is built around.
 - You never drift, and you take no passion penalty — it is your space, you work on what needs
   working on.
+- **You put yourself on a *project*, not a stage** — exactly like a team member. You carry
+  through every stage change and work whatever currently needs hands, idling when a stage is
+  machine-driven. Only shipping releases you. Clearing the player at each stage boundary made
+  the player re-enlist seven times per project, which read as the game forgetting what you
+  were doing.
 
 **The intended arc across the eras:** in Era 1 you are the best maker in the room and your hands
 carry the project. By Era 3 your personal output is a rounding error and you are the person who
@@ -421,6 +426,23 @@ of stay (×1.45), the same spread became:
 Apply this test to every verb added in later phases: **events, policies and tool purchases
 must be checked against attendance, not against interest.**
 
+**Never rebuild a panel that has not changed — it kills clicks outright.** `setClock` runs
+every frame, so `store.subscribe` fired at 60 Hz and every panel's `innerHTML` was reassigned
+sixty times a second. A browser only fires `click` when press *and* release land on the same
+element, so the element under the cursor was destroyed mid-click and **every button in the game
+went dead the moment you unpaused**. Two defences, both kept:
+
+1. `UI.setHTML(el, key, html)` writes only when the markup actually differs, and the clock is a
+   `textContent` update so it never touches the speed buttons' DOM.
+2. The delegated handler listens on `pointerdown`, not `click`, so it acts on press and cannot
+   be cancelled by a re-render at all.
+
+**This bug shipped twice because `element.click()` cannot catch it.** That dispatches a click
+event directly and skips the press/release pairing entirely — the exact thing that was broken.
+`npm run click-check` now drives the real UI with `Input.dispatchMouseEvent` press/release pairs
+and counts DOM rebuilds; with the caching removed it reports 48 rebuilds in 1.2s and fails.
+**Any UI check must use real pointer events, and any new assertion must be seen to fail.**
+
 **A repeated log line means a condition, not an event.** "The parts for Cyberdeck haven't
 arrived yet" fired on every rejected action and buried the log. `pushLog` now collapses
 consecutive identical messages into one line with a `×N` counter. Any new log call that can fire
@@ -454,6 +476,11 @@ Two further findings, both now fixed and worth not re-introducing:
   `Machine.starved` blocks job *start*; running out mid-job still fails the print, as it should.
 
 ## 14. Development Priority
+
+**Phase 1.9 — Input reliability — BUILT.**
+Every button in the game was dead while the clock ran; see §13. Panels keep their DOM unless the
+markup changed, input is handled on press, and `npm run click-check` guards it. The player now
+stays on a project across stage changes.
 
 **Phase 1.8 — Genres and software projects — BUILT.**
 Ten categories that drive look *and* mechanics: stage names, stage skills, stage stations (§4b).
@@ -507,6 +534,9 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     elapsed days per stage. Use it whenever a stage feels the wrong length.
   - `npm run project-times` — best-case length of every catalog entry against its declared
     tier. Run it after any change to `catalog.ts`; `TOO LONG` is a failure, not an opinion.
+  - `npm run click-check` — needs `npm run dev` running. Drives the real UI with real mouse
+    press/release pairs while the sim runs, and counts DOM rebuilds. Run it after touching
+    anything in `src/ui/`.
   - Harness sources live in `tools/`, built via `vite.headless.config.ts` to `dist-headless/`.
 - Debugging in the browser: `window.__store.getState()` and `window.__game.sim`.
 - Layout:

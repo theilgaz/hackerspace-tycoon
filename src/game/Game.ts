@@ -35,7 +35,7 @@ export class Game {
       },
       setView: (view) => store.getState().setView(view),
       pitch: (defId, offerId, team) => act(() => sim.pitch(defId, offerId, team)),
-      workOn: (projectId, stage) => act(() => sim.workOn(projectId, stage)),
+      workOn: (projectId) => act(() => sim.workOn(projectId)),
       stopWork: () => act(() => sim.stopWork()),
       calibrate: () => act(() => sim.calibratePrinter()),
       invite: (projectId, memberId) => act(() => sim.inviteMember(projectId, memberId)),

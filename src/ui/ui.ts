@@ -7,7 +7,6 @@ import type {
   PlayerSnapshot,
   ProjectData,
   ProjectDef,
-  StageKey,
 } from '@/game/types';
 import { CATALOG_MAP, catalogForEra, canBuild, missingMachines } from '@/utils/catalog';
 import {
@@ -37,7 +36,7 @@ export interface UIHandlers {
   setSpeed(speed: number): void;
   setView(view: GameState['view']): void;
   pitch(defId: string, offerId: string | undefined, team: string[]): void;
-  workOn(projectId: string, stage: StageKey): void;
+  workOn(projectId: string): void;
   stopWork(): void;
   calibrate(): void;
   invite(projectId: string, memberId: string): void;
@@ -119,9 +118,22 @@ function esc(text: string): string {
 export class UI {
   private readonly root: HTMLElement;
   private readonly handlers: UIHandlers;
-  /** Crews picked on the pitch screen but not yet pitched. Survives the 5 Hz re-render. */
+  /** Crews picked on the pitch screen but not yet pitched. Survives the re-render. */
   private draftTeams = new Map<string, Set<string>>();
   private lastState: GameState | null = null;
+  /** Last HTML written per section, so unchanged sections keep their DOM nodes. */
+  private htmlCache = new Map<string, string>();
+
+  /**
+   * Write HTML only when it actually differs. Replacing innerHTML destroys nodes, which
+   * cancels in-flight clicks and drops hover/tooltips — and the clock alone would
+   * otherwise rebuild every panel sixty times a second.
+   */
+  private setHTML(el: HTMLElement, key: string, html: string) {
+    if (this.htmlCache.get(key) === html) return;
+    this.htmlCache.set(key, html);
+    el.innerHTML = html;
+  }
   private topbar!: HTMLElement;
   private left!: HTMLElement;
   private leftTabs!: HTMLElement;
@@ -161,10 +173,14 @@ export class UI {
   }
 
   private bind() {
-    this.root.addEventListener('click', (event) => {
+    // pointerdown, NOT click. The panels re-render as the sim advances, so the element
+    // under the cursor can be replaced between press and release — and the browser then
+    // never fires `click` at all. Acting on press is immune to that.
+    this.root.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return; // primary button only
       const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action]');
       if (!target) return;
-      const { action, value, id, id2, stage } = target.dataset;
+      const { action, value, id, id2 } = target.dataset;
       const h = this.handlers;
       switch (action) {
         case 'speed':
@@ -191,7 +207,7 @@ export class UI {
           break;
         }
         case 'work':
-          if (id && stage) h.workOn(id, stage as StageKey);
+          if (id) h.workOn(id);
           break;
         case 'stop-work':
           h.stopWork();
@@ -263,9 +279,9 @@ export class UI {
     };
     const slots = this.handlers.slots();
     const era = eraDef(state.era);
-    this.topbar.innerHTML = `
+    this.setHTML(this.topbar, 'topbar', `
       <div class="stat">
-        <b class="clock">${clock(state.simTime)}</b>
+        <b class="clock"></b>
         <span class="day">${dayName(state.day)} · day ${state.day}</span>
       </div>
       <div class="sep"></div>
@@ -282,19 +298,22 @@ export class UI {
         <span>reputation</span>
       </div>
       <div class="stat"><b>${era.name}</b><span>era ${state.era}</span></div>
-    `;
+    `);
+    // Text-only update: leaves the speed buttons' DOM untouched.
+    const clockEl = this.topbar.querySelector('.clock');
+    if (clockEl) clockEl.textContent = clock(state.simTime);
   }
 
   private renderTabs(state: GameState) {
     const offers = state.backlog.length;
-    this.leftTabs.innerHTML = `
+    this.setHTML(this.leftTabs, 'tabs', `
       <button data-action="view" data-value="projects" class="${state.view === 'projects' ? 'active' : ''}">
         Projects
       </button>
       <button data-action="view" data-value="backlog" class="${state.view === 'backlog' ? 'active' : ''}">
         Backlog${offers ? ` <i class="pip">${offers}</i>` : ''}
       </button>
-    `;
+    `);
   }
 
   // --- active projects ------------------------------------------------------
@@ -302,14 +321,14 @@ export class UI {
   private renderProjects(state: GameState) {
     const projects = state.runtime.projects;
     if (!projects.length) {
-      this.left.innerHTML = `
+      this.setHTML(this.left, 'left', `
         <p class="empty">Nothing on the bench.</p>
         <p class="blurb">Open the backlog and pitch something. It costs ${VERB_HOURS.pitch}h of your day
         to write a pitch up properly.</p>
-      `;
+      `);
       return;
     }
-    this.left.innerHTML = projects.map((p) => this.projectCard(p, state)).join('');
+    this.setHTML(this.left, 'left', projects.map((p) => this.projectCard(p, state)).join(''));
   }
 
   private projectCard(project: ProjectData, state: GameState): string {
@@ -344,7 +363,7 @@ export class UI {
       </div>`;
     }).join('');
 
-    const playerOn = player?.task?.projectId === project.id;
+    const playerOn = player?.project === project.id;
     const team = project.team
       .map((id) => state.runtime.members.find((m) => m.id === id))
       .filter((m): m is MemberSnapshot => !!m);
@@ -420,7 +439,7 @@ export class UI {
     if (playerOn) {
       workButton = `<button class="tiny" data-action="stop-work">Stop working</button>`;
     } else if (handStage && !blockedAssembly && project.required[project.stage] > 0) {
-      workButton = `<button class="tiny primary" data-action="work" data-id="${project.id}" data-stage="${project.stage}">
+      workButton = `<button class="tiny primary" data-action="work" data-id="${project.id}">
         Work on ${stageName}
       </button>`;
     }
@@ -562,13 +581,13 @@ export class UI {
       </div>`;
     }).join('');
 
-    this.left.innerHTML = `
+    this.setHTML(this.left, 'left', `
       ${full ? `<p class="warn-note">All ${slots.total} project slot(s) in use. Ship something first.</p>` : ''}
       ${hoursLeft < VERB_HOURS.pitch ? `<p class="warn-note">No hours left today to write a pitch.</p>` : ''}
       ${offers ? `<div class="section">Offers</div>${offers}` : ''}
       <div class="section">Catalog · era ${state.era}</div>
       ${byCategory}
-    `;
+    `);
   }
 
   /** Pick the crew before you commit — they are asked the moment you pitch (§3b). */
@@ -629,10 +648,10 @@ export class UI {
       this.you.innerHTML = '';
       return;
     }
-    const task = p.task ? state.runtime.projects.find((x) => x.id === p.task!.projectId) : null;
+    const task = p.project ? state.runtime.projects.find((x) => x.id === p.project) : null;
     const hoursTone = p.hoursLeft <= 1 ? 'bad' : p.hoursLeft <= 2.5 ? 'warn' : '';
     const energyTone = p.burntOut ? 'bad' : p.energy < 55 ? 'warn' : 'good';
-    return void (this.you.innerHTML = `
+    return void this.setHTML(this.you, 'you', `
       <div class="row between" style="margin-bottom:6px">
         <span class="mono" style="font-size:13px">${p.hoursLeft.toFixed(1)}h left</span>
         <span class="muted" style="font-size:10.5px">of ${p.hoursToday.toFixed(1)}h today</span>
@@ -643,10 +662,12 @@ export class UI {
       </div>
       ${p.burntOut ? `<p class="defect" style="margin-top:7px">⚠ You are running on fumes. Tomorrow will be shorter.</p>` : ''}
       <div class="note" style="margin:7px 0 0 0">${
-        task ? `${esc(task.name)} · ${stageLabel(task.category, p.task!.stage).toLowerCase()}` : esc(p.note || 'idle')
+        task && p.stage
+          ? `${esc(task.name)} · ${stageLabel(task.category, p.stage).toLowerCase()}`
+          : esc(p.note || 'idle')
       }</div>
       <div class="verbs" style="margin-top:7px">
-        ${p.task || p.activity === 'babysitting' ? `<button class="tiny" data-action="stop-work">Stop</button>` : ''}
+        ${p.project || p.activity === 'babysitting' ? `<button class="tiny" data-action="stop-work">Stop</button>` : ''}
         <button class="tiny" data-action="calibrate">Calibrate printer</button>
       </div>
     `);
@@ -662,7 +683,7 @@ export class UI {
       if (!!a.team !== !!b.team) return a.team ? 1 : -1;
       return a.name.localeCompare(b.name, 'tr');
     });
-    this.members.innerHTML = ordered
+    this.setHTML(this.members, 'members', ordered
       .map((m) => {
         const data = MEMBER_DATA[m.id];
         const color = MEMBER_COLORS[m.id] ?? personColor(m.id);
@@ -696,19 +717,21 @@ export class UI {
           </div>
         </div>`;
       })
-      .join('');
+      .join(''));
   }
 
   // --- machines -------------------------------------------------------------
 
   private renderMachines(state: GameState) {
     if (!state.runtime.machines.length) {
-      this.machines.innerHTML = `<p class="muted">No machines.</p>`;
+      this.setHTML(this.machines, 'machines', `<p class="muted">No machines.</p>`);
       return;
     }
-    this.machines.innerHTML = state.runtime.machines
-      .map((m) => this.machineCard(m, state))
-      .join('<div class="rule"></div>');
+    this.setHTML(
+      this.machines,
+      'machines',
+      state.runtime.machines.map((m) => this.machineCard(m, state)).join('<div class="rule"></div>'),
+    );
   }
 
   private machineCard(machine: MachineSnapshot, state: GameState): string {
@@ -770,14 +793,14 @@ export class UI {
   }
 
   private renderLog(state: GameState) {
-    this.log.innerHTML = state.log
+    this.setHTML(this.log, 'log', state.log
       .map(
         (entry) =>
           `<div class="entry ${entry.kind}"><time>d${entry.day} ${clock(entry.time)}</time><span>${esc(entry.text)}${
             entry.repeats ? ` <i class="repeats">×${entry.repeats}</i>` : ''
           }</span></div>`,
       )
-      .join('');
+      .join(''));
   }
 }
 

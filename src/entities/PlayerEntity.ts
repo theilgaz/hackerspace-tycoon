@@ -1,5 +1,5 @@
 import { MemberEntity } from './MemberEntity';
-import type { Assignment, MemberData, PlayerSnapshot, SkillKey } from '@/game/types';
+import type { MemberData, PlayerSnapshot, SkillKey } from '@/game/types';
 import { MEMBER, PLAYER, PLAYER_SKILLS } from '@/utils/constants';
 import type { Tile } from '@/utils/grid';
 
@@ -13,8 +13,11 @@ import type { Tile } from '@/utils/grid';
 export class PlayerEntity extends MemberEntity {
   hoursToday = PLAYER.baseHours;
   hoursLeft = PLAYER.baseHours;
-  /** What you have chosen to work on yourself. */
-  task: Assignment | null = null;
+  /**
+   * The project you have put yourself on. A project, not a stage — like everyone else on a
+   * team, you stay through the stage changes and work whatever currently needs hands.
+   */
+  project: string | null = null;
   /** Set while you are levelling the printer bed rather than doing project work. */
   calibrating = false;
 
@@ -74,7 +77,8 @@ export class PlayerEntity extends MemberEntity {
       energy: this.data.energy,
       strain: Math.max(0, 100 - this.data.energy),
       burntOut: this.burntOut,
-      task: this.task ? { ...this.task } : null,
+      project: this.project,
+      stage: null,
       tile: this.tile,
       pos: { ...this.pos },
       note: this.note,

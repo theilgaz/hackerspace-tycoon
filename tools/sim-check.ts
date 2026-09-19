@@ -120,14 +120,14 @@ function runOnce(seed: number, mode: Mode): Result {
     }
 
     // Put yourself on whatever hand-work is open.
-    if (!sim.player.task && sim.player.present && sim.player.hoursLeft > 0) {
+    if (!sim.player.project && sim.player.present && sim.player.hoursLeft > 0) {
       const target = sim.projects.find(
         (p) =>
           p.required[p.stage] > 0 &&
           STAGE_STATION[p.stage] !== null &&
           !(p.stage === 'assembly' && partsPending(p, sim.totalHours)),
       );
-      if (target) sim.workOn(target.id, target.stage);
+      if (target) sim.workOn(target.id);
     }
 
     if (mode === 'aggressive') {

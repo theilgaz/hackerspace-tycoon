@@ -66,13 +66,13 @@ function runProject(def: ProjectDef, seed: number): number | null {
         .sort((a, b) => b.passionMatch(project.tags) - a.passionMatch(project.tags))[0];
       if (candidate) sim.inviteMember(project.id, candidate.id);
     }
-    if (!sim.player.task && sim.player.present && sim.player.hoursLeft > 0) {
+    if (!sim.player.project && sim.player.present && sim.player.hoursLeft > 0) {
       if (
         project.required[project.stage] > 0 &&
         STAGE_STATION[project.stage] !== null &&
         !(project.stage === 'assembly' && partsPending(project, sim.totalHours))
       ) {
-        sim.workOn(project.id, project.stage);
+        sim.workOn(project.id);
       }
     }
     for (const machine of sim.machines) {

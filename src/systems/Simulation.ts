@@ -350,10 +350,10 @@ export class Simulation {
       groups.get(key)!.workers.push(m);
     }
 
-    // The player counts as a worker on whatever they picked.
-    if (this.player.present && this.player.activity === 'working' && this.player.task) {
-      const project = this.project(this.player.task.projectId);
-      if (project && project.stage === this.player.task.stage) {
+    // The player counts as a worker on whatever they put themselves on.
+    if (this.player.present && this.player.activity === 'working' && this.player.project) {
+      const project = this.project(this.player.project);
+      if (project) {
         const key = project.id;
         if (!groups.has(key)) groups.set(key, { project, workers: [] });
         // You lead the effort you have chosen to join.
@@ -518,7 +518,6 @@ export class Simulation {
         p.note = 'done for today';
         return;
       }
-      p.task = null;
       p.calibrating = false;
       p.note = 'out of hours';
       if (!p.walking) p.walkTo(DOOR);
@@ -534,13 +533,10 @@ export class Simulation {
       return;
     }
 
-    // Chosen task finished or moved on under you.
-    if (p.task) {
-      const project = this.project(p.task.projectId);
-      if (!project || project.shipped || project.stage !== p.task.stage) {
-        p.task = null;
-        p.note = 'looking for something to do';
-      }
+    // Only a shipped or cancelled project takes you off it — never a stage change.
+    if (p.project && !this.project(p.project)) {
+      p.project = null;
+      p.note = 'looking for something to do';
     }
 
     if (p.calibrating) {
@@ -562,18 +558,26 @@ export class Simulation {
       return;
     }
 
-    if (p.task) {
-      const taskProject = this.project(p.task.projectId)!;
-      const stationType = stageStation(taskProject.category, p.task.stage);
-      const station = stationType ? stationOfType(stationType) : undefined;
-      if (station) {
-        if (this.atStation(p, station.type)) {
-          p.activity = 'working';
-          p.note = `${taskProject.name}: ${stageLabel(taskProject.category, p.task.stage).toLowerCase()}`;
-          this.spendPlayerTime(dt);
-        } else if (!p.walking) {
-          p.walkTo(station.stand);
+    if (p.project) {
+      const project = this.project(p.project)!;
+      if (this.hasOpenWork(project)) {
+        const station = stationOfType(stageStation(project.category, project.stage)!);
+        if (station) {
+          if (this.atStation(p, station.type)) {
+            p.activity = 'working';
+            p.note = `${project.name}: ${stageLabel(project.category, project.stage).toLowerCase()}`;
+            this.spendPlayerTime(dt);
+          } else if (!p.walking) {
+            p.walkTo(station.stand);
+          }
+          p.advance(dt);
+          return;
         }
+      }
+      // Nothing to do by hand right now — stay on the project and wait it out.
+      if (!p.walking) {
+        p.activity = 'idle';
+        p.note = `${project.name}: nothing to do by hand`;
       }
       p.advance(dt);
       return;
@@ -776,7 +780,6 @@ export class Simulation {
     if (next === 'fabrication') this.seeded.delete(project.id);
     // The team carries across stages — that is what allocating one means. Drift, not the
     // stage change, is what costs you people now.
-    if (this.player.task?.projectId === project.id) this.player.task = null;
     if (message) this.log(message, kind);
   }
 
@@ -785,6 +788,13 @@ export class Simulation {
     project.shipped = true;
     this.projects = this.projects.filter((p) => p.id !== project.id);
     this.seeded.delete(project.id);
+    if (this.player.project === project.id) this.player.project = null;
+    for (const m of this.members) {
+      if (m.team === project.id) {
+        m.team = null;
+        m.note = `${project.name} is done`;
+      }
+    }
 
     if (def.payout > 0) {
       store.getState().earn(def.payout);
@@ -981,29 +991,20 @@ export class Simulation {
     return true;
   }
 
-  /** Put yourself on a stage. The one place in the game you can give a direct order. */
-  workOn(projectId: string, stage: StageKey) {
+  /** Put yourself on a project. The one place in the game you can give a direct order. */
+  workOn(projectId: string) {
     const project = this.project(projectId);
-    if (!project || project.stage !== stage) return;
-    if (stageStation(project.category, stage) === null) {
-      this.log(`That stage isn't done by hand.`, 'warn');
-      return;
-    }
-    if (stage === 'assembly' && partsPending(project, this.totalHours)) {
-      this.log(`The parts for ${project.name} haven't arrived yet.`, 'warn');
-      return;
-    }
+    if (!project) return;
     this.player.calibrating = false;
-    this.player.task = { projectId, stage };
+    this.player.project = projectId;
   }
 
   stopWork() {
-    this.player.task = null;
+    this.player.project = null;
     this.player.calibrating = false;
   }
 
   calibratePrinter() {
-    this.player.task = null;
     this.player.calibrating = true;
   }
 
@@ -1175,7 +1176,12 @@ export class Simulation {
       }),
       machines,
       projects: this.projects.map((p) => structuredClone(p)),
-      player: this.player.playerSnapshot(),
+      player: (() => {
+        const snap = this.player.playerSnapshot();
+        const project = this.player.project ? this.project(this.player.project) : null;
+        snap.stage = project ? project.stage : null;
+        return snap;
+      })(),
     });
   }
 }

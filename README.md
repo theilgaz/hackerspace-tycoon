@@ -31,8 +31,10 @@ npm run dev          # http://localhost:5174
 npm run typecheck
 npm run build
 
-npm run sim-check    # replay full playthroughs headlessly, under three player archetypes
-npm run time-budget  # where a volunteer's day actually goes
+npm run sim-check      # replay full playthroughs headlessly, under three player archetypes
+npm run time-budget    # where a volunteer's day actually goes
+npm run project-times  # every project measured against its declared length tier
+npm run click-check    # drives the real UI with real mouse events (needs `npm run dev`)
 ```
 
 The simulation imports neither `three` nor the DOM, so a whole playthrough replays in Node
@@ -55,7 +57,7 @@ nothing to print, and never touches the machine queue. It also pays several time
 pays while earning a fraction of the reputation. **Software pays the bills; hardware builds the
 name.**
 
-**Current state:** Phase 1.8. One garage, six people to start, nine more who show up as your
+**Current state:** Phase 1.9. One garage, six people to start, nine more who show up as your
 reputation grows, one printer — and you. Thirty projects from a desk cable tidy to a
 3D-printed motorcycle, arriving through a backlog of catalog picks, member proposals, sponsor
 offers and Reddit trends. You're a maker too, with about seven hours a day shared between building
