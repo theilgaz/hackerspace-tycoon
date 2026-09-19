@@ -1,5 +1,5 @@
 import { MemberEntity } from './MemberEntity';
-import type { Assignment, MemberData, PlayerSnapshot, StageDef } from '@/game/types';
+import type { Assignment, MemberData, PlayerSnapshot, SkillKey } from '@/game/types';
 import { MEMBER, PLAYER, PLAYER_SKILLS } from '@/utils/constants';
 import type { Tile } from '@/utils/grid';
 
@@ -57,8 +57,8 @@ export class PlayerEntity extends MemberEntity {
   }
 
   /** No passion penalty: it is your hackerspace, you work on whatever needs working on. */
-  override workRate(stage: StageDef): number {
-    const level = stage.skill ? this.data.skills[stage.skill] : 2;
+  override workRate(skill: SkillKey | null): number {
+    const level = skill ? this.data.skills[skill] : 2;
     let rate = MEMBER.baseWorkRate * (1 + (level - 1) * MEMBER.skillRateBonus);
     rate *= 1 + ((this.data.mood - 50) / 50) * MEMBER.moodRateSwing;
     if (this.burntOut) rate *= 0.7;

@@ -137,7 +137,18 @@ export interface PartData {
   attempts: number;
 }
 
-export type ProjectCategory = 'electronics' | 'mechanical' | 'tool' | 'civic';
+/** The genre of a build. Drives look, stage names, and which skill each stage uses. */
+export type ProjectCategory =
+  | 'electronics'
+  | 'software'
+  | 'mechanical'
+  | 'robotics'
+  | 'iot'
+  | 'radio'
+  | 'tooling'
+  | 'civic'
+  | 'retro'
+  | 'home';
 
 /**
  * Declared size, and a promise about length (CLAUDE.md §4):

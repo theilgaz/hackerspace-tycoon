@@ -1,6 +1,7 @@
 import type { GameState } from '@/game/store';
 import type {
   BacklogEntry,
+  ProjectCategory,
   MemberSnapshot,
   MachineSnapshot,
   PlayerSnapshot,
@@ -9,6 +10,13 @@ import type {
   StageKey,
 } from '@/game/types';
 import { CATALOG_MAP, catalogForEra, canBuild, missingMachines } from '@/utils/catalog';
+import {
+  CATEGORY_ORDER,
+  categoryAffinity,
+  profileOf,
+  stageLabel,
+  topCategories,
+} from '@/utils/categories';
 import {
   APPLICANTS,
   FILAMENT,
@@ -92,12 +100,12 @@ const TIER_DAYS: Record<ProjectDef['tier'], string> = {
   large: '10-30d',
 };
 
-const CATEGORY_LABEL: Record<ProjectDef['category'], string> = {
-  electronics: 'electronics',
-  mechanical: 'mechanical',
-  tool: 'tool',
-  civic: 'civic',
-};
+/** Genre chip: icon, name, and the category's own colour. */
+function categoryChip(category: ProjectCategory, extraClass = ''): string {
+  const profile = profileOf(category);
+  return `<span class="chip cat ${extraClass}"
+    style="--cat:${profile.accent}" title="${esc(profile.blurb)}">${profile.icon} ${profile.label}</span>`;
+}
 
 function bar(value: number, max: number, tone = ''): string {
   const ratio = Math.max(0, Math.min(1, max === 0 ? 0 : value / max));
@@ -308,11 +316,13 @@ export class UI {
     const player = state.runtime.player;
     const currentIndex = STAGE_ORDER.indexOf(project.stage);
     const stageDef = STAGE_MAP[project.stage];
+    const stageName = stageLabel(project.category, project.stage);
     const nowHours = this.handlers.totalHours();
 
     const pipeline = STAGES.map((stage) => {
       const index = STAGE_ORDER.indexOf(stage.key);
       const isActive = stage.key === project.stage;
+      const label = stageLabel(project.category, stage.key);
       const resolved =
         stage.key === 'fabrication'
           ? project.parts.length > 0 && project.parts.every((p) => p.status === 'done')
@@ -330,7 +340,7 @@ export class UI {
       }
       const bounty = project.bounties.includes(stage.key) ? ' 🍕' : '';
       return `<div class="stage ${isActive ? 'active' : ''} ${done ? 'done' : ''}">
-        <i class="dot"></i><span class="name">${stage.label}${bounty}</span><span class="val mono">${value}</span>
+        <i class="dot"></i><span class="name">${label}${bounty}</span><span class="val mono">${value}</span>
       </div>`;
     }).join('');
 
@@ -411,7 +421,7 @@ export class UI {
       workButton = `<button class="tiny" data-action="stop-work">Stop working</button>`;
     } else if (handStage && !blockedAssembly && project.required[project.stage] > 0) {
       workButton = `<button class="tiny primary" data-action="work" data-id="${project.id}" data-stage="${project.stage}">
-        Work on ${stageDef.label}
+        Work on ${stageName}
       </button>`;
     }
 
@@ -446,7 +456,7 @@ export class UI {
         <span class="mono muted" style="font-size:11px">Q ${pct(project.quality)}</span>
       </div>
       <div class="row wrap" style="gap:5px;margin-bottom:7px">
-        <span class="chip">${CATEGORY_LABEL[project.category]}</span>
+        ${categoryChip(project.category)}
         ${(() => {
           const def = CATALOG_MAP[project.defId];
           return def ? `<span class="chip tier ${def.tier}">${def.tier} · ${TIER_DAYS[def.tier]}</span>` : '';
@@ -517,7 +527,7 @@ export class UI {
       return `<div class="offer ${missing.length ? 'locked' : ''}">
         <div class="row between">
           <b>${esc(def.name)}</b>
-          <span class="chip">${CATEGORY_LABEL[def.category]}</span>
+          ${categoryChip(def.category)}
         </div>
         <p class="blurb">${esc(def.blurb)}</p>
         ${this.defStats(def)}
@@ -533,17 +543,31 @@ export class UI {
     };
 
     const offers = state.backlog.map(offerCard).join('');
-    const catalog = catalogForEra(state.era)
-      .filter((def) => !state.backlog.some((e) => e.defId === def.id))
-      .map(catalogCard)
-      .join('');
+    const available = catalogForEra(state.era).filter(
+      (def) => !state.backlog.some((e) => e.defId === def.id),
+    );
+
+    const byCategory = CATEGORY_ORDER.map((category) => {
+      const defs = available.filter((def) => def.category === category);
+      if (!defs.length) return '';
+      const profile = profileOf(category);
+      return `<div class="cat-group" style="--cat:${profile.accent}">
+        <div class="cat-head">
+          <span class="cat-icon">${profile.icon}</span>
+          <b>${profile.label}</b>
+          <span class="muted">${defs.length}</span>
+          <span class="cat-blurb">${esc(profile.blurb)}</span>
+        </div>
+        ${defs.map(catalogCard).join('')}
+      </div>`;
+    }).join('');
 
     this.left.innerHTML = `
       ${full ? `<p class="warn-note">All ${slots.total} project slot(s) in use. Ship something first.</p>` : ''}
       ${hoursLeft < VERB_HOURS.pitch ? `<p class="warn-note">No hours left today to write a pitch.</p>` : ''}
       ${offers ? `<div class="section">Offers</div>${offers}` : ''}
       <div class="section">Catalog · era ${state.era}</div>
-      ${catalog}
+      ${byCategory}
     `;
   }
 
@@ -552,7 +576,7 @@ export class UI {
     const picked = this.draftTeams.get(def.id) ?? new Set<string>();
     const free = state.runtime.members
       .filter((m) => !m.team)
-      .map((m) => ({ m, match: Math.max(0, ...def.tags.map((t) => MEMBER_DATA[m.id]?.passions[t] ?? 0)) }))
+      .map((m) => ({ m, match: categoryAffinity(MEMBER_DATA[m.id]?.passions ?? {}, def.category) }))
       .sort((a, b) => b.match - a.match);
 
     if (!free.length) {
@@ -619,7 +643,7 @@ export class UI {
       </div>
       ${p.burntOut ? `<p class="defect" style="margin-top:7px">⚠ You are running on fumes. Tomorrow will be shorter.</p>` : ''}
       <div class="note" style="margin:7px 0 0 0">${
-        task ? `${esc(task.name)} · ${STAGE_MAP[p.task!.stage].label.toLowerCase()}` : esc(p.note || 'idle')
+        task ? `${esc(task.name)} · ${stageLabel(task.category, p.task!.stage).toLowerCase()}` : esc(p.note || 'idle')
       }</div>
       <div class="verbs" style="margin-top:7px">
         ${p.task || p.activity === 'babysitting' ? `<button class="tiny" data-action="stop-work">Stop</button>` : ''}
@@ -661,6 +685,13 @@ export class UI {
             <div class="meter"><label>commit</label><span class="mono">${data?.commitment ?? '?'} h/wk</span></div>
           </div>
           <div class="traits">
+            ${topCategories(data?.passions ?? {})
+              .map(({ category, score }) => {
+                const profile = profileOf(category);
+                return `<span class="chip cat tiny-cat" style="--cat:${profile.accent}"
+                  title="${profile.label}: ${pct(score)} passion match">${profile.icon} ${pct(score)}</span>`;
+              })
+              .join('')}
             ${(data?.traits ?? []).map((t) => `<span class="trait" title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`).join('')}
           </div>
         </div>`;

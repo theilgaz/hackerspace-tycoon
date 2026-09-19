@@ -14,7 +14,6 @@ import { Machine, type Job } from '@/machines/Machine';
 import {
   DOOR,
   IDLE_TILES,
-  STAGE_STATION,
   STATIONS,
   installStation,
   resetStations,
@@ -42,6 +41,7 @@ import {
   eraDef,
 } from '@/utils/constants';
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
+import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
 import { clock, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
 import {
@@ -295,7 +295,7 @@ export class Simulation {
   /** Is there hand work available on this project right now? */
   private hasOpenWork(project: ProjectData): boolean {
     if (project.required[project.stage] <= 0) return false;
-    if (STAGE_STATION[project.stage] === null) return false;
+    if (stageStation(project.category, project.stage) === null) return false;
     // Nobody can assemble a thing whose parts are still in a container somewhere.
     if (project.stage === 'assembly' && partsPending(project, this.totalHours)) return false;
     return true;
@@ -362,7 +362,7 @@ export class Simulation {
     }
 
     for (const { project, workers } of groups.values()) {
-      const stage = STAGE_MAP[project.stage];
+      const skill = stageSkill(project.category, project.stage);
       let total = 0;
       let craftSum = 0;
       let rateSum = 0;
@@ -371,10 +371,10 @@ export class Simulation {
         // bench is not eight times the throughput.
         const factor =
           index === 0 ? 1 : MEMBER.extraWorkerFactor * Math.pow(MEMBER.crowdDecay, index - 1);
-        const rate = m.workRate(stage, project.tags) * factor;
+        const rate = m.workRate(skill, project.tags) * factor;
         total += rate * dt;
         rateSum += rate;
-        const level = stage.skill ? m.data.skills[stage.skill] : 2;
+        const level = skill ? m.data.skills[skill] : 2;
         craftSum += (level / 5) * rate;
       });
       const craft = rateSum > 0 ? craftSum / rateSum : 0.5;
@@ -433,11 +433,11 @@ export class Simulation {
     if (m.team) {
       const project = this.project(m.team)!;
       if (this.hasOpenWork(project)) {
-        const station = stationOfType(STAGE_STATION[project.stage]!);
+        const station = stationOfType(stageStation(project.category, project.stage)!);
         if (station) {
           if (this.atStation(m, station.type)) {
             m.activity = 'working';
-            m.note = `${project.name}: ${STAGE_MAP[project.stage].label.toLowerCase()}`;
+            m.note = `${project.name}: ${stageLabel(project.category, project.stage).toLowerCase()}`;
           } else if (!m.walking) {
             m.walkTo(station.stand);
           }
@@ -563,12 +563,13 @@ export class Simulation {
     }
 
     if (p.task) {
-      const stationType = STAGE_STATION[p.task.stage];
+      const taskProject = this.project(p.task.projectId)!;
+      const stationType = stageStation(taskProject.category, p.task.stage);
       const station = stationType ? stationOfType(stationType) : undefined;
       if (station) {
         if (this.atStation(p, station.type)) {
           p.activity = 'working';
-          p.note = `${this.project(p.task.projectId)!.name}: ${STAGE_MAP[p.task.stage].label.toLowerCase()}`;
+          p.note = `${taskProject.name}: ${stageLabel(taskProject.category, p.task.stage).toLowerCase()}`;
           this.spendPlayerTime(dt);
         } else if (!p.walking) {
           p.walkTo(station.stand);
@@ -687,6 +688,11 @@ export class Simulation {
     const stage = project.stage;
 
     if (stage === 'fabrication') {
+      // Software has nothing to make. Without this the stage never completes.
+      if (project.parts.length === 0) {
+        this.setStage(project, 'assembly', '');
+        return;
+      }
       if (!this.seeded.has(project.id)) {
         this.seeded.add(project.id);
         this.queueAllPending(project.id);
@@ -854,7 +860,8 @@ export class Simulation {
       return false;
     }
 
-    const match = member.passionMatch(project.tags);
+    // Rate against the genre, not a single tag: it is what the crew picker shows.
+    const match = Math.max(member.passionMatch(project.tags), categoryAffinity(member.data.passions, project.category));
     const bounty = project.bounties.includes(project.stage) ? TEAM.bountyAcceptBonus : 0;
     const chance = Math.min(0.97, TEAM.acceptBase + match * TEAM.acceptFromPassion + bounty);
     if (!rng.chance(chance)) {
@@ -978,7 +985,7 @@ export class Simulation {
   workOn(projectId: string, stage: StageKey) {
     const project = this.project(projectId);
     if (!project || project.stage !== stage) return;
-    if (STAGE_STATION[stage] === null) {
+    if (stageStation(project.category, stage) === null) {
       this.log(`That stage isn't done by hand.`, 'warn');
       return;
     }
@@ -1044,7 +1051,10 @@ export class Simulation {
       m.interest = Math.min(1.4, m.interest + DRIFT.bountyInterest);
       m.clearCooldowns();
     }
-    this.log(`Bounty on ${project.name} · ${STAGE_MAP[project.stage].label}. Pizza is on the way.`, 'good');
+    this.log(
+      `Bounty on ${project.name} · ${stageLabel(project.category, project.stage)}. Pizza is on the way.`,
+      'good',
+    );
     return true;
   }
 

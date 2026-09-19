@@ -1,4 +1,4 @@
-import type { MemberActivity, MemberData, MemberSnapshot, StageDef, Tag } from '@/game/types';
+import type { MemberActivity, MemberData, MemberSnapshot, SkillKey, Tag } from '@/game/types';
 import { MEMBER } from '@/utils/constants';
 import { findPath, sameTile, type Tile } from '@/utils/grid';
 import { GRID, isBlocked } from '@/machines/layout';
@@ -49,9 +49,9 @@ export class MemberEntity {
     return best;
   }
 
-  /** Work units per sim-hour on a given stage. */
-  workRate(stage: StageDef, tags: Tag[] = []): number {
-    const level = stage.skill ? this.data.skills[stage.skill] : 2;
+  /** Work units per sim-hour, given the skill this stage actually leans on. */
+  workRate(skill: SkillKey | null, tags: Tag[] = []): number {
+    const level = skill ? this.data.skills[skill] : 2;
     let rate = MEMBER.baseWorkRate * (1 + (level - 1) * MEMBER.skillRateBonus);
     rate *= 1 + ((this.data.mood - 50) / 50) * MEMBER.moodRateSwing;
     if (this.passionMatch(tags) < 0.4) rate *= MEMBER.offPassionPenalty;

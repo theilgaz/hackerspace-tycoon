@@ -48,8 +48,15 @@ Projects come in three sizes and the catalog keeps its promise about them: **wee
 1-5 days, medium projects 5-10, the big ones 10-30.** `npm run project-times` measures every
 entry and fails the ones that drift.
 
-**Current state:** Phase 1.7. One garage, six people to start, nine more who show up as your
-reputation grows, one printer — and you. Twenty-four projects from a desk cable tidy to a
+Projects come in genres, the way games do — 💻 Software, 🔌 Electronics, 🌐 IoT, 📡 Radio,
+🦾 Robotics, ⚙️ Mechanical, 🕹️ Retro, 🍕 Home, 🛠️ Tooling, 🤝 Civic — and the genre is more than a
+label: a software build runs Spec → Architecture → Implementation → QA → Launch at a desk, has
+nothing to print, and never touches the machine queue. It also pays several times what hardware
+pays while earning a fraction of the reputation. **Software pays the bills; hardware builds the
+name.**
+
+**Current state:** Phase 1.8. One garage, six people to start, nine more who show up as your
+reputation grows, one printer — and you. Thirty projects from a desk cable tidy to a
 3D-printed motorcycle, arriving through a backlog of catalog picks, member proposals, sponsor
 offers and Reddit trends. You're a maker too, with about seven hours a day shared between building
 things yourself and running the place.

@@ -179,12 +179,55 @@ This is what makes the catalog's electronics projects play differently from its 
 a cyberdeck is print-light and spends three weeks waiting on an order, while a drone is
 print-heavy and arrives in twelve days. The bottleneck moves.
 
+## 4b. Genres (`src/utils/categories.ts`)
+
+Projects have a **category**, the way games have genres — and here the genre is mechanical as
+well as cosmetic. A `CategoryProfile` carries the icon and accent colour, *and* renames stages,
+overrides which skill each stage leans on, and moves where in the space the work happens.
+
+| Genre | Character |
+|---|---|
+| 💻 **Software** | No parts, no print queue — and it is what actually pays |
+| 🔌 **Electronics** | Boards, power and solder |
+| 🌐 **IoT** | Small connected things that must never need rebooting |
+| 📡 **Radio** | Antennas, range tests, arguing about SWR |
+| 🦾 **Robotics** | Motion, control, and respect for the emergency stop |
+| ⚙️ **Mechanical** | Frames, motion, things that take a load |
+| 🕹️ **Retro** | Old silicon, warm glow, unreasonable effort |
+| 🍕 **Home** | Things for the space itself and the people in it |
+| 🛠️ **Tooling** | Build the machine that builds the machines |
+| 🤝 **Civic** | Low pay, heavy documentation, the neighbourhood remembers |
+
+**Software is the load-bearing genre.** It has no bill of materials, no printed parts and no
+machine queue, so it runs beside a print-heavy build without contending for anything. It pays far
+better than hardware (a B2B Portal is ₺28,000 against an FPV drone's ₺3,000) and earns far less
+hype (140 against 430). Since eras advance on reputation, **software pays the bills and hardware
+builds the name** — you cannot grind client work to Era 3. That tension is the point, and it also
+softened a real failure mode: a player who over-spent on bounties used to die because they could
+not afford the next bill of materials, and software work is now the way out.
+
+Stage renaming is what makes a genre feel like itself: a software build runs
+`Spec → Architecture → Prototype → Build Pipeline → Implementation → QA → Bugfix → Launch`,
+at a desk, on the `software` skill. **Always resolve stages through `stageLabel` / `stageSkill` /
+`stageStation`,** never by reading `STAGE_MAP` or `STAGE_STATION` directly.
+
+### Rating people against a genre
+
+`categoryAffinity()` scores a member against a whole genre rather than a single tag, and this is
+what the crew picker ranks by and what the People panel shows as each person's specialism.
+
+Category tags are **ordered and weighted** (1.0 / 0.75 / 0.6). Categories share tags, and an
+unweighted max made every machinist read as a roboticist purely because Robotics also touches
+`machining`. If you add a category, put its most defining tag first.
+
 ### The catalog (`src/utils/catalog.ts`)
 
-Twenty-four projects across four categories, gated by era and by what the space owns:
+Thirty projects across ten genres, gated by era and by what the space owns:
 
-- **electronics / IoT** — Macropad, E-ink Dashboard, Nixie Clock, Cyberdeck, LoRaWAN Gateway,
-  Home Assistant Hub, SDR Ground Station
+- **software** — Space Website, Tool Booking System, Basic CMS, Member Portal & Door Access,
+  B2B Portal, Social Media System
+- **electronics / IoT / radio / retro** — Macropad, LED Badge, Bench PSU, E-ink Dashboard,
+  Nixie Clock, Cyberdeck, LoRaWAN Gateway, Home Assistant Hub, SDR Ground Station
 - **mechanical** — FPV Drone, Pizza Oven, Robot Arm, E-bike Conversion, and the
   **3D-Printed Motorcycle** as the Era 3 capstone
 - **tools that upgrade the space** — Reflow Oven (unlocks SMD, cutting electronics assembly work
@@ -411,6 +454,11 @@ Two further findings, both now fixed and worth not re-introducing:
   `Machine.starved` blocks job *start*; running out mid-job still fails the print, as it should.
 
 ## 14. Development Priority
+
+**Phase 1.8 — Genres and software projects — BUILT.**
+Ten categories that drive look *and* mechanics: stage names, stage skills, stage stations (§4b).
+Six software projects with no parts and no print queue, paying well and hyping badly. The catalog
+is grouped by genre on the pitch screen, and people are rated by genre rather than by raw tag.
 
 **Phase 1.7 — Length tiers and crew-at-pitch — BUILT.**
 Every project declares a length tier and `npm run project-times` enforces it; lead times were the
