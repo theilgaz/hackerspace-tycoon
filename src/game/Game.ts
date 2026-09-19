@@ -38,6 +38,8 @@ export class Game {
       workOn: (projectId, stage) => act(() => sim.workOn(projectId, stage)),
       stopWork: () => act(() => sim.stopWork()),
       calibrate: () => act(() => sim.calibratePrinter()),
+      invite: (projectId, memberId) => act(() => sim.inviteMember(projectId, memberId)),
+      release: (projectId, memberId) => act(() => sim.releaseMember(projectId, memberId)),
       repitch: (projectId) => act(() => sim.repitch(projectId)),
       bounty: (projectId) => act(() => sim.postBounty(projectId)),
       bountyCost: (projectId) => sim.bountyCost(projectId),

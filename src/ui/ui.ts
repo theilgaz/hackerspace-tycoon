@@ -10,6 +10,7 @@ import type {
 } from '@/game/types';
 import { CATALOG_MAP, catalogForEra, canBuild, missingMachines } from '@/utils/catalog';
 import {
+  APPLICANTS,
   FILAMENT,
   MACHINE,
   ROSTER,
@@ -31,6 +32,8 @@ export interface UIHandlers {
   workOn(projectId: string, stage: StageKey): void;
   stopWork(): void;
   calibrate(): void;
+  invite(projectId: string, memberId: string): void;
+  release(projectId: string, memberId: string): void;
   repitch(projectId: string): void;
   bounty(projectId: string): void;
   bountyCost(projectId: string): number;
@@ -52,6 +55,19 @@ const MEMBER_COLORS: Record<string, string> = {
   ada: '#f0b429',
   kerem: '#e2725b',
 };
+
+/** Everyone who could ever be in the space, starting roster plus applicants. */
+const MEMBER_DATA: Record<string, (typeof ROSTER)[number]> = Object.fromEntries(
+  [...ROSTER, ...APPLICANTS].map((m) => [m.id, m]),
+);
+
+/** Stable colour for recruits, so a person keeps the same dot all game. */
+function personColor(id: string): string {
+  const palette = ['#7fb2f0', '#c58ef0', '#8fd88f', '#f08fa4', '#e0c36a', '#6fd0e0', '#d49a6a'];
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return palette[hash % palette.length];
+}
 
 const ACTIVITY_LABEL: Record<MemberSnapshot['activity'], string> = {
   away: 'away',
@@ -151,6 +167,12 @@ export class UI {
         case 'calibrate':
           h.calibrate();
           break;
+        case 'invite':
+          if (id && id2) h.invite(id, id2);
+          break;
+        case 'release':
+          if (id && id2) h.release(id, id2);
+          break;
         case 'repitch':
           if (id) h.repitch(id);
           break;
@@ -222,6 +244,10 @@ export class UI {
       <div class="stat"><b>${money(state.cash)}</b><span>cash</span></div>
       <div class="stat"><b>${slots.used}/${slots.total}</b><span>projects</span></div>
       <div class="stat"><b>${state.shippedCount}</b><span>shipped</span></div>
+      <div class="stat" title="cumulative hype from everything you've shipped">
+        <b>${state.reputation}${Number.isFinite(era.repToAdvance) ? `<span class="muted" style="font-size:10px">/${era.repToAdvance}</span>` : ''}</b>
+        <span>reputation</span>
+      </div>
       <div class="stat"><b>${era.name}</b><span>era ${state.era}</span></div>
     `;
   }
@@ -283,12 +309,53 @@ export class UI {
       </div>`;
     }).join('');
 
-    const signed = state.runtime.members.filter(
-      (m) => m.signedUp?.projectId === project.id && m.signedUp.stage === project.stage,
-    );
     const playerOn = player?.task?.projectId === project.id;
-    const who = [...signed.map((m) => m.name), ...(playerOn ? ['you'] : [])];
-    const whoText = who.length ? who.join(', ') : '<span style="color:var(--bad)">nobody</span>';
+    const team = project.team
+      .map((id) => state.runtime.members.find((m) => m.id === id))
+      .filter((m): m is MemberSnapshot => !!m);
+    const free = state.runtime.members
+      .filter((m) => !m.team)
+      .sort((a, b) => (b.affinity[project.id] ?? 0) - (a.affinity[project.id] ?? 0));
+    const room = project.teamSize - project.team.length;
+
+    const teamBlock = `<div class="team">
+      <div class="row between" style="margin-bottom:5px">
+        <span class="section" style="margin:0">Team ${project.team.length}/${project.teamSize}</span>
+        ${playerOn ? `<span class="chip you-chip">you</span>` : ''}
+      </div>
+      <div class="row wrap" style="gap:4px">
+        ${
+          team.length
+            ? team
+                .map(
+                  (m) => `<span class="person ${m.present ? '' : 'off'}" title="${m.present ? esc(m.note) : 'not in today'}">
+                    ${m.name}
+                    <button class="x" data-action="release" data-id="${project.id}" data-id2="${m.id}" title="take off the team">×</button>
+                  </span>`,
+                )
+                .join('')
+            : `<span class="muted" style="font-size:11px">nobody allocated</span>`
+        }
+      </div>
+      ${
+        room > 0 && free.length
+          ? `<div class="candidates">
+              <span class="muted" style="font-size:10px">ask ${room === 1 ? 'one more' : `up to ${room}`}:</span>
+              ${free
+                .slice(0, 6)
+                .map((m) => {
+                  const match = m.affinity[project.id] ?? 0;
+                  const tone = match >= 0.6 ? 'keen' : match >= 0.3 ? '' : 'cold';
+                  return `<button class="person ask ${tone}" data-action="invite" data-id="${project.id}" data-id2="${m.id}"
+                            title="passion match ${pct(match)}${m.present ? '' : ' · not in today'}">
+                            + ${m.name} <i>${pct(match)}</i>
+                          </button>`;
+                })
+                .join('')}
+            </div>`
+          : ''
+      }
+    </div>`;
 
     // --- sourcing -----------------------------------------------------------
     const waiting = partsWait(project, nowHours);
@@ -361,9 +428,7 @@ export class UI {
       ${pipeline}
       <p class="blurb">${stageDef.blurb}</p>
       ${sourcing}
-      <div class="row" style="margin-bottom:7px;font-size:11.5px">
-        <span class="muted">On it:</span><span>${whoText}</span>
-      </div>
+      ${teamBlock}
       <div class="verbs">
         ${workButton}
         <button class="tiny" data-action="repitch" data-id="${project.id}"
@@ -455,6 +520,7 @@ export class UI {
     const printHours = def.parts.reduce((sum, p) => sum + p.hours, 0);
     const workUnits = STAGE_ORDER.reduce((sum, key) => sum + (def.work[key] ?? STAGE_MAP[key].work), 0);
     return `<div class="stats-row mono">
+      <span title="team size">👥 ${def.teamSize}</span>
       <span title="hand work units">✋ ${workUnits}</span>
       <span title="machine hours">🖨 ${printHours.toFixed(0)}h</span>
       <span title="bill of materials">📦 ${money(def.bomCost)} · ${def.leadDays}d</span>
@@ -496,10 +562,17 @@ export class UI {
   // --- members --------------------------------------------------------------
 
   private renderMembers(state: GameState) {
-    this.members.innerHTML = state.runtime.members
+    // Whoever is actually in the building matters most; unallocated people next, since
+    // they are the ones you can put on a team right now.
+    const ordered = [...state.runtime.members].sort((a, b) => {
+      if (a.present !== b.present) return a.present ? -1 : 1;
+      if (!!a.team !== !!b.team) return a.team ? 1 : -1;
+      return a.name.localeCompare(b.name, 'tr');
+    });
+    this.members.innerHTML = ordered
       .map((m) => {
-        const data = ROSTER.find((r) => r.id === m.id)!;
-        const color = MEMBER_COLORS[m.id] ?? '#9aa7b8';
+        const data = MEMBER_DATA[m.id];
+        const color = MEMBER_COLORS[m.id] ?? personColor(m.id);
         const interestTone = m.interest < 0.4 ? 'bad' : m.interest < 0.7 ? 'warn' : '';
         const energyTone = m.energy < 25 ? 'bad' : m.energy < 50 ? 'warn' : 'good';
         return `<div class="member ${m.present ? '' : 'away'}">
@@ -508,14 +581,18 @@ export class UI {
             <span class="mname">${m.name}</span>
             <span class="state">${ACTIVITY_LABEL[m.activity]}</span>
           </div>
-          <div class="note">${esc(m.note || '—')}</div>
+          <div class="note">${
+            m.team
+              ? `<b class="on-team">${esc(state.runtime.projects.find((p) => p.id === m.team)?.name ?? '—')}</b> · ${esc(m.note || '')}`
+              : esc(m.note || 'unallocated')
+          }</div>
           <div class="meters">
             <div class="meter"><label>interest</label>${bar(m.interest, 1.2, interestTone)}</div>
             <div class="meter"><label>energy</label>${bar(m.energy, 100, energyTone)}</div>
-            <div class="meter"><label>commit</label><span class="mono">${data.commitment} h/wk</span></div>
+            <div class="meter"><label>commit</label><span class="mono">${data?.commitment ?? '?'} h/wk</span></div>
           </div>
           <div class="traits">
-            ${data.traits.map((t) => `<span class="trait" title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`).join('')}
+            ${(data?.traits ?? []).map((t) => `<span class="trait" title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`).join('')}
           </div>
         </div>`;
       })

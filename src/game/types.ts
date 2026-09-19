@@ -48,7 +48,7 @@ export interface MemberData {
   window: [number, number];
 }
 
-/** A member's claim on one stage of one project. */
+/** A specific job: one stage of one project. Used for the player's chosen task. */
 export interface Assignment {
   projectId: string;
   stage: StageKey;
@@ -60,8 +60,11 @@ export interface MemberSnapshot {
   name: string;
   present: boolean;
   activity: MemberActivity;
-  signedUp: Assignment | null;
+  /** Project they are on the team of, if any. One project at a time. */
+  team: string | null;
   interest: number;
+  /** Best passion overlap with each active project, for the allocation UI. */
+  affinity: Record<string, number>;
   energy: number;
   mood: number;
   tile: Tile;
@@ -144,6 +147,8 @@ export interface ProjectDef {
   tags: Tag[];
   era: number;
   blurb: string;
+  /** How many people can work it at once. The real constraint on running projects. */
+  teamSize: number;
   /** Work units per stage; anything omitted falls back to the stage default. */
   work: Partial<Record<StageKey, number>>;
   parts: Omit<PartData, 'id' | 'status' | 'attempts'>[];
@@ -191,6 +196,9 @@ export interface ProjectData {
   /** 0-1, set by CAD quality and damaged by rushed stages. */
   quality: number;
   scope: number;
+  /** Member ids allocated to this project. */
+  team: string[];
+  teamSize: number;
   parts: PartData[];
   defects: string[];
   /** Stages that have an active bounty on them. */
@@ -214,7 +222,15 @@ export interface ProjectData {
 // Machines (CLAUDE.md §5)
 // ---------------------------------------------------------------------------
 
-export type MachineType = 'fdm' | 'bench' | 'assembly' | 'cad-desk' | 'lounge' | 'cnc' | 'reflow';
+export type MachineType =
+  | 'fdm'
+  | 'bench'
+  | 'assembly'
+  | 'cad-desk'
+  | 'lounge'
+  | 'cnc'
+  | 'reflow'
+  | 'drybox';
 
 export interface JobSnapshot {
   id: string;

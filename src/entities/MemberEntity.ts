@@ -1,4 +1,4 @@
-import type { Assignment, MemberActivity, MemberData, MemberSnapshot, StageDef, Tag } from '@/game/types';
+import type { MemberActivity, MemberData, MemberSnapshot, StageDef, Tag } from '@/game/types';
 import { MEMBER } from '@/utils/constants';
 import { findPath, sameTile, type Tile } from '@/utils/grid';
 import { GRID, isBlocked } from '@/machines/layout';
@@ -15,7 +15,8 @@ export class MemberEntity {
 
   activity: MemberActivity = 'away';
   present = false;
-  signedUp: Assignment | null = null;
+  /** Project this member is allocated to. One at a time — that is the constraint. */
+  team: string | null = null;
   interest = 0;
   note = '';
   /** Ghost trait: multiplier on show-up chance, decaying each day they attend. */
@@ -67,13 +68,13 @@ export class MemberEntity {
     }
   }
 
-  /** Burnout is remembered per project *and* stage: the drone's docs, not docs in general. */
-  isCoolingOff(assignment: Assignment): boolean {
-    return this.cooldowns.has(`${assignment.projectId}:${assignment.stage}`);
+  /** Burnout and refusals are remembered per project: this drone, not drones in general. */
+  isCoolingOff(projectId: string): boolean {
+    return this.cooldowns.has(projectId);
   }
 
-  setCooldown(assignment: Assignment, simHours: number) {
-    this.cooldowns.set(`${assignment.projectId}:${assignment.stage}`, simHours);
+  setCooldown(projectId: string, simHours: number) {
+    this.cooldowns.set(projectId, simHours);
   }
 
   /** Pizza forgives everything. */
@@ -142,7 +143,8 @@ export class MemberEntity {
       name: this.name,
       present: this.present,
       activity: this.activity,
-      signedUp: this.signedUp ? { ...this.signedUp } : null,
+      team: this.team,
+      affinity: {},
       interest: this.interest,
       energy: this.data.energy,
       mood: this.data.mood,

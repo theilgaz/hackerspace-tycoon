@@ -21,6 +21,14 @@ const MEMBER_COLORS: Record<string, string> = {
 };
 const PLAYER_COLOR = '#dfe6f0';
 
+/** Stable colour for recruits, matching the dot the UI shows. */
+function personColor(id: string): string {
+  const palette = ['#7fb2f0', '#c58ef0', '#8fd88f', '#f08fa4', '#e0c36a', '#6fd0e0', '#d49a6a'];
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return palette[hash % palette.length];
+}
+
 function mat(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
   return new THREE.MeshStandardMaterial({
     color,
@@ -278,7 +286,7 @@ export class SpaceView {
 
   private buildPerson(id: string, isPlayer: boolean): THREE.Group {
     const g = new THREE.Group();
-    const color = isPlayer ? PLAYER_COLOR : (MEMBER_COLORS[id] ?? '#9aa7b8');
+    const color = isPlayer ? PLAYER_COLOR : (MEMBER_COLORS[id] ?? personColor(id));
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.56, 7), mat(color));
     body.position.y = 0.28;
     body.castShadow = true;

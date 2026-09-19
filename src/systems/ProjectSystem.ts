@@ -39,6 +39,8 @@ export function startProject(entry: BacklogEntry, day: number): ProjectData {
     required: requirements(def),
     quality: 0.5,
     scope: 1,
+    team: [],
+    teamSize: def.teamSize,
     parts: [],
     defects: [],
     bounties: [],
@@ -47,7 +49,8 @@ export function startProject(entry: BacklogEntry, day: number): ProjectData {
     shipped: false,
     bomCost: def.bomCost,
     leadDays: def.leadDays,
-    partsOrdered: false,
+    // A weekend build has nothing to order, so it must not sit waiting on a delivery.
+    partsOrdered: def.bomCost === 0,
     partsArriveAt: 0,
     sponsorCash: entry.sponsorCash ?? 0,
     hypeMultiplier: entry.hypeMultiplier ?? 1,

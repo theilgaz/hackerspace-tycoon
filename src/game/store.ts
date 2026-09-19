@@ -19,6 +19,8 @@ export interface GameState {
   cash: number;
   era: number;
   shippedCount: number;
+  /** Cumulative hype from everything shipped; drives era progression and Phase 2. */
+  reputation: number;
   /** Machine types the space owns; gates what can be attempted. */
   ownedMachines: MachineType[];
   /** Offers waiting to be pitched (CLAUDE.md §4a). */
@@ -42,7 +44,7 @@ export interface GameState {
   addOffer: (entry: BacklogEntry) => void;
   removeOffer: (id: string) => void;
   ownMachine: (type: MachineType) => void;
-  recordShipped: () => void;
+  recordShipped: (hype: number) => void;
 }
 
 export const emptyRuntime = (): RuntimeSnapshot => ({
@@ -60,6 +62,7 @@ export const store = createStore<GameState>((set, get) => ({
   cash: START_CASH,
   era: 1,
   shippedCount: 0,
+  reputation: 0,
   ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
   backlog: [],
   runtime: emptyRuntime(),
@@ -92,11 +95,12 @@ export const store = createStore<GameState>((set, get) => ({
   ownMachine: (type) =>
     set((s) => (s.ownedMachines.includes(type) ? s : { ownedMachines: [...s.ownedMachines, type] })),
 
-  recordShipped: () =>
+  recordShipped: (hype) =>
     set((s) => {
       const shippedCount = s.shippedCount + 1;
+      const reputation = s.reputation + hype;
       // Minimal era progression: slots and catalog only (CLAUDE.md §8, Phase 6 completes it).
-      const era = shippedCount >= eraDef(s.era).shipToAdvance ? Math.min(3, s.era + 1) : s.era;
-      return { shippedCount, era };
+      const era = reputation >= eraDef(s.era).repToAdvance ? Math.min(3, s.era + 1) : s.era;
+      return { shippedCount, reputation, era };
     }),
 }));

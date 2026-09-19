@@ -37,6 +37,7 @@ export const MACHINE_LABEL: Record<MachineType, string> = {
   lounge: 'Sofa & Kettle',
   cnc: 'CNC Router',
   reflow: 'Reflow Oven',
+  drybox: 'Filament Dry Box',
 };
 
 /** Live station list — grows when a tool project ships. */

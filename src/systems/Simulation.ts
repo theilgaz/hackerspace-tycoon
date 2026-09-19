@@ -1,6 +1,5 @@
 import { store } from '@/game/store';
 import type {
-  Assignment,
   BacklogEntry,
   MachineSnapshot,
   MachineType,
@@ -30,8 +29,11 @@ import {
   MACHINE,
   MEMBER,
   PERFECTIONIST_QUALITY_GATE,
+  APPLICANTS,
   PLAYER,
+  RECRUIT,
   ROSTER,
+  TEAM,
   SOURCING,
   STAGE_MAP,
   TIME,
@@ -108,6 +110,15 @@ export class Simulation {
 
   get printer(): Machine {
     return this.machines.find((m) => m.type === 'fdm')!;
+  }
+
+  /** Owned kit that changes how the machines behave. */
+  private applyPerks() {
+    const owned = store.getState().ownedMachines;
+    const dry = owned.includes('drybox') ? 0.8 : 1;
+    for (const machine of this.machines) {
+      if (machine.type === 'fdm') machine.failureModifier = dry;
+    }
   }
 
   machineFor(type: MachineType): Machine | undefined {
@@ -275,17 +286,22 @@ export class Simulation {
   // Members
   // -------------------------------------------------------------------------
 
-  /** Stages currently open to volunteers, across every active project. */
-  private openAssignments(): Assignment[] {
-    const out: Assignment[] = [];
-    for (const p of this.projects) {
-      if (p.shipped) continue;
-      if (p.required[p.stage] <= 0) continue;
-      // Nobody can assemble a thing whose parts are still in a container somewhere.
-      if (p.stage === 'assembly' && partsPending(p, this.totalHours)) continue;
-      out.push({ projectId: p.id, stage: p.stage });
-    }
-    return out;
+  /** Projects with a free seat on the team. */
+  private joinableProjects(): ProjectData[] {
+    return this.projects.filter((p) => !p.shipped && p.team.length < p.teamSize);
+  }
+
+  /** Is there hand work available on this project right now? */
+  private hasOpenWork(project: ProjectData): boolean {
+    if (project.required[project.stage] <= 0) return false;
+    if (STAGE_STATION[project.stage] === null) return false;
+    // Nobody can assemble a thing whose parts are still in a container somewhere.
+    if (project.stage === 'assembly' && partsPending(project, this.totalHours)) return false;
+    return true;
+  }
+
+  member(id: string): MemberEntity | undefined {
+    return this.members.find((m) => m.id === id);
   }
 
   private tickMembers(dt: number) {
@@ -325,10 +341,10 @@ export class Simulation {
     const groups = new Map<string, { project: ProjectData; workers: MemberEntity[] }>();
 
     for (const m of this.members) {
-      if (!m.present || m.activity !== 'working' || !m.signedUp) continue;
-      const project = this.project(m.signedUp.projectId);
-      if (!project || project.stage !== m.signedUp.stage) continue;
-      const key = `${project.id}:${project.stage}`;
+      if (!m.present || m.activity !== 'working' || !m.team) continue;
+      const project = this.project(m.team);
+      if (!project) continue;
+      const key = project.id;
       if (!groups.has(key)) groups.set(key, { project, workers: [] });
       groups.get(key)!.workers.push(m);
     }
@@ -337,7 +353,7 @@ export class Simulation {
     if (this.player.present && this.player.activity === 'working' && this.player.task) {
       const project = this.project(this.player.task.projectId);
       if (project && project.stage === this.player.task.stage) {
-        const key = `${project.id}:${project.stage}`;
+        const key = project.id;
         if (!groups.has(key)) groups.set(key, { project, workers: [] });
         // You lead the effort you have chosen to join.
         groups.get(key)!.workers.unshift(this.player);
@@ -350,7 +366,10 @@ export class Simulation {
       let craftSum = 0;
       let rateSum = 0;
       workers.slice(0, MEMBER.maxWorkersPerStage).forEach((m, index) => {
-        const factor = index === 0 ? 1 : MEMBER.extraWorkerFactor;
+        // Each extra pair of hands helps less than the last — eight people around one
+        // bench is not eight times the throughput.
+        const factor =
+          index === 0 ? 1 : MEMBER.extraWorkerFactor * Math.pow(MEMBER.crowdDecay, index - 1);
         const rate = m.workRate(stage, project.tags) * factor;
         total += rate * dt;
         rateSum += rate;
@@ -380,63 +399,51 @@ export class Simulation {
       return;
     }
 
-    // Still signed up for something that has moved on? Release them.
-    if (m.signedUp) {
-      const project = this.project(m.signedUp.projectId);
-      if (!project || project.shipped || project.stage !== m.signedUp.stage) {
-        m.signedUp = null;
-      }
-    }
+    // On a team whose project has gone? Release them.
+    if (m.team && !this.project(m.team)) m.team = null;
 
-    // Drift: interest gone, they unsign. This is the game's core antagonist.
-    if (m.signedUp && m.interest < DRIFT.abandonThreshold) {
-      const project = this.project(m.signedUp.projectId);
-      this.log(
-        `${m.name} drifted off ${project ? project.name : 'the project'} (${STAGE_MAP[m.signedUp.stage].label.toLowerCase()}).`,
-        'warn',
-      );
-      m.setCooldown(m.signedUp, DRIFT.cooldownHours);
-      m.signedUp = null;
+    // Drift: interest gone, they walk away from the team. The core antagonist.
+    if (m.team && m.interest < DRIFT.abandonThreshold) {
+      const project = this.project(m.team)!;
+      this.log(`${m.name} drifted off ${project.name}.`, 'warn');
+      this.dropFromTeam(project, m, DRIFT.cooldownHours);
       m.note = 'lost interest';
     }
 
-    // Sign-up: the best match across every project competing for this person.
-    if (!m.signedUp) {
-      let best: { assignment: Assignment; appetite: number } | null = null;
-      for (const assignment of this.openAssignments()) {
-        if (m.isCoolingOff(assignment)) continue;
-        const project = this.project(assignment.projectId)!;
-        const stage = STAGE_MAP[assignment.stage];
+    // Volunteers still volunteer: an unallocated member may join something themselves.
+    if (!m.team) {
+      let best: { project: ProjectData; appetite: number } | null = null;
+      for (const project of this.joinableProjects()) {
+        if (m.isCoolingOff(project.id)) continue;
+        const stage = STAGE_MAP[project.stage];
         const match = m.passionMatch(project.tags);
-        const bounty = project.bounties.includes(assignment.stage);
+        const bounty = project.bounties.includes(project.stage);
         const proposer = project.proposerId === m.id ? BACKLOG.proposerInterestBonus : 0;
         const appetite = match * (0.45 + stage.appeal * 0.55) + (bounty ? 0.5 : 0) + proposer;
-        if (!best || appetite > best.appetite) best = { assignment, appetite };
+        if (!best || appetite > best.appetite) best = { project, appetite };
       }
-      if (best && best.appetite >= DRIFT.signupThreshold && rng.chance(0.55)) {
-        const project = this.project(best.assignment.projectId)!;
-        const bounty = project.bounties.includes(best.assignment.stage);
-        m.signedUp = best.assignment;
-        m.interest = Math.min(
-          1.4,
-          DRIFT.startInterest * (0.5 + m.passionMatch(project.tags)) + (bounty ? DRIFT.bountyInterest : 0),
-        );
-        m.note = `${project.name}: ${STAGE_MAP[best.assignment.stage].label.toLowerCase()}`;
+      if (best && best.appetite >= DRIFT.signupThreshold && rng.chance(0.4)) {
+        this.addToTeam(best.project, m);
+        m.note = `joined ${best.project.name}`;
       }
     }
 
-    if (m.signedUp) {
-      const stationType = STAGE_STATION[m.signedUp.stage];
-      if (stationType) {
-        const station = stationOfType(stationType);
+    // On a team: work the current stage if there is hand work to be done.
+    if (m.team) {
+      const project = this.project(m.team)!;
+      if (this.hasOpenWork(project)) {
+        const station = stationOfType(STAGE_STATION[project.stage]!);
         if (station) {
-          if (this.atStation(m, stationType)) {
+          if (this.atStation(m, station.type)) {
             m.activity = 'working';
+            m.note = `${project.name}: ${STAGE_MAP[project.stage].label.toLowerCase()}`;
           } else if (!m.walking) {
             m.walkTo(station.stand);
           }
           return;
         }
+      } else {
+        m.note = `${project.name}: waiting`;
       }
     }
 
@@ -464,7 +471,8 @@ export class Simulation {
   private performActivity(m: MemberEntity, dt: number) {
     switch (m.activity) {
       case 'working': {
-        const stage = m.signedUp ? STAGE_MAP[m.signedUp.stage] : null;
+        const project = m.team ? this.project(m.team) : null;
+        const stage = project ? STAGE_MAP[project.stage] : null;
         m.data.energy = Math.max(0, m.data.energy - MEMBER.energyDrain * dt);
         if (stage) m.interest -= DRIFT.decayPerHour * (1 - stage.appeal) * dt;
         break;
@@ -472,6 +480,11 @@ export class Simulation {
       case 'resting':
         m.data.energy = Math.min(100, m.data.energy + MEMBER.energyRestore * dt);
         break;
+      case 'idle': {
+        // Hanging about waiting for a machine erodes enthusiasm, just more slowly.
+        if (m.team) m.interest -= DRIFT.decayPerHour * 0.35 * dt;
+        break;
+      }
       case 'babysitting': {
         const printer = this.printer;
         printer.operatorSkill = Math.max(printer.operatorSkill, m.data.skills.machining);
@@ -700,8 +713,7 @@ export class Simulation {
     const blocker = this.members.find(
       (m) =>
         m.present &&
-        m.signedUp?.projectId === project.id &&
-        m.signedUp.stage === stage &&
+        m.team === project.id &&
         m.hasTrait('perfectionist') &&
         (stage === 'cad' || stage === 'iterate') &&
         project.quality < PERFECTIONIST_QUALITY_GATE,
@@ -755,10 +767,8 @@ export class Simulation {
   ) {
     project.stage = next;
     if (next === 'fabrication') this.seeded.delete(project.id);
-    // A new stage means new sign-ups. Nobody is carried over — this is the drift engine.
-    for (const m of this.members) {
-      if (m.signedUp?.projectId === project.id) m.signedUp = null;
-    }
+    // The team carries across stages — that is what allocating one means. Drift, not the
+    // stage change, is what costs you people now.
     if (this.player.task?.projectId === project.id) this.player.task = null;
     if (message) this.log(message, kind);
   }
@@ -777,9 +787,10 @@ export class Simulation {
     }
 
     if (def.unlocksMachine) this.installMachine(def.unlocksMachine);
+    this.recruit(project);
 
     const before = store.getState().era;
-    store.getState().recordShipped();
+    store.getState().recordShipped(Math.round(def.hype * project.hypeMultiplier));
     const after = store.getState().era;
     if (after > before) {
       this.log(`You can take on ${eraDef(after).slots} projects at once now — ${eraDef(after).name}.`, 'good');
@@ -796,7 +807,98 @@ export class Simulation {
       this.machines.push(new Machine(def, type === 'fdm' ? FILAMENT.spoolGrams : 0));
     }
     store.getState().ownMachine(type);
+    this.applyPerks();
     this.log(`${def.label} is up and running. New things are possible.`, 'good');
+  }
+
+  // -------------------------------------------------------------------------
+  // Teams (CLAUDE.md §3b) — you allocate, but they are still volunteers
+  // -------------------------------------------------------------------------
+
+  private addToTeam(project: ProjectData, member: MemberEntity, interest?: number) {
+    if (project.team.includes(member.id)) return;
+    project.team.push(member.id);
+    member.team = project.id;
+    member.interest = interest ?? TEAM.joinInterest * (0.5 + member.passionMatch(project.tags));
+  }
+
+  private dropFromTeam(project: ProjectData, member: MemberEntity, cooldownHours: number) {
+    project.team = project.team.filter((id) => id !== member.id);
+    member.team = null;
+    member.interest = 0;
+    if (cooldownHours > 0) member.setCooldown(project.id, cooldownHours);
+  }
+
+  /**
+   * Ask somebody to join a project. They are volunteers, so this is a request: a poor
+   * passion match is usually declined, and a refusal sticks for a while. A live bounty
+   * makes a "yes" much likelier — which is the influence model doing its job.
+   */
+  inviteMember(projectId: string, memberId: string): boolean {
+    const project = this.project(projectId);
+    const member = this.member(memberId);
+    if (!project || !member) return false;
+
+    if (project.team.length >= project.teamSize) {
+      this.log(`${project.name}'s team is full (${project.teamSize}).`, 'warn');
+      return false;
+    }
+    if (member.team) {
+      const other = this.project(member.team);
+      this.log(`${member.name} is already on ${other ? other.name : 'something else'}.`, 'warn');
+      return false;
+    }
+    if (member.isCoolingOff(projectId)) {
+      this.log(`${member.name} has already said no to ${project.name}.`, 'warn');
+      return false;
+    }
+
+    const match = member.passionMatch(project.tags);
+    const bounty = project.bounties.includes(project.stage) ? TEAM.bountyAcceptBonus : 0;
+    const chance = Math.min(0.97, TEAM.acceptBase + match * TEAM.acceptFromPassion + bounty);
+    if (!rng.chance(chance)) {
+      member.setCooldown(projectId, TEAM.declineCooldownHours);
+      this.log(`${member.name} passed on ${project.name}. "Not really my thing."`, 'warn');
+      return false;
+    }
+
+    this.addToTeam(project, member);
+    this.log(`${member.name} joined ${project.name}.`, 'good');
+    return true;
+  }
+
+  /** Take somebody off a project. They will not come straight back to it. */
+  releaseMember(projectId: string, memberId: string) {
+    const project = this.project(projectId);
+    const member = this.member(memberId);
+    if (!project || !member) return;
+    this.dropFromTeam(project, member, TEAM.declineCooldownHours / 2);
+    this.log(`${member.name} left ${project.name}.`, 'info');
+  }
+
+  /** §5 — a shipped project pulls in people who care about that kind of thing. */
+  private recruit(project: ProjectData) {
+    const known = new Set(this.members.map((m) => m.id));
+    const pool = APPLICANTS.filter((a) => !known.has(a.id));
+    if (!pool.length) return;
+
+    const tempted = pool
+      .map((data) => {
+        const match = Math.max(0, ...project.tags.map((tag) => data.passions[tag] ?? 0));
+        return { data, match };
+      })
+      .filter((entry) => entry.match >= RECRUIT.matchFloor)
+      .sort((a, b) => b.match - a.match);
+    if (!tempted.length) return;
+
+    const [lo, hi] = RECRUIT.perShip;
+    const count = Math.min(rng.int(lo, hi), tempted.length);
+    for (let i = 0; i < count; i += 1) {
+      const { data } = tempted[i];
+      this.members.push(new MemberEntity({ ...data }, DOOR));
+      this.plans.set(data.id, { attending: false, arriveAt: 0, leaveAt: 0 });
+      this.log(`${data.name} turned up after seeing the ${project.name} write-up.`, 'good');
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -843,10 +945,9 @@ export class Simulation {
         this.log(`Sponsor paid ₺${offer.sponsorCash.toLocaleString('tr-TR')} up front for ${def.name}.`, 'good');
       }
       if (offer.proposerId) {
-        const member = this.members.find((m) => m.id === offer.proposerId);
+        const member = this.member(offer.proposerId);
         if (member) {
-          member.signedUp = { projectId: project.id, stage: 'concept' };
-          member.interest = 1.2;
+          this.addToTeam(project, member, 1.2);
           this.log(`${member.name} signed straight up for ${def.name}.`, 'good');
         }
       }
@@ -881,7 +982,7 @@ export class Simulation {
     this.player.calibrating = true;
   }
 
-  /** Re-pitch: re-roll interest among members who have not signed up. */
+  /** Re-pitch: another go at tempting unallocated people onto the team. */
   repitch(projectId: string) {
     const project = this.project(projectId);
     if (!project) return;
@@ -889,18 +990,16 @@ export class Simulation {
     const stage = STAGE_MAP[project.stage];
     let took = 0;
     for (const m of this.members) {
-      if (m.signedUp || !m.present) continue;
-      const assignment: Assignment = { projectId, stage: project.stage };
-      if (m.isCoolingOff(assignment)) continue;
+      if (m.team || !m.present || project.team.length >= project.teamSize) continue;
+      if (m.isCoolingOff(projectId)) continue;
       const match = m.passionMatch(project.tags) + DRIFT.repitchBonus;
       if (match * (0.45 + stage.appeal * 0.55) >= DRIFT.signupThreshold && rng.chance(0.6)) {
-        m.signedUp = assignment;
-        m.interest = DRIFT.startInterest * (0.5 + match);
+        this.addToTeam(project, m);
         took += 1;
       }
     }
     this.log(
-      took ? `Re-pitched ${project.name}: ${took} signed up.` : `Re-pitched ${project.name}. Nobody bit.`,
+      took ? `Re-pitched ${project.name}: ${took} joined.` : `Re-pitched ${project.name}. Nobody bit.`,
       took ? 'good' : 'warn',
     );
   }
@@ -1041,7 +1140,11 @@ export class Simulation {
   publish() {
     const machines: MachineSnapshot[] = this.machines.map((m) => m.snapshot());
     store.getState().setRuntime({
-      members: this.members.map((m) => m.snapshot()),
+      members: this.members.map((m) => {
+        const snap = m.snapshot();
+        for (const project of this.projects) snap.affinity[project.id] = m.passionMatch(project.tags);
+        return snap;
+      }),
       machines,
       projects: this.projects.map((p) => structuredClone(p)),
       player: this.player.playerSnapshot(),

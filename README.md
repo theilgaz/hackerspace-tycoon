@@ -39,9 +39,15 @@ The simulation imports neither `three` nor the DOM, so a whole playthrough repla
 in milliseconds. That is what makes the balance testable — and it has already caught a
 fabrication soft-lock and a bug where volunteers spent 80% of every visit walking.
 
-**Current state:** Phase 1.5. One garage, three volunteers, one printer — and you. Eighteen
-projects to choose from, arriving through a backlog of catalog picks, member proposals, sponsor
-offers and Reddit trends. You are a maker too, with about seven hours a day shared between
-building things yourself and running the place.
+Every project has a team size, and you allocate people to it — but they're volunteers, so they can
+turn you down, and a refusal sticks. Someone can only be on one project at a time, which is what
+makes running two things at once cost something. Ship something good and people you've never met
+turn up because they saw the write-up.
+
+**Current state:** Phase 1.6. One garage, three volunteers to start, twelve more who show up as
+your reputation grows, one printer — and you. Twenty-four projects from weekend builds to a
+3D-printed motorcycle, arriving through a backlog of catalog picks, member proposals, sponsor
+offers and Reddit trends. You're a maker too, with about seven hours a day shared between building
+things yourself and running the place.
 
 See [CLAUDE.md](./CLAUDE.md) for the full design document.

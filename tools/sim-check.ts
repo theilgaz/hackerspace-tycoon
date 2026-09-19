@@ -31,6 +31,7 @@ const HOURS_PER_TICK = (DT * SPEED) / 2.5;
 type Mode = 'aggressive' | 'attentive' | 'hands-off';
 
 interface Result {
+  members: number;
   shipped: number;
   firstShipDay: number | null;
   days: number;
@@ -48,6 +49,7 @@ function runOnce(seed: number, mode: Mode): Result {
     log: [],
     era: 1,
     shippedCount: 0,
+    reputation: 0,
     backlog: [],
     ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
     runtime: emptyRuntime(),
@@ -90,6 +92,15 @@ function runOnce(seed: number, mode: Mode): Result {
     }
 
     if (mode === 'hands-off') continue;
+
+    // Allocate people: ask the best-matching unallocated member to join.
+    for (const project of sim.projects) {
+      if (project.team.length >= project.teamSize) continue;
+      const candidates = sim.members
+        .filter((m) => !m.team && !m.isCoolingOff(project.id))
+        .sort((a, b) => b.passionMatch(project.tags) - a.passionMatch(project.tags));
+      if (candidates.length) sim.inviteMember(project.id, candidates[0].id);
+    }
 
     // --- the rest is optional effort ---------------------------------------
     for (const project of sim.projects) {
@@ -152,6 +163,7 @@ function runOnce(seed: number, mode: Mode): Result {
   const starved = sim.printer.starved && store.getState().cash < FILAMENT.spoolCost;
   const stuck = starved ? 'broke, no filament' : waiting ? `${waiting.name} waiting on parts` : null;
   return {
+    members: sim.members.length,
     shipped: store.getState().shippedCount,
     firstShipDay,
     days: sim.day,
@@ -174,19 +186,20 @@ for (const mode of ['aggressive', 'attentive', 'hands-off'] as Mode[]) {
   const firstShips = results.filter((r) => r.firstShipDay !== null);
 
   console.log(`\n  ${MAX_DAYS} days — ${RUNS} runs, ${mode} player (seed ${SEED})\n`);
-  console.log('  run   shipped  first ship  failed  bounties  your hours   cash');
-  console.log('  ' + '-'.repeat(64));
+  console.log('  run   shipped  first ship  people  failed  bounties  your hours   cash');
+  console.log('  ' + '-'.repeat(72));
   results.forEach((r, i) => {
     console.log(
       `  ${String(i + 1).padStart(3)}   ${String(r.shipped).padStart(7)}  ` +
-        `${String(r.firstShipDay ?? '—').padStart(10)}  ${String(r.failedPrints).padStart(6)}  ` +
+        `${String(r.firstShipDay ?? '—').padStart(10)}  ${String(r.members).padStart(6)}  ` +
+        `${String(r.failedPrints).padStart(6)}  ` +
         `${String(r.bounties).padStart(8)}  ${r.playerHoursWorked.toFixed(0).padStart(10)}  ` +
         `${String(Math.round(r.cash)).padStart(5)}`,
     );
   });
-  console.log('  ' + '-'.repeat(64));
+  console.log('  ' + '-'.repeat(72));
   console.log(
-    `  avg ${avg((r) => r.shipped).toFixed(1)} shipped · first ship day ` +
+    `  avg ${avg((r) => r.shipped).toFixed(1)} shipped · ${avg((r) => r.members).toFixed(1)} people · first ship day ` +
       `${firstShips.length ? (firstShips.reduce((s, r) => s + r.firstShipDay!, 0) / firstShips.length).toFixed(1) : '—'} · ` +
       `${avg((r) => r.playerHoursWorked).toFixed(0)}h of your time · ${Math.round(avg((r) => r.cash))} cash`,
   );
@@ -194,7 +207,7 @@ for (const mode of ['aggressive', 'attentive', 'hands-off'] as Mode[]) {
   summary.push(
     `  ${mode.padEnd(11)} ${avg((r) => r.shipped).toFixed(1)} shipped   first ship ` +
       `${firstShips.length ? (firstShips.reduce((s, r) => s + r.firstShipDay!, 0) / firstShips.length).toFixed(1) : '—'}   ` +
-      `${avg((r) => r.playerHoursWorked).toFixed(0)}h you`,
+      `${avg((r) => r.playerHoursWorked).toFixed(0)}h you   ${avg((r) => r.members).toFixed(1)} people`,
   );
   if (!firstShips.length) problems += 1;
 }

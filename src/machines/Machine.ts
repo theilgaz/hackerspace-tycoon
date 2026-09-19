@@ -39,6 +39,8 @@ export class Machine {
   readonly consumableMax: number;
   /** Set while a member stands at the machine — lowers failure odds. */
   operatorSkill = 0;
+  /** Kit the space owns that changes the odds, e.g. a filament dry box. */
+  failureModifier = 1;
 
   constructor(def: StationDef, consumableMax = 0) {
     this.def = def;
@@ -82,7 +84,7 @@ export class Machine {
     const operatorTerm = Math.pow(MACHINE.operatorSkillFactor, Math.max(0, this.operatorSkill - 1));
     // Longer jobs are riskier in absolute terms, which is the whole point of the 11-hour print.
     const lengthTerm = 0.75 + job.hoursRequired / 16;
-    return Math.min(0.9, MACHINE.baseJobFailure * calibrationTerm * operatorTerm * lengthTerm);
+    return Math.min(0.9, MACHINE.baseJobFailure * calibrationTerm * operatorTerm * lengthTerm * this.failureModifier);
   }
 
   /** True when the machine physically cannot start work: nothing left to make it from. */

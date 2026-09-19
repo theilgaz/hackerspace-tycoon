@@ -46,7 +46,7 @@ push back against drift — they are the game's clock, not decoration.
 
 ## 3. The Influence Model (§1 consequence)
 
-### Members
+### Members (the space starts with three; the rest arrive — see §5)
 ```
 Member {
   id, name,
@@ -81,8 +81,29 @@ for a deadline. The player raises commitment with mood, not money.
 | **Run an event** | Drone race night, soldering workshop, open house. Mood up, recruitment, dues, attendee→member conversion. | Money + member hours |
 | **Set policy** | Tool certification, clean-up rota, members-only hours, quiet hours. Every rule trades vibe for efficiency. | Mood |
 
-**Design rule:** there must never be an "assign to task" button. If the player is stuck, the answer
-is always one of the five verbs above, not more direct control.
+**Design rule:** there is no "assign to task" button. You allocate people to a *project team*
+(§3b) and they may refuse; you never put a named person on a named stage. If the player is stuck,
+the answer is one of the verbs above, not more direct control.
+
+## 3b. Teams — allocation without obedience
+
+Every project has a **team size** (1 for a weekend build, 8 for the motorcycle) and you allocate
+members to it. This is the player's most direct lever, and it is deliberately not command:
+
+- **Asking is free, but they can say no.** Acceptance is `0.42 + 0.75 × passion match`, plus 0.3
+  if the project carries a live bounty. A refusal sticks for 14 hours — you cannot badger anyone.
+- **One project per person.** That is what makes concurrent projects cost something real. Slots
+  are generous (2 / 4 / 6 by era) precisely so that *people*, not an arbitrary cap, are the limit.
+- **The team persists across stages.** Only drift removes someone, which makes interest decay the
+  thing that actually costs you a team member.
+- **Volunteers still volunteer.** An unallocated member may join something themselves if it
+  excites them, and a proposer joins the moment you pitch their idea.
+- Extra hands help less each time: the second contributes 0.6, and each further one decays by
+  0.85. Eight people are ~3.7× one person, not 8×.
+
+**Weekend builds exist for this.** A one-person, three-day project (phone stand, cable tidy, LED
+badge, fume extractor) can run alongside a long build without consuming the space. They are also
+the early game's teaching tool: a whole pipeline in three days.
 
 ## 3a. You (the player character)
 
@@ -228,11 +249,12 @@ machine maintenance. Note there are no wages — that is the volunteer model's o
 Each era raises rent and unlocks project scale. Eras gate content and pacing; the milestone is a
 checkpoint, not an instant transition — the player chooses when to sign the next lease.
 
-**Implemented so far:** eras grant **concurrent project slots** (1 / 3 / 4) and gate the catalog,
-and advance on projects shipped (1, then 4). The space itself grows in Phase 4 and the real
-milestones — member count, break-even, front page — arrive with Phases 3 and 5. Era 2's three
-slots against one printer is where machine contention starts to bite, and that is the intended
-shape of the mid-game.
+**Implemented so far:** eras grant **concurrent project slots** (2 / 4 / 6), gate the catalog, and
+advance on **cumulative reputation** (550, then 2600) — the sum of the hype of everything shipped.
+Reputation rather than a project count, because three weekend builds otherwise unlocked Era 2 by
+day six; ambition should advance you and volume should barely move the needle. In practice Era 2
+lands around day 60. The space itself grows in Phase 4, and the real milestones — member count,
+break-even, front page — arrive with Phases 3 and 5.
 
 ## 9. Failure (selected: real, hard failure)
 
@@ -332,6 +354,13 @@ of stay (×1.45), the same spread became:
 Apply this test to every verb added in later phases: **events, policies and tool purchases
 must be checked against attendance, not against interest.**
 
+**A gate the player cannot act on reads as a bug, not as pacing.** Era 1 originally allowed one
+concurrent project, so the whole backlog sat there with every Pitch button greyed out for the
+length of a build. It rendered correctly and was still, in effect, broken. Two fixes, both of
+which improved the design: slots became generous so that *people* are the constraint (§3b), and
+weekend builds gave the player something that fits in the gaps. Before gating anything behind a
+cap, check there is something the player can still do.
+
 **Snapshots must be pushed on every action, not only on the clock.** The sim publishes its
 runtime snapshot at 5 Hz from inside `tick()`. Three separate bugs came from that single
 assumption: the shipped state never reached the UI (tick returns early once shipped), every
@@ -354,6 +383,11 @@ Two further findings, both now fixed and worth not re-introducing:
 
 ## 14. Development Priority
 
+**Phase 1.6 — Teams, weekend builds and a growing roster — BUILT.**
+Projects have team sizes and you allocate members to them, with the right to refuse (§3b). Six
+one-to-two person weekend builds sit under the big projects so the backlog is never inert. Twelve
+named applicants join as shipped projects match their passions. Eras advance on reputation.
+
 **Phase 1.5 — The player, and projects as a choice — BUILT.**
 You exist on the grid with a daily hour budget shared between building and managing (§3a).
 Projects come from an 18-entry catalog rather than being hardcoded, arriving through a backlog of
@@ -373,7 +407,8 @@ A playthrough runs 20-36 days depending on how hard the player pushes (§13).
 Phase 2 — Reddit + hype + crowdfunding (the novel layer, on top of a real project).
 Phase 3 — Economy: dues, rent, consumables, the monthly bill, eviction.
 Phase 4 — Space builder: tile painting, machine placement, rooms, power, adjacency.
-Phase 5 — Recruitment: applicant pool, events, policies, mood/commitment loop.
+Phase 5 — Recruitment: events, policies, mood/commitment loop. *(The applicant pool is built:
+twelve named people join when a shipped project matches their passions — see §5.)*
 Phase 6 — Eras 1→3, milestones, lease decisions.
 Phase 7 — Project variety through the motorcycle capstone; certifications, safety, maintenance.
 Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
