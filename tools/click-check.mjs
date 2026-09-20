@@ -131,14 +131,15 @@ async function click(selector, gapMs = 400) {
   return true;
 }
 
-/** Open the wizard from a known state — the Jobs button sits under the backdrop when it is
- *  already open, so clicking it there closes the wizard instead. */
-async function openWizard() {
+/** Open an overlay from a known state — a bar button sits under the backdrop when one is
+ *  already open, so clicking it there closes the overlay instead. */
+async function openPanel(action) {
   if (await evaluate(`document.querySelectorAll('#modal .modal').length > 0`)) {
     await click('#modal header [data-action="jobs-close"]');
   }
-  await click('[data-action="jobs-open"]');
+  await click(`[data-action="${action}"]`);
 }
+const openWizard = () => openPanel('jobs-open');
 
 const results = [];
 const check = async (name, fn) => {
@@ -230,12 +231,15 @@ await check('work on a project (button inside a constantly redrawing panel)', as
   await click('[data-action="work"]');
   return Boolean(await evaluate(`__game.sim.player.project`));
 });
-await check('buy a spool (machines panel redraws every snapshot)', async () => {
+await check('buy a spool (machines overlay redraws every snapshot)', async () => {
   const before = await evaluate(`__store.getState().runtime.machines[0].consumable`);
   await evaluate(`__game.sim.printer.consumable = 100; __game.sim.publish();`);
-  await click('[data-action="filament"]');
+  await openPanel('machines-open');
+  const shown = await evaluate(`document.querySelectorAll('#modal .machine-card').length > 0`);
+  await click('#modal [data-action="filament"]');
   const after = await evaluate(`__store.getState().runtime.machines[0].consumable`);
-  return after > 100 && before !== undefined;
+  await click('#modal header [data-action="jobs-close"]');
+  return shown && after > 100 && before !== undefined;
 });
 await check('player stays on the project across stage changes', async () =>
   evaluate(`

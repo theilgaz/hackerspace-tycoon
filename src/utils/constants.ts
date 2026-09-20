@@ -249,9 +249,14 @@ export const PLAYER = {
   walkSpeed: 22,
 };
 
-/** What each management verb costs you in hours (§3). */
+/**
+ * What each management verb costs you in hours (§3). Pitching is free: starting something
+ * is a decision, not labour, and gating it on having hours left only meant a project you
+ * had already chosen had to wait for tomorrow for no reason. The bill of materials, which
+ * a pitch now pays up front, is the real brake on starting too much.
+ */
 export const VERB_HOURS: Record<string, number> = {
-  pitch: 2,
+  pitch: 0,
   repitch: 1,
   bounty: 1,
   order: 1,

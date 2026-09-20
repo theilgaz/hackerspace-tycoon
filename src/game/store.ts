@@ -1,7 +1,15 @@
 import { createStore } from 'zustand/vanilla';
-import type { BacklogEntry, Identity, LogEntry, MachineType, RuntimeSnapshot } from './types';
+import type {
+  BacklogEntry,
+  Identity,
+  LogEntry,
+  MachineType,
+  RuntimeSnapshot,
+  ShippedRecord,
+} from './types';
 import type { Ceremony } from '@/systems/RivalSystem';
 import { START_CASH, eraDef } from '@/utils/constants';
+import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
 import { uid } from '@/utils/format';
 
 const MAX_LOG = 140;
@@ -13,6 +21,7 @@ const MAX_LOG = 140;
 export interface GameState {
   /** Null until the player has named and badged the place. */
   identity: Identity | null;
+  difficulty: DifficultyKey;
   started: boolean;
   /** Set when an awards night resolves; cleared when the player dismisses it. */
   ceremony: Ceremony | null;
@@ -26,6 +35,8 @@ export interface GameState {
   cash: number;
   era: number;
   shippedCount: number;
+  /** Everything that made it out of the door, newest last. */
+  shipped: ShippedRecord[];
   /** Cumulative hype from everything shipped; drives era progression and Phase 2. */
   reputation: number;
   /** Applicant ids who would consider joining; hiring is a decision, not automatic. */
@@ -37,7 +48,7 @@ export interface GameState {
   runtime: RuntimeSnapshot;
   log: LogEntry[];
 
-  begin: (identity: Identity) => void;
+  begin: (identity: Identity, difficulty: DifficultyKey) => void;
   setCeremony: (ceremony: Ceremony | null) => void;
   setSpeed: (speed: number) => void;
   togglePause: () => void;
@@ -54,7 +65,7 @@ export interface GameState {
   openApplicant: (id: string) => void;
   closeApplicant: (id: string) => void;
   ownMachine: (type: MachineType) => void;
-  recordShipped: (hype: number) => void;
+  recordShipped: (hype: number, record: ShippedRecord) => void;
   recordReputation: (amount: number) => void;
 }
 
@@ -69,6 +80,7 @@ export const emptyRuntime = (): RuntimeSnapshot => ({
 
 export const store = createStore<GameState>((set, get) => ({
   identity: null,
+  difficulty: 'normal',
   started: false,
   ceremony: null,
   ceremonies: [],
@@ -79,6 +91,7 @@ export const store = createStore<GameState>((set, get) => ({
   cash: START_CASH,
   era: 1,
   shippedCount: 0,
+  shipped: [],
   reputation: 0,
   ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
   backlog: [],
@@ -86,7 +99,15 @@ export const store = createStore<GameState>((set, get) => ({
   runtime: emptyRuntime(),
   log: [],
 
-  begin: (identity) => set({ identity, started: true, paused: false, speed: 1 }),
+  begin: (identity, difficulty) =>
+    set({
+      identity,
+      difficulty,
+      cash: DIFFICULTY_MAP[difficulty].startCash,
+      started: true,
+      paused: false,
+      speed: 1,
+    }),
   setCeremony: (ceremony) =>
     set((s) => ({
       ceremony,
@@ -136,12 +157,12 @@ export const store = createStore<GameState>((set, get) => ({
       return { reputation, era };
     }),
 
-  recordShipped: (hype) =>
+  recordShipped: (hype, record) =>
     set((s) => {
       const shippedCount = s.shippedCount + 1;
       const reputation = s.reputation + hype;
       // Minimal era progression: slots and catalog only (CLAUDE.md §8, Phase 6 completes it).
       const era = reputation >= eraDef(s.era).repToAdvance ? Math.min(3, s.era + 1) : s.era;
-      return { shippedCount, reputation, era };
+      return { shippedCount, reputation, era, shipped: [...s.shipped, record] };
     }),
 }));

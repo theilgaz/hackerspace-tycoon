@@ -325,6 +325,22 @@ export interface ScoreRow {
   isPlayer: boolean;
 }
 
+/** A project that made it out of the door. */
+export interface ShippedRecord {
+  id: string;
+  defId: string;
+  name: string;
+  category: ProjectCategory;
+  day: number;
+  quality: number;
+  payout: number;
+  hype: number;
+  /** How long it took, start to ship. */
+  days: number;
+  testAttempts: number;
+  failedPrints: number;
+}
+
 /** What the player named and badged their space. */
 export interface Identity {
   name: string;

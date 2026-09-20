@@ -3,6 +3,19 @@ import { SpaceView } from '@/render/SpaceView';
 import { Simulation } from '@/systems/Simulation';
 import { UI } from '@/ui/ui';
 import { store } from './store';
+import { STATION_MAP } from '@/machines/layout';
+import { pct } from '@/utils/format';
+import type { MachineType } from './types';
+
+/** What a station is for, shown when you point at one that has no queue of its own. */
+const STATION_ROLE: Partial<Record<MachineType, string>> = {
+  'cad-desk': 'modelling and write-ups',
+  bench: 'soldering and electronics',
+  assembly: 'putting it together',
+  lounge: 'rest and arguing',
+  drybox: 'keeps the filament dry',
+  reflow: 'SMD assembly',
+};
 import { LOGOS } from '@/utils/rivals';
 import '@/ui/styles.css';
 
@@ -14,6 +27,9 @@ export class Game {
   private readonly ui: UI;
   private readonly labels: HTMLElement;
   private last = performance.now();
+  /** Station under the cursor, for the hover label. */
+  private hovered: string | null = null;
+  private pointer = { x: 0, y: 0 };
 
   constructor(canvas: HTMLCanvasElement, labels: HTMLElement, uiRoot: HTMLElement) {
     this.scene = new SceneManager(canvas);
@@ -54,9 +70,9 @@ export class Game {
       buyFilament: () => act(() => sim.buyFilament()),
       hire: (memberId) => act(() => sim.hire(memberId)),
       hireCost: (memberId) => sim.hireCost(memberId),
-      begin: (name, logo) => {
+      begin: (name, logo, difficulty) => {
         const badge = LOGOS[logo] ?? LOGOS[0];
-        store.getState().begin({ name, icon: badge.icon, colour: badge.colour });
+        store.getState().begin({ name, icon: badge.icon, colour: badge.colour }, difficulty);
         sim.publish();
       },
       dismissCeremony: () => store.getState().setCeremony(null),
@@ -68,6 +84,14 @@ export class Game {
     // UI reads the store and nothing else (CLAUDE.md §11).
     store.subscribe((state) => this.ui.render(state));
     this.ui.render(store.getState());
+
+    canvas.addEventListener('pointermove', (event) => {
+      this.pointer = { x: event.clientX, y: event.clientY };
+    });
+    canvas.addEventListener('pointerleave', () => {
+      this.hovered = null;
+      this.view.setHovered(null);
+    });
 
     this.bindKeys();
     requestAnimationFrame(this.loop);
@@ -94,6 +118,11 @@ export class Game {
     if (state.started && !state.paused) this.sim.tick(dt, state.speed);
 
     this.view.update(state.runtime, dt);
+    const over = this.scene.pick(this.pointer.x, this.pointer.y, this.view.pickables);
+    if (over !== this.hovered) {
+      this.hovered = over;
+      this.view.setHovered(over);
+    }
     this.renderLabels();
     this.scene.render();
     requestAnimationFrame(this.loop);
@@ -116,11 +145,11 @@ export class Game {
     }
     if (runtime.player?.present) personLabel('player', 'You');
 
+    // Machines that are doing something say so; everything else only speaks when pointed at.
     for (const machine of runtime.machines) {
       const world = this.view.machineWorld(machine.id);
       if (!world) continue;
-      const p = this.scene.project(world);
-      let text = 'idle';
+      let text = '';
       let tone = '';
       if (machine.current) {
         const left = machine.current.hoursRequired - machine.current.progress;
@@ -131,7 +160,30 @@ export class Game {
         text = 'out of filament';
         tone = 'bad';
       }
+      if (!text) continue;
+      const p = this.scene.project(world);
       parts.push(`<div class="label ${tone}" style="left:${p.x}px;top:${p.y}px">${text}</div>`);
+    }
+
+    if (this.hovered) {
+      const station = STATION_MAP[this.hovered];
+      const world = this.view.stationWorldById(this.hovered);
+      if (station && world) {
+        const machine = runtime.machines.find((m) => m.id === this.hovered);
+        const detail = machine
+          ? machine.current
+            ? `${pct(machine.current.progress / machine.current.hoursRequired)} · ${machine.queue.length} queued`
+            : machine.queue.length
+              ? `${machine.queue.length} queued`
+              : 'idle'
+          : STATION_ROLE[station.type] ?? '';
+        const p = this.scene.project(world);
+        parts.push(
+          `<div class="label label--station" style="left:${p.x}px;top:${p.y}px">
+            <b>${station.label}</b>${detail ? `<span>${detail}</span>` : ''}
+          </div>`,
+        );
+      }
     }
 
     this.labels.innerHTML = parts.join('');

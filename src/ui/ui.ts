@@ -33,6 +33,7 @@ import {
 import { clock, dayName, hours, money, pct } from '@/utils/format';
 import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
+import { DIFFICULTIES, type DifficultyKey } from '@/utils/difficulty';
 import { projectProgress } from '@/systems/ProjectSystem';
 import { SHELVE } from '@/utils/constants';
 
@@ -58,7 +59,7 @@ export interface UIHandlers {
   buyFilament(): void;
   hire(memberId: string): void;
   hireCost(memberId: string): number;
-  begin(name: string, logo: number): void;
+  begin(name: string, logo: number, difficulty: DifficultyKey): void;
   dismissCeremony(): void;
   scoreboard(): ScoreRow[];
   allocation(): { used: number; total: number };
@@ -101,6 +102,14 @@ const SOURCE_BADGE: Record<BacklogEntry['source'], { label: string; cls: string 
 };
 
 type JobStep = 'category' | 'project' | 'crew';
+type RankKey = 'projectsThisYear' | 'projects' | 'members' | 'cash' | 'reputationThisYear' | 'reputation';
+
+/** Narrow enough to keep six numeric columns comparable at a glance. */
+function compactMoney(value: number): string {
+  if (Math.abs(value) >= 1_000_000) return `₺${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1000) return `₺${(value / 1000).toFixed(1)}k`;
+  return `₺${Math.round(value)}`;
+}
 type SizeFilter = 'any' | 'solo' | 'small' | 'big';
 
 /**
@@ -155,9 +164,11 @@ export class UI {
   private htmlCache = new Map<string, string>();
 
   /** Which build-menu panel is open, if any. */
-  private openModal: 'jobs' | 'people' | 'ranking' | null = null;
+  private openModal: 'jobs' | 'people' | 'ranking' | 'machines' | 'projects' | null = null;
   /** Start screen state; the sim is not running yet so nothing clobbers it. */
-  private start = { name: '', logo: 0 };
+  private start = { name: '', logo: 0, difficulty: 'normal' as DifficultyKey };
+  /** Which column the leaderboard is sorted by. */
+  private rankSort: { key: RankKey; dir: 1 | -1 } = { key: 'reputation', dir: -1 };
 
   /** The Jobs wizard: pick a genre, choose the build, crew it up. */
   private jobs: {
@@ -180,13 +191,13 @@ export class UI {
     el.innerHTML = html;
   }
   private topbar!: HTMLElement;
+  private clockPanel!: HTMLElement;
   private bottombar!: HTMLElement;
   private modal!: HTMLElement;
   private startEl!: HTMLElement;
   private left!: HTMLElement;
   private you!: HTMLElement;
   private members!: HTMLElement;
-  private machines!: HTMLElement;
   private log!: HTMLElement;
 
   constructor(root: HTMLElement, handlers: UIHandlers) {
@@ -198,26 +209,26 @@ export class UI {
 
   private build() {
     this.root.innerHTML = `
+      <div class="panel" id="clockpanel"></div>
       <div class="panel" id="topbar"></div>
       <div class="panel" id="left"><h2>On the bench</h2><div class="body"></div></div>
       <div id="right">
+        <div class="panel" id="log"><h2>Log</h2><div class="body"></div></div>
         <div class="panel" id="you"><h2>You</h2><div class="body"></div></div>
         <div class="panel" id="members"><h2>The People</h2><div class="body"></div></div>
-        <div class="panel" id="machines"><h2>Machines</h2><div class="body"></div></div>
       </div>
-      <div class="panel" id="log"><h2>Log</h2><div class="body"></div></div>
       <div id="bottombar"></div>
       <div id="modal"></div>
       <div id="start"></div>
     `;
     this.topbar = this.root.querySelector('#topbar')!;
+    this.clockPanel = this.root.querySelector('#clockpanel')!;
     this.bottombar = this.root.querySelector('#bottombar')!;
     this.modal = this.root.querySelector('#modal')!;
     this.startEl = this.root.querySelector('#start')!;
     this.left = this.root.querySelector('#left .body')!;
     this.you = this.root.querySelector('#you .body')!;
     this.members = this.root.querySelector('#members .body')!;
-    this.machines = this.root.querySelector('#machines .body')!;
     this.log = this.root.querySelector('#log .body')!;
   }
 
@@ -242,8 +253,25 @@ export class UI {
           this.jobs = { open: true, step: 'category', source: null, size: 'any', defId: null, offerId: null };
           this.rerender();
           break;
+        case 'rank-sort': {
+          const key = value as RankKey;
+          this.rankSort =
+            this.rankSort.key === key
+              ? { key, dir: this.rankSort.dir === -1 ? 1 : -1 }
+              : { key, dir: -1 };
+          this.rerender();
+          break;
+        }
         case 'ranking-open':
           this.openModal = 'ranking';
+          this.rerender();
+          break;
+        case 'projects-open':
+          this.openModal = 'projects';
+          this.rerender();
+          break;
+        case 'machines-open':
+          this.openModal = 'machines';
           this.rerender();
           break;
         case 'ceremony-close':
@@ -255,6 +283,11 @@ export class UI {
           this.start.logo = Number(value);
           this.rerender();
           break;
+        case 'difficulty':
+          this.start.name = this.nameField();
+          this.start.difficulty = value as DifficultyKey;
+          this.rerender();
+          break;
         case 'shuffle-name': {
           const pool = NAME_SUGGESTIONS.filter((n) => n !== this.nameField());
           this.start.name = pool[Math.floor(Math.random() * pool.length)] ?? NAME_SUGGESTIONS[0];
@@ -264,7 +297,7 @@ export class UI {
         case 'begin': {
           const name = this.nameField().trim();
           if (!name) break;
-          h.begin(name, this.start.logo);
+          h.begin(name, this.start.logo, this.start.difficulty);
           break;
         }
         case 'people-open':
@@ -397,7 +430,6 @@ export class UI {
     this.renderProjects(state);
     this.renderYou(state);
     this.renderMembers(state);
-    this.renderMachines(state);
     this.renderLog(state);
     this.renderBottomBar(state);
     this.renderModal(state);
@@ -445,6 +477,17 @@ export class UI {
             ).join('')}
           </div>
 
+          <div class="ui-label" style="margin:16px 0 6px">How hard should the others push?</div>
+          <div class="diff-grid">
+            ${DIFFICULTIES.map(
+              (level) => `<button class="diff-pick ${level.key === this.start.difficulty ? 'on' : ''}"
+                data-action="difficulty" data-value="${level.key}">
+                <b>${level.label}</b>
+                <span>${esc(level.blurb)}</span>
+              </button>`,
+            ).join('')}
+          </div>
+
           <button class="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" style="margin-top:18px"
             data-action="begin">Open the doors</button>
         </div>
@@ -464,6 +507,25 @@ export class UI {
     const allocation = this.handlers.allocation();
     const season = state.runtime.season;
     const seasonPct = (season.dayOfYear / season.length) * 100;
+    const daysLeft = season.length - season.dayOfYear;
+
+    // The clock lives in its own corner: it is the one thing you glance at constantly,
+    // and it changes every frame, so it has no business sharing a box with the totals.
+    this.setHTML(
+      this.clockPanel,
+      'clock',
+      `<b class="clock"></b>
+       <span class="day">${dayName(state.day)} · day ${state.day}</span>
+       <div class="speeds">
+         ${speedButton(0, '❙❙')}
+         ${TIME.speeds.map((s) => speedButton(s, `${s}×`)).join('')}
+       </div>`,
+    );
+    const clockEl = this.clockPanel.querySelector('.clock');
+    if (clockEl) clockEl.textContent = clock(state.simTime);
+
+    // Money reads as a state, not a number: in the black, running low, or under water.
+    const cashTone = state.cash < 0 ? 'bad' : state.cash < FILAMENT.spoolCost ? 'warn' : 'good';
     this.setHTML(this.topbar, 'topbar', `
       <div class="row" style="gap:8px">
         <span class="icon-chip" style="--tone:${state.identity?.colour ?? 'var(--primary)'};width:28px;height:28px">
@@ -473,17 +535,7 @@ export class UI {
           <span>${eraDef(state.era).name}</span></div>
       </div>
       <div class="sep"></div>
-      <div class="stat">
-        <b class="clock"></b>
-        <span class="day">${dayName(state.day)} · day ${state.day}</span>
-      </div>
-      <div class="sep"></div>
-      <div class="speeds">
-        ${speedButton(0, '❙❙')}
-        ${TIME.speeds.map((s) => speedButton(s, `${s}×`)).join('')}
-      </div>
-      <div class="sep"></div>
-      <div class="stat"><b>${money(state.cash)}</b><span>cash</span></div>
+      <div class="stat"><b class="cash cash--${cashTone}">${money(state.cash)}</b><span>cash</span></div>
       <div class="stat"><b>${state.runtime.projects.length}</b><span>projects</span></div>
       <div class="stat" title="somebody can only be on one project at a time">
         <b>${allocation.used}/${allocation.total}</b><span>allocated</span>
@@ -499,38 +551,55 @@ export class UI {
       </div>
       <div class="sep"></div>
       <button class="season" data-action="ranking-open"
-        title="Year ${season.year} · ${season.length - season.dayOfYear} days to the awards">
+        title="Year ${season.year} · ${daysLeft} days to the awards">
         <span class="season-label">Year ${season.year}</span>
         <span class="season-bar"><i style="width:${seasonPct.toFixed(1)}%"></i></span>
-        <span class="season-left">${season.length - season.dayOfYear}d</span>
+        <span class="season-left">${daysLeft}d</span>
       </button>
     `);
-    // Text-only update: leaves the speed buttons' DOM untouched.
-    const clockEl = this.topbar.querySelector('.clock');
-    if (clockEl) clockEl.textContent = clock(state.simTime);
   }
 
   /**
-   * The build menu. Jobs is the only corner for now; Shop, Events and the space builder
-   * land here in later phases (CLAUDE.md §14).
+   * The build menu. Shop, Events and the space builder land here in later phases
+   * (CLAUDE.md §14). Machines sits here rather than in a permanent sidebar: a queue you
+   * only touch a few times a day does not earn a third of the right-hand column.
    */
   private renderBottomBar(state: GameState) {
     const offers = state.backlog.length;
-    const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
-    const canPitch = hoursLeft >= VERB_HOURS.pitch;
+    const machines = state.runtime.machines;
+    const jobs = machines.reduce((n, m) => n + m.queue.length + (m.current ? 1 : 0), 0);
+    // The one thing the bar must say from across the room: something needs a human.
+    const needsHand = machines.some(
+      (m) =>
+        m.calibration < MACHINE.calibrationWarning ||
+        (m.consumableMax > 0 && m.consumable < FILAMENT.lowWarning),
+    );
     this.setHTML(
       this.bottombar,
       'bottombar',
       `<button class="bar-item ${this.openModal === 'jobs' ? 'active' : ''}" data-action="jobs-open"
-         title="${canPitch ? 'Start something new' : 'No hours left today to write a pitch'}">
+         title="Start something new">
          ${icon('clipboard', 'ui-icon bar-icon')}
          <span class="bar-label">Jobs</span>
          ${offers ? `<i class="pip">${offers}</i>` : ''}
+       </button>
+       <button class="bar-item ${this.openModal === 'projects' ? 'active' : ''}" data-action="projects-open"
+         title="Everything on, waiting and done">
+         ${icon('clipboard', 'ui-icon bar-icon')}
+         <span class="bar-label">Projects</span>
+         ${state.runtime.projects.length ? `<i class="pip">${state.runtime.projects.length}</i>` : ''}
        </button>
        <button class="bar-item ${this.openModal === 'ranking' ? 'active' : ''}" data-action="ranking-open"
          title="How the other spaces are doing">
          ${icon('flame', 'ui-icon bar-icon')}
          <span class="bar-label">Ranking</span>
+       </button>
+       <button class="bar-item ${this.openModal === 'machines' ? 'active' : ''} ${needsHand ? 'bar-item--alert' : ''}"
+         data-action="machines-open"
+         title="${needsHand ? 'A machine wants calibrating or feeding' : 'The shop floor and its queues'}">
+         ${icon('printer', 'ui-icon bar-icon')}
+         <span class="bar-label">Machines</span>
+         ${jobs ? `<i class="pip">${jobs}</i>` : ''}
        </button>
        <button class="bar-item ${this.openModal === 'people' ? 'active' : ''}" data-action="people-open"
          title="Who is here, and who you could take on">
@@ -594,37 +663,130 @@ export class UI {
 
   // --- ranking --------------------------------------------------------------
 
+  /**
+   * A table, not a list of cards. The whole point of this panel is comparison, and cards
+   * with wrapping badges give you nothing to read down. Every column is sortable, and the
+   * four that decide an award are marked, because "who is going to beat me to Deepest
+   * Pockets" is the actual question being asked here.
+   */
   private rankingBody(state: GameState): { head: string; content: string; foot: string } {
-    const rows = this.handlers.scoreboard();
     const season = state.runtime.season;
     const daysLeft = season.length - season.dayOfYear;
-    const content = rows
+
+    const columns: {
+      key: RankKey;
+      label: string;
+      title: string;
+      award?: string;
+      value: (row: ScoreRow) => number;
+      format: (row: ScoreRow) => string;
+    }[] = [
+      {
+        key: 'projectsThisYear',
+        label: 'Ships',
+        title: 'Shipped this year',
+        award: 'Most Projects',
+        value: (r) => r.projectsThisYear,
+        format: (r) => String(r.projectsThisYear),
+      },
+      {
+        key: 'projects',
+        label: 'All',
+        title: 'Shipped all time',
+        value: (r) => r.projects,
+        format: (r) => String(r.projects),
+      },
+      {
+        key: 'members',
+        label: 'Crew',
+        title: 'People',
+        award: 'Biggest Crew',
+        value: (r) => r.members,
+        format: (r) => String(r.members),
+      },
+      {
+        key: 'cash',
+        label: 'Cash',
+        title: 'Balance',
+        award: 'Deepest Pockets',
+        value: (r) => r.cash,
+        format: (r) => compactMoney(r.cash),
+      },
+      {
+        key: 'reputationThisYear',
+        label: 'Rep yr',
+        title: 'Reputation earned this year',
+        award: 'Space of the Year',
+        value: (r) => r.reputationThisYear,
+        format: (r) => r.reputationThisYear.toLocaleString('tr-TR'),
+      },
+      {
+        key: 'reputation',
+        label: 'Rep',
+        title: 'Reputation all time',
+        value: (r) => r.reputation,
+        format: (r) => r.reputation.toLocaleString('tr-TR'),
+      },
+    ];
+
+    const active = columns.find((c) => c.key === this.rankSort.key) ?? columns[5];
+    const rows = [...this.handlers.scoreboard()].sort(
+      (a, b) => (active.value(a) - active.value(b)) * this.rankSort.dir,
+    );
+    // The leader of each column, so a cell can be marked without re-sorting six times.
+    const leaders = new Map(
+      columns.map((column) => [
+        column.key,
+        rows.reduce((best, row) => (column.value(row) > column.value(best) ? row : best), rows[0]).id,
+      ]),
+    );
+
+    const head = columns
+      .map(
+        (column) => `<th class="${column.award ? 'award-col' : ''} ${column.key === this.rankSort.key ? 'sorted' : ''}"
+          title="${column.title}${column.award ? ` — decides ${column.award}` : ''}">
+          <button data-action="rank-sort" data-value="${column.key}">
+            ${column.label}${
+              column.key === this.rankSort.key
+                ? `<i class="sort-dir">${this.rankSort.dir === -1 ? '▾' : '▴'}</i>`
+                : ''
+            }
+          </button>
+        </th>`,
+      )
+      .join('');
+
+    const body = rows
       .map((row, index) => {
         const blurb = row.isPlayer ? 'Your space' : RIVAL_MAP[row.id]?.blurb ?? '';
-        return `<div class="ui-row ${row.isPlayer ? 'award-won' : ''}" style="cursor:default">
-          <span class="rank-no">${index + 1}</span>
-          <span class="icon-chip" style="--tone:${row.colour}">${icon(row.icon as IconName, 'ui-icon ui-icon--lg')}</span>
-          <span class="ui-row__main">
-            <span class="row between" style="gap:8px">
-              <span class="ui-title">${esc(row.name)}</span>
-              <span class="ui-badge ${row.isPlayer ? 'ui-badge--accent' : ''}">${row.reputation} rep</span>
-            </span>
-            <p class="ui-desc" style="margin:3px 0 0">${esc(blurb)}</p>
-            <span class="ui-row__meta">
-              <span class="ui-badge" title="shipped this year">${icon('check')}${row.projectsThisYear} this year</span>
-              <span class="ui-badge" title="all time">${icon('package')}${row.projects} total</span>
-              <span class="ui-badge">${icon('users')}${row.members}</span>
-              <span class="ui-badge">${icon('coins')}${money(row.cash)}</span>
-            </span>
-          </span>
-        </div>`;
+        return `<tr class="${row.isPlayer ? 'me' : ''}" title="${esc(blurb)}">
+          <td class="rank-cell">${index + 1}</td>
+          <td class="space-cell">
+            <span class="space-dot" style="--tone:${row.colour}">${icon(row.icon as IconName)}</span>
+            <span class="space-name">${esc(row.name)}</span>
+          </td>
+          ${columns
+            .map(
+              (column) => `<td class="num ${column.key === this.rankSort.key ? 'sorted' : ''}
+                ${leaders.get(column.key) === row.id ? 'lead' : ''}">${column.format(row)}</td>`,
+            )
+            .join('')}
+        </tr>`;
       })
       .join('');
+
     return {
-      head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>The other spaces</b></div>`,
-      content: `<div class="ui-label" style="margin-bottom:9px">Year ${season.year} · ${daysLeft} days to the awards</div>${content}`,
+      head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>The other spaces</b>
+        <span class="ui-badge">Year ${season.year}</span>
+        <span class="ui-badge${daysLeft <= 10 ? ' ui-badge--accent' : ''}">${daysLeft}d to the awards</span>
+      </div>`,
+      content: `<table class="rank-table">
+        <thead><tr><th></th><th class="space-head">Space</th>${head}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>`,
       foot: `<span class="ui-desc" style="font-size:10.5px">
-        Awards are judged on the year just gone, so a bad year costs you even if you are ahead overall.
+        <b class="award-key">◆</b> decides an award, judged on the year just gone — so a quiet year
+        costs you even while you are ahead overall.
       </span>`,
     };
   }
@@ -640,12 +802,16 @@ export class UI {
         ? this.peopleBody(state)
         : this.openModal === 'ranking'
           ? this.rankingBody(state)
-          : this.jobsBody(state);
+          : this.openModal === 'machines'
+            ? this.machinesBody(state)
+            : this.openModal === 'projects'
+              ? this.projectsBody(state)
+              : this.jobsBody(state);
     this.setHTML(
       this.modal,
       'modal',
       `<div class="modal-backdrop" data-action="jobs-close">
-        <div class="modal" data-action="noop">
+        <div class="modal ${this.openModal === 'machines' ? 'modal--fit' : ''}" data-action="noop">
           <header>
             ${body.head}
             <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="jobs-close">
@@ -775,8 +941,8 @@ export class UI {
                </button>`
         }
         <span class="ui-desc" style="font-size:10.5px">
-          A pitch costs ${VERB_HOURS.pitch}h of your day. No limit on how many run at once —
-          people are.
+          Pitching is free and orders the parts there and then. No limit on how many run at
+          once — people are.
         </span>`,
     };
   }
@@ -882,9 +1048,6 @@ export class UI {
     const entry = this.jobs.offerId
       ? state.backlog.find((candidate) => candidate.id === this.jobs.offerId)
       : undefined;
-    const picked = this.draftTeams.get(def.id) ?? new Set<string>();
-    const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
-
     // The commit step has room to spare, so show what is actually being committed to.
     // It doubles as the place the genre's stage names are introduced.
     const stages = STAGE_ORDER.map((key) => {
@@ -941,15 +1104,24 @@ export class UI {
         </div>
         <div>${parts}</div>
       </div>
+      ${
+        def.bomCost > state.cash
+          ? `<p class="defect" style="margin:0 0 8px">${icon('package')} You cannot cover the
+             ${money(def.bomCost)} bill of materials. You can still pitch it, but nothing can be
+             assembled until the parts are ordered.</p>`
+          : ''
+      }
       <button class="ui-btn ui-btn--primary ui-btn--lg pitch-cta" data-action="pitch"
-        data-id="${def.id}" data-id2="${entry?.id ?? ''}"
-        ${hoursLeft >= VERB_HOURS.pitch ? '' : 'disabled'}>
-        ${
-          hoursLeft >= VERB_HOURS.pitch
-            ? `Pitch ${esc(def.name)}${picked.size ? ` with ${picked.size}` : ' solo'} · ${VERB_HOURS.pitch}h`
-            : 'No hours left today'
-        }
+        data-id="${def.id}" data-id2="${entry?.id ?? ''}">
+        Pitch ${esc(def.name)}${def.bomCost ? ` · ${money(def.bomCost)}` : ''}
       </button>
+      ${
+        def.bomCost > 0 && def.bomCost <= state.cash
+          ? `<p class="ui-desc" style="margin:7px 0 0;text-align:center;font-size:10.5px">
+               Leaves you ${money(state.cash - def.bomCost)}
+             </p>`
+          : ''
+      }
     `;
   }
 
@@ -1010,8 +1182,7 @@ export class UI {
     if (!projects.length) {
       this.setHTML(this.left, 'left', `
         <p class="empty">Nothing on the bench.</p>
-        <p class="blurb">Open <b>Jobs</b> at the bottom of the screen and pitch something. Writing a
-        pitch up properly costs ${VERB_HOURS.pitch}h of your day.</p>
+        <p class="blurb">Open <b>Jobs</b> at the bottom of the screen and pitch something.</p>
       `);
       return;
     }
@@ -1366,74 +1537,205 @@ export class UI {
 
   // --- machines -------------------------------------------------------------
 
-  private renderMachines(state: GameState) {
-    if (!state.runtime.machines.length) {
-      this.setHTML(this.machines, 'machines', `<p class="muted">No machines.</p>`);
-      return;
-    }
-    this.setHTML(
-      this.machines,
-      'machines',
-      state.runtime.machines.map((m) => this.machineCard(m, state)).join('<div class="rule"></div>'),
-    );
+  /** The shop floor: every machine, what it is chewing on, and what is behind it. */
+  private machinesBody(state: GameState): { head: string; content: string; foot: string } {
+    const machines = state.runtime.machines;
+    const running = machines.filter((m) => m.current).length;
+    const queued = machines.reduce((n, m) => n + m.queue.length, 0);
+    const content = machines.length
+      ? `<div class="ui-grid machine-grid">
+          ${machines.map((m) => this.machineCard(m, state)).join('')}
+        </div>`
+      : `<p class="ui-desc">Nothing on the floor yet.</p>`;
+    return {
+      head: `<div class="modal-head">${icon('printer', 'ui-icon ui-icon--lg')}<b>The shop floor</b>
+        <span class="ui-badge${running ? ' ui-badge--accent' : ''}">${running} running</span>
+        <span class="ui-badge">${queued} queued</span>
+      </div>`,
+      content,
+      foot: `<span class="ui-desc" style="font-size:10.5px">
+        Jobs run on the clock, not on attendance — a 22-hour print carries on through an empty space.
+      </span>`,
+    };
   }
 
   private machineCard(machine: MachineSnapshot, state: GameState): string {
     const projectName = (id: string) => state.runtime.projects.find((p) => p.id === id)?.name ?? '';
-    const calTone =
-      machine.calibration < MACHINE.calibrationWarning ? 'bad' : machine.calibration < 0.75 ? 'warn' : 'good';
-    const riskClass = machine.risk > 0.35 ? 'danger' : machine.risk > 0.2 ? 'hot' : '';
+    const job = machine.current;
+    const calLow = machine.calibration < MACHINE.calibrationWarning;
+    const filamentLow = machine.consumableMax > 0 && machine.consumable < FILAMENT.lowWarning;
+    const riskTone = machine.risk > 0.35 ? 'var(--destructive)' : machine.risk > 0.2 ? 'var(--warning)' : 'var(--muted-foreground)';
 
-    const current = machine.current
-      ? `<div class="row between" style="margin-bottom:4px">
-           <span>${esc(machine.current.partName)}</span>
-           <span class="mono muted">${machine.current.progress.toFixed(1)}/${machine.current.hoursRequired}h</span>
+    const status = job
+      ? `<span class="ui-badge ui-badge--accent">${icon('printer')}running</span>`
+      : machine.queue.length
+        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('clock')}waiting</span>`
+        : `<span class="ui-badge">idle</span>`;
+
+    const left = job
+      ? `<div class="row between" style="gap:8px;margin-bottom:5px">
+           <span class="ui-title" style="font-size:12.5px">${esc(job.partName)}</span>
+           <span class="mono" style="font-size:10.5px;color:var(--muted-foreground)">
+             ${job.progress.toFixed(1)}/${job.hoursRequired}h
+           </span>
          </div>
-         <div class="muted" style="font-size:10.5px;margin-bottom:4px">${esc(projectName(machine.current.projectId))}</div>
-         ${bar(machine.current.progress, machine.current.hoursRequired)}
-         <div class="row between" style="margin-top:6px">
-           <span class="muted" style="font-size:11px">failure risk</span>
-           <span class="risk ${riskClass}">${pct(machine.risk)}</span>
+         <p class="ui-desc" style="margin:0 0 7px;font-size:10.5px">${esc(projectName(job.projectId))}</p>
+         <div class="bar"><i style="width:${((job.progress / job.hoursRequired) * 100).toFixed(1)}%"></i></div>
+         <div class="row between" style="margin-top:7px">
+           <span class="ui-desc" style="font-size:10.5px">failure risk</span>
+           <span class="mono" style="font-size:11px;color:${riskTone}">${pct(machine.risk)}</span>
          </div>`
-      : `<div class="queue-empty">Idle.</div>`;
+      : `<p class="ui-desc" style="margin:0">Nothing on it. ${
+          machine.queue.length ? 'The queue starts as soon as it can.' : 'Queue a part from a project.'
+        }</p>`;
+
+    const meters = `
+      <div class="meter"><label>calibration</label>${bar(machine.calibration, 1, calLow ? 'bad' : machine.calibration < 0.75 ? 'warn' : 'good')}</div>
+      ${
+        machine.consumableMax > 0
+          ? `<div class="meter"><label>filament</label>${bar(machine.consumable, machine.consumableMax, filamentLow ? 'warn' : '')}
+               <span class="mono" style="font-size:10px;color:var(--subtle-foreground)">${Math.round(machine.consumable)}g</span>
+             </div>`
+          : ''
+      }`;
+
+    const actions = machine.consumableMax > 0
+      ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="filament"
+           ${state.cash >= FILAMENT.spoolCost ? '' : 'disabled'}>
+           ${icon('package')}Buy spool · ${money(FILAMENT.spoolCost)} · ${VERB_HOURS.filament}h
+         </button>`
+      : '';
 
     const queue = machine.queue.length
       ? machine.queue
           .map(
-            (job, index) => `<div class="jobline">
-              <span class="mono muted" style="width:12px">${index + 1}</span>
-              <span class="jname">${esc(job.partName)}</span>
-              <span class="mono muted">${hours(job.hoursRequired)}</span>
-              <span class="ctrl">
-                <button class="tiny" data-action="job-up" data-id="${machine.id}" data-id2="${job.id}" ${index === 0 ? 'disabled' : ''}>↑</button>
-                <button class="tiny" data-action="job-down" data-id="${machine.id}" data-id2="${job.id}" ${index === machine.queue.length - 1 ? 'disabled' : ''}>↓</button>
-                <button class="tiny" data-action="job-cancel" data-id="${machine.id}" data-id2="${job.id}">×</button>
+            (item, index) => `<div class="queue-row">
+              <span class="queue-no">${index + 1}</span>
+              <span class="queue-name">${esc(item.partName)}</span>
+              <span class="mono queue-hours">${hours(item.hoursRequired)}</span>
+              <span class="queue-ctrl">
+                <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="job-up" data-id="${machine.id}" data-id2="${item.id}" ${index === 0 ? 'disabled' : ''}>↑</button>
+                <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="job-down" data-id="${machine.id}" data-id2="${item.id}" ${index === machine.queue.length - 1 ? 'disabled' : ''}>↓</button>
+                <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="job-cancel" data-id="${machine.id}" data-id2="${item.id}">${icon('x')}</button>
               </span>
             </div>`,
           )
           .join('')
-      : `<div class="queue-empty">Queue empty.</div>`;
+      : `<p class="ui-desc" style="margin:0;font-size:10.5px">Queue empty.</p>`;
 
-    const filamentRow =
-      machine.consumableMax > 0
-        ? `<div class="meter"><label>filament</label>${bar(machine.consumable, machine.consumableMax, machine.consumable < FILAMENT.lowWarning ? 'warn' : '')}</div>
-           <button class="tiny" style="margin-top:6px" data-action="filament" ${state.cash >= FILAMENT.spoolCost ? '' : 'disabled'}>
-             Buy spool · ${money(FILAMENT.spoolCost)} · ${VERB_HOURS.filament}h
-           </button>`
-        : '';
-
-    return `<div class="machine">
-      <div class="section" style="margin-bottom:5px">${esc(machine.label)}</div>
-      ${current}
-      <div class="meters" style="margin:8px 0 0 0">
-        <div class="meter"><label>calibration</label>${bar(machine.calibration, 1, calTone)}</div>
-        ${filamentRow}
+    return `<div class="machine-card ${calLow || filamentLow ? 'needs-hand' : ''}">
+      <div class="machine-card__head">
+        <span class="icon-chip" style="--tone:${job ? 'var(--primary)' : 'var(--muted-foreground)'}">
+          ${icon('printer', 'ui-icon ui-icon--lg')}
+        </span>
+        <span class="ui-title" style="flex:1">${esc(machine.label)}</span>
+        ${status}
       </div>
-      <div style="margin-top:8px">
-        <div class="section" style="margin-bottom:4px">Queue</div>
+      <div class="machine-card__body">
+        <div class="machine-card__col">
+          <div class="ui-label" style="margin:0 0 7px">Now</div>
+          ${left}
+        </div>
+        <div class="machine-card__col">
+          <div class="ui-label" style="margin:0 0 7px">Condition</div>
+          <div class="meters">${meters}</div>
+          ${actions ? `<div style="margin-top:9px">${actions}</div>` : ''}
+        </div>
+      </div>
+      <div class="machine-card__queue">
+        <div class="ui-label" style="margin:0 0 6px">Queue · ${machine.queue.length}</div>
         ${queue}
       </div>
     </div>`;
+  }
+
+  // --- projects: everything on, waiting, and done ---------------------------
+
+  private projectsBody(state: GameState): { head: string; content: string; foot: string } {
+    const active = state.runtime.projects;
+    const onIt = active.filter(
+      (p) => p.team.length > 0 || state.runtime.player?.project === p.id,
+    );
+    const waiting = active.filter(
+      (p) => p.team.length === 0 && state.runtime.player?.project !== p.id,
+    );
+    const done = [...state.shipped].reverse();
+
+    const activeRow = (project: ProjectData) => {
+      const def = CATALOG_MAP[project.defId];
+      const overall = projectProgress(project);
+      const crew = project.team
+        .map((id) => state.runtime.members.find((m) => m.id === id)?.name)
+        .filter(Boolean);
+      if (state.runtime.player?.project === project.id) crew.unshift('you');
+      const profile = profileOf(project.category);
+      return `<div class="ui-row" style="cursor:default">
+        <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[project.category], 'ui-icon ui-icon--lg')}</span>
+        <span class="ui-row__main">
+          <span class="row between" style="gap:8px">
+            <span class="ui-title">${esc(project.name)}</span>
+            <span class="mono" style="font-size:11px;color:var(--muted-foreground)">${Math.round(overall.ratio * 100)}%</span>
+          </span>
+          <div class="bar" style="margin:6px 0 7px"><i style="width:${(overall.ratio * 100).toFixed(1)}%"></i></div>
+          <span class="ui-row__meta">
+            <span class="ui-badge ui-badge--tone" style="--tone:${profile.accent}">
+              ${stageLabel(project.category, project.stage)}
+            </span>
+            ${def ? tierBadge(def.tier) : ''}
+            <span class="ui-badge">${icon('users')}${crew.length ? esc(crew.join(', ')) : 'nobody'}</span>
+            ${
+              project.idleDays >= SHELVE.warnAfterIdleDays
+                ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--destructive)">${icon('clock')}shelved in ${SHELVE.afterIdleDays - project.idleDays}d</span>`
+                : ''
+            }
+          </span>
+        </span>
+      </div>`;
+    };
+
+    const doneRow = (record: (typeof done)[number]) => {
+      const profile = profileOf(record.category);
+      return `<div class="ui-row" style="cursor:default">
+        <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[record.category], 'ui-icon ui-icon--lg')}</span>
+        <span class="ui-row__main">
+          <span class="row between" style="gap:8px">
+            <span class="ui-title">${esc(record.name)}</span>
+            <span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('check')}day ${record.day}</span>
+          </span>
+          <span class="ui-row__meta" style="margin-top:6px">
+            <span class="ui-badge">${icon('clock')}${record.days}d</span>
+            <span class="ui-badge">Q ${pct(record.quality)}</span>
+            <span class="ui-badge">${icon('flame')}${record.hype} rep</span>
+            ${record.payout ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('coins')}${money(record.payout)}</span>` : ''}
+            ${record.failedPrints ? `<span class="ui-badge">${icon('printer')}${record.failedPrints} failed</span>` : ''}
+            ${record.testAttempts > 1 ? `<span class="ui-badge">${record.testAttempts} tests</span>` : ''}
+          </span>
+        </span>
+      </div>`;
+    };
+
+    const section = (label: string, count: number, body: string, empty: string) =>
+      `<div class="ui-label" style="margin-bottom:9px">${label} · ${count}</div>
+       ${count ? body : `<p class="ui-desc" style="margin-bottom:4px">${empty}</p>`}`;
+
+    return {
+      head: `<div class="modal-head">${icon('clipboard', 'ui-icon ui-icon--lg')}<b>Projects</b>
+        <span class="ui-badge">${onIt.length} on</span>
+        <span class="ui-badge">${waiting.length} waiting</span>
+        <span class="ui-badge ui-badge--accent">${done.length} done</span>
+      </div>`,
+      content: `
+        ${section('In progress', onIt.length, onIt.map(activeRow).join(''), 'Nobody is working on anything.')}
+        <hr class="ui-sep" />
+        ${section('Waiting for hands', waiting.length, waiting.map(activeRow).join(''), 'Everything started has somebody on it.')}
+        <hr class="ui-sep" />
+        ${section('Done', done.length, done.map(doneRow).join(''), 'Nothing shipped yet.')}
+      `,
+      foot: `<span class="ui-desc" style="font-size:10.5px">
+        Anything nobody touches for ${SHELVE.afterIdleDays} days ends up on the shelf, and the money
+        spent on its parts goes with it.
+      </span>`,
+    };
   }
 
   private renderLog(state: GameState) {

@@ -234,6 +234,11 @@ print-heavy and arrives in twelve days. The bottleneck moves.
 
 ## 3c. Starting, and the other spaces (§11)
 
+**Difficulty is chosen at the start, and only ever changes the competition** — rival pace,
+rival reputation, and how much cash you open with. Your own pipeline, hours and costs are
+identical at every setting, so intuition and advice carry across. On top of it the rivals gain
+a yearly ramp, so a long game keeps tightening instead of settling once you are ahead.
+
 **The run starts with a name and a badge.** A start screen asks what the place is called and
 which of eight badges it wears; nothing ticks until the doors open. The name and badge follow
 you into the top bar and onto the leaderboard.
@@ -467,7 +472,15 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
 - **Art:** clean low-poly, flat-shaded, no textures. Procedural geometry first; glTF assets later
   only where silhouette demands it. Readability over fidelity — a machine's state (idle / running /
   failed / needs calibration) must be legible at a glance from the iso camera.
-- **UI:** HTML/CSS overlay panels. The 3D scene is observational.
+- **UI:** HTML/CSS overlay panels. The 3D scene is observational, but it is pickable: a
+  raycast per frame lights the floor bay under whichever station the cursor is over and shows
+  its name and what it is for. Stations sit in two working walls with a clear aisle — furniture
+  scattered over an open floor reads as clutter, a room reads as a workshop when the benches
+  line up.
+- **The build menu is the spine of the UI.** Jobs, Projects, Ranking, Machines, People. A panel
+  belongs here rather than in a permanent sidebar whenever you only touch it a few times a day.
+  The clock sits alone in the top-left because it is the one thing glanced at constantly and it
+  changes every frame; cash is coloured by state, not merely printed.
 - **Design system (`styles.css` + `src/ui/icons.ts`)** — shadcn-shaped, and not optional:
   - **Tokens first.** `--background / --card / --muted / --muted-foreground / --border /
     --primary / --destructive / --radius` and friends live in `:root`. **Never write a raw hex

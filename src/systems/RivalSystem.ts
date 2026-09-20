@@ -19,18 +19,24 @@ export function createRivals(): RivalState[] {
   }));
 }
 
+export interface RivalPressure {
+  /** Difficulty and the yearly ramp, folded into one multiplier each. */
+  pace: number;
+  reputation: number;
+}
+
 /** Advance every rival by a day. */
-export function tickRivals(rivals: RivalState[]) {
+export function tickRivals(rivals: RivalState[], pressure: RivalPressure = { pace: 1, reputation: 1 }) {
   for (const rival of rivals) {
     const def = RIVALS.find((d) => d.id === rival.id)!;
 
     // They speed up as they get known, the same way the player does.
-    const pace = def.shipPace * (1 + rival.reputation / def.paceGrowth);
+    const pace = def.shipPace * (1 + rival.reputation / def.paceGrowth) * pressure.pace;
     rival.progress += pace * rng.range(0.55, 1.45);
     while (rival.progress >= 1) {
       rival.progress -= 1;
       rival.projects += 1;
-      rival.reputation += Math.round(def.repPerProject * rng.range(0.7, 1.3));
+      rival.reputation += Math.round(def.repPerProject * pressure.reputation * rng.range(0.7, 1.3));
       rival.cash += Math.round(def.cashPerProject * rng.range(0.6, 1.4));
     }
 

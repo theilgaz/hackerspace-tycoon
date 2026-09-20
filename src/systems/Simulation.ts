@@ -46,6 +46,7 @@ import {
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
 import { RIVAL_MAP, YEAR_DAYS } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
+import { DIFFICULTY_MAP } from '@/utils/difficulty';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
 import { clock, money, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
@@ -159,7 +160,7 @@ export class Simulation {
       this.time -= TIME.hoursPerDay;
       this.day += 1;
       this.endOfDay();
-      tickRivals(this.rivals);
+      tickRivals(this.rivals, this.rivalPressure());
       this.checkAwards();
       this.openApplicants();
       this.planDay();
@@ -852,7 +853,20 @@ export class Simulation {
     this.recruit(project);
 
     const before = store.getState().era;
-    store.getState().recordShipped(Math.round(def.hype * project.hypeMultiplier));
+    const hype = Math.round(def.hype * project.hypeMultiplier);
+    store.getState().recordShipped(hype, {
+      id: project.id,
+      defId: project.defId,
+      name: project.name,
+      category: project.category,
+      day: this.day,
+      quality: project.quality,
+      payout: def.payout,
+      hype,
+      days: this.day - project.startedOnDay,
+      testAttempts: project.testAttempts,
+      failedPrints: project.parts.reduce((sum, part) => sum + part.attempts, 0),
+    });
     const after = store.getState().era;
     if (after > before) {
       this.log(`Word is getting around — ${eraDef(after).name}. New projects are open to you.`, 'good');
@@ -945,6 +959,16 @@ export class Simulation {
     this.members.push(entity);
     this.plans.set(data.id, { attending: false, arriveAt: 0, leaveAt: 0 });
     return entity;
+  }
+
+  /** Difficulty and the yearly ramp, folded into the multipliers the rivals tick on. */
+  private rivalPressure() {
+    const difficulty = DIFFICULTY_MAP[store.getState().difficulty];
+    const year = this.season.year;
+    return {
+      pace: difficulty.rivalPace * (1 + (year - 1) * difficulty.yearRamp),
+      reputation: difficulty.rivalRep,
+    };
   }
 
   /** Where the current awards year has got to. */

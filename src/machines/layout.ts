@@ -14,23 +14,29 @@ export interface StationDef {
   stand: Tile;
 }
 
+/**
+ * Two working walls with a clear aisle down the middle, and the sofa at the door end.
+ * Furniture scattered across an open floor reads as clutter; a room reads as a workshop
+ * when the benches line up and the walking space is obvious.
+ */
 const STARTING_STATIONS: StationDef[] = [
   { id: 'cad-desk', type: 'cad-desk', label: 'CAD Desk', tile: { x: 1, y: 1 }, stand: { x: 1, y: 2 } },
-  { id: 'printer-1', type: 'fdm', label: 'Ender (FDM)', tile: { x: 4, y: 1 }, stand: { x: 4, y: 2 } },
-  { id: 'assembly', type: 'assembly', label: 'Assembly Table', tile: { x: 1, y: 5 }, stand: { x: 1, y: 4 } },
-  { id: 'bench', type: 'bench', label: 'Solder Bench', tile: { x: 4, y: 5 }, stand: { x: 4, y: 4 } },
-  { id: 'lounge', type: 'lounge', label: 'Sofa & Kettle', tile: { x: 2, y: 7 }, stand: { x: 2, y: 6 } },
+  { id: 'printer-1', type: 'fdm', label: 'A1 Mini Combo', tile: { x: 4, y: 1 }, stand: { x: 4, y: 2 } },
+  { id: 'bench', type: 'bench', label: 'Solder Bench', tile: { x: 1, y: 3 }, stand: { x: 1, y: 4 } },
+  { id: 'assembly', type: 'assembly', label: 'Assembly Table', tile: { x: 4, y: 3 }, stand: { x: 4, y: 4 } },
+  { id: 'lounge', type: 'lounge', label: 'Sofa & Kettle', tile: { x: 2, y: 6 }, stand: { x: 2, y: 5 } },
 ];
 
 /** Where a machine unlocked by a tool project gets installed. */
+/** New machines continue the two working walls rather than landing wherever there is room. */
 const EXPANSION_SLOTS: { tile: Tile; stand: Tile }[] = [
-  { tile: { x: 4, y: 7 }, stand: { x: 3, y: 7 } },
-  { tile: { x: 0, y: 4 }, stand: { x: 0, y: 3 } },
+  { tile: { x: 4, y: 6 }, stand: { x: 4, y: 5 } },
+  { tile: { x: 1, y: 6 }, stand: { x: 1, y: 5 } },
   { tile: { x: 0, y: 1 }, stand: { x: 0, y: 2 } },
 ];
 
 export const MACHINE_LABEL: Record<MachineType, string> = {
-  fdm: 'Ender (FDM)',
+  fdm: 'FDM Printer',
   bench: 'Solder Bench',
   assembly: 'Assembly Table',
   'cad-desk': 'CAD Desk',
@@ -89,11 +95,12 @@ export function stationOfType(type: MachineType): StationDef | undefined {
 /** Front door — members appear and leave here. */
 export const DOOR: Tile = { x: 0, y: 7 };
 
+/** The aisle. People loiter here rather than inside somebody's workspace. */
 export const IDLE_TILES: Tile[] = [
-  { x: 2, y: 3 },
-  { x: 3, y: 3 },
+  { x: 2, y: 2 },
+  { x: 3, y: 2 },
   { x: 2, y: 4 },
-  { x: 3, y: 6 },
+  { x: 3, y: 4 },
 ];
 
 export function isBlocked(tile: Tile): boolean {

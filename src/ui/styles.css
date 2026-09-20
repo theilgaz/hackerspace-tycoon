@@ -137,7 +137,8 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 
 /* --- project ------------------------------------------------------------ */
 
-#left { top: 12px; left: 12px; width: 330px; max-height: calc(100vh - 250px); display: flex; flex-direction: column; }
+/* clears the clock panel above it */
+#left { top: 66px; left: 12px; width: 330px; max-height: calc(100vh - 300px); display: flex; flex-direction: column; }
 #left .body { overflow-y: auto; }
 .pipeline { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
 .stage {
@@ -170,7 +171,7 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 
 /* --- members ------------------------------------------------------------ */
 
-#members .body { max-height: 38vh; overflow-y: auto; }
+#members .body { overflow-y: auto; }
 .member { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .member:last-child { border-bottom: none; padding-bottom: 0; }
 .member .head { display: flex; align-items: center; gap: 7px; }
@@ -207,7 +208,8 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 
 /* --- log ---------------------------------------------------------------- */
 
-#log { bottom: 12px; left: 12px; width: 360px; max-height: 190px; display: flex; flex-direction: column; }
+/* The log sits at the top of the right column — the corner your eye returns to. */
+#log { flex: none; max-height: 30vh; display: flex; flex-direction: column; }
 #log .body { overflow-y: auto; padding-top: 8px; }
 .entry { display: flex; gap: 8px; font-size: 11.5px; padding: 2.5px 0; line-height: 1.4; }
 .entry time { font-family: var(--font); color: #5d6878; font-size: 10.5px; flex: none; padding-top: 1px; }
@@ -263,13 +265,14 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 268px;
+  width: 300px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: calc(100vh - 24px);
+  max-height: calc(100vh - 92px); /* clear of the build menu */
 }
-#right .panel { position: relative; top: auto; right: auto; width: 100%; }
+#right .panel { position: relative; top: auto; right: auto; width: 100%; min-height: 0; }
+#members { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 #members .body { overflow-y: auto; }
 
 
@@ -384,6 +387,10 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 /* --- machines ------------------------------------------------------------ */
 
 .machine .meters { margin-left: 0; }
+/* One card per machine, uniform height — a floor you can read at a glance. The columns
+   fit themselves, so a garage with one printer is not a card floating in a half-empty row. */
+.machine-grid { grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); align-items: start; }
+.machine-grid .machine { padding: 11px; }
 
 /* --- team allocation ----------------------------------------------------- */
 
@@ -563,6 +570,7 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 }
 .modal footer { border-bottom: none; border-top: 1px solid var(--line); }
 .modal .modal-body { flex: 1; min-height: 0; padding: 13px 14px; overflow-y: auto; }
+.modal--fit { height: auto; max-height: min(660px, calc(100vh - 80px)); }
 /* header and footer keep their height so only the body scrolls */
 .modal header,
 .modal footer { flex: none; }
@@ -848,6 +856,9 @@ button.primary { padding: 9px 12px; font-size: 12.5px; }
 .bar-item.active { background: color-mix(in srgb, var(--primary) 13%, transparent); border-color: color-mix(in srgb, var(--primary) 30%, transparent); }
 .bar-item .pip { background: var(--primary); color: var(--primary-foreground); font-weight: 600; }
 #bottombar { background: var(--popover); border-color: var(--border); border-radius: var(--radius-lg); }
+/* A machine wanting calibration or filament says so from the bar, before you open it. */
+.bar-item--alert .bar-icon { color: var(--warn); }
+.bar-item--alert .pip { background: var(--warn); color: #241c05; }
 
 /* badges carry inline icons */
 .ui-badge .ui-icon { width: 11px; height: 11px; opacity: 0.8; }
@@ -1067,3 +1078,204 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   background: color-mix(in srgb, var(--primary) 7%, var(--card));
 }
 .modal.ceremony footer { display: block; }
+
+/* --- leaderboard table ---------------------------------------------------
+   Cards were the wrong shape here: nothing lined up, so nothing could be
+   compared. A table with one sortable column per award is the whole feature. */
+
+.rank-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.rank-table th,
+.rank-table td {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+.rank-table thead th {
+  position: sticky;
+  top: -13px;
+  background: var(--popover);
+  border-bottom-color: var(--border-strong);
+  text-align: right;
+  vertical-align: bottom;
+}
+.rank-table thead th.space-head {
+  text-align: left;
+  padding: 0 0 6px 9px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--subtle-foreground);
+}
+.rank-table thead th button {
+  width: 100%;
+  padding: 3px 7px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: right;
+  color: var(--subtle-foreground);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rank-table thead th button:hover { color: var(--foreground); background: transparent; }
+.rank-table thead th.sorted button { color: var(--foreground); }
+/* A diamond marks the four columns that decide a prize. */
+.rank-table thead th.award-col button::before {
+  content: '◆ ';
+  color: var(--warning);
+  opacity: 0.75;
+}
+.sort-dir { font-style: normal; margin-left: 3px; color: var(--primary); }
+
+.rank-table tbody tr { height: 30px; }
+.rank-table tbody tr:hover { background: var(--card); }
+.rank-table tbody tr.me { background: color-mix(in srgb, var(--primary) 9%, transparent); }
+.rank-table tbody tr.me .space-name { color: var(--primary); font-weight: 600; }
+
+.rank-cell {
+  width: 22px;
+  text-align: right;
+  font-family: var(--font);
+  font-size: 10.5px;
+  color: var(--subtle-foreground);
+}
+.space-cell { padding-left: 9px !important; }
+.space-cell,
+.space-name { white-space: nowrap; }
+.space-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 7px;
+  vertical-align: -5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--tone) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
+  color: var(--tone);
+}
+.space-dot .ui-icon { width: 12px; height: 12px; }
+
+.rank-table td.num {
+  text-align: right;
+  padding: 0 7px;
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.rank-table td.num.sorted { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 4%, transparent); }
+/* Whoever currently leads a column — the thing you are scanning for. */
+.rank-table td.num.lead { color: var(--warning); font-weight: 600; }
+.rank-table tbody tr.me td.num.lead { color: var(--primary); }
+.award-key { color: var(--warning); }
+
+/* --- clock in its own corner -------------------------------------------- */
+
+#clockpanel {
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+}
+#clockpanel .clock { font-family: var(--font); font-size: 16px; letter-spacing: 0.04em; }
+#clockpanel .day {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-foreground);
+}
+#clockpanel .speeds { margin-left: 2px; }
+
+/* money is a state, not just a number */
+.cash--good { color: var(--success); }
+.cash--warn { color: var(--warning); }
+.cash--bad { color: var(--destructive); }
+
+/* --- machine cards ------------------------------------------------------- */
+
+.machine-grid { grid-template-columns: 1fr; gap: 10px; }
+.machine-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.machine-card.needs-hand { border-color: color-mix(in srgb, var(--warning) 40%, transparent); }
+.machine-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+/* two columns so a single machine uses the width it is given rather than stretching */
+.machine-card__body { display: grid; grid-template-columns: 1fr 1fr; }
+.machine-card__col { padding: 11px 12px; }
+.machine-card__col + .machine-card__col { border-left: 1px solid var(--border); }
+.machine-card__queue { padding: 10px 12px; border-top: 1px solid var(--border); }
+.machine-card .meters { margin-left: 0; }
+.machine-card .meter label { width: 66px; }
+
+.queue-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 11.5px;
+}
+.queue-no { width: 14px; font-family: var(--font); font-size: 10px; color: var(--subtle-foreground); }
+.queue-name { flex: 1; min-width: 0; }
+.queue-hours { font-size: 10.5px; color: var(--muted-foreground); }
+.queue-ctrl { display: flex; gap: 2px; }
+.queue-ctrl .ui-btn { height: 22px; padding: 0 6px; }
+.queue-ctrl .ui-icon { width: 11px; height: 11px; }
+
+/* --- difficulty picker --------------------------------------------------- */
+
+.diff-grid { display: flex; flex-direction: column; gap: 6px; }
+.diff-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 11px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.diff-pick:hover { background: var(--card-hover); }
+.diff-pick b { font-size: 12.5px; color: var(--foreground); }
+.diff-pick span { font-size: 10.5px; line-height: 1.4; color: var(--subtle-foreground); }
+.diff-pick.on {
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+}
+.diff-pick.on b { color: var(--primary); }
+
+/* hover label for a station: name over role, rather than a bare word */
+.label--station {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 9px;
+  background: rgba(14, 17, 22, 0.94);
+  border-color: var(--border-strong);
+}
+.label--station b { font-family: var(--sans); font-size: 11.5px; font-weight: 600; }
+.label--station span { font-size: 10px; color: var(--muted-foreground); }

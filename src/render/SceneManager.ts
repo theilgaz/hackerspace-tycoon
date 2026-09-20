@@ -7,6 +7,8 @@ export class SceneManager {
   readonly renderer: THREE.WebGLRenderer;
 
   private frustum = 7.2;
+  private raycaster = new THREE.Raycaster();
+  private pointer = new THREE.Vector2();
   private target = new THREE.Vector3(0, 0, 0);
   private dragging = false;
   private last = { x: 0, y: 0 };
@@ -100,6 +102,17 @@ export class SceneManager {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
     this.updateCamera();
+  }
+
+  /** Which of `objects` the cursor is over, if any. Returns the ancestor's stationId. */
+  pick(clientX: number, clientY: number, objects: THREE.Object3D[]): string | null {
+    this.pointer.set((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hit = this.raycaster.intersectObjects(objects, true)[0];
+    if (!hit) return null;
+    let node: THREE.Object3D | null = hit.object;
+    while (node && !node.userData.stationId) node = node.parent;
+    return (node?.userData.stationId as string) ?? null;
   }
 
   /** World position → CSS pixel position, for HTML labels over the scene. */

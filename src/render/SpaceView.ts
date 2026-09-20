@@ -21,6 +21,18 @@ const MEMBER_COLORS: Record<string, string> = {
 };
 const PLAYER_COLOR = '#dfe6f0';
 
+/** One accent per station type — used for the painted floor zone and the hover ring. */
+const STATION_TONE: Record<string, string> = {
+  fdm: '#5ecfc0',
+  cnc: '#d9a441',
+  reflow: '#e2725b',
+  drybox: '#7fb2f0',
+  'cad-desk': '#5aa9f0',
+  bench: '#f0b429',
+  assembly: '#b07d4a',
+  lounge: '#a2564c',
+};
+
 /** Stable colour for recruits, matching the dot the UI shows. */
 function personColor(id: string): string {
   const palette = ['#7fb2f0', '#c58ef0', '#8fd88f', '#f08fa4', '#e0c36a', '#6fd0e0', '#d49a6a'];
@@ -54,6 +66,9 @@ export class SpaceView {
   private people = new Map<string, THREE.Group>();
   private machineVisuals = new Map<string, MachineVisual>();
   private builtStations = new Set<string>();
+  private stationNodes = new Map<string, THREE.Group>();
+  private stationZones = new Map<string, THREE.Mesh>();
+  private hovered: string | null = null;
   private elapsed = 0;
 
   constructor(scene: THREE.Scene) {
@@ -100,11 +115,46 @@ export class SpaceView {
     for (const def of STATIONS) {
       if (this.builtStations.has(def.id)) continue;
       this.builtStations.add(def.id);
+      const tone = STATION_TONE[def.type] ?? '#8a92a0';
+
+      // A painted bay under each station, so the room reads as laid out rather than as
+      // furniture dropped on a floor — and it gives the hover something to light up.
+      const zone = new THREE.Mesh(
+        new THREE.BoxGeometry(TILE * 0.96, 0.02, TILE * 1.94),
+        new THREE.MeshStandardMaterial({ color: tone, flatShading: true, transparent: true, opacity: 0.14 }),
+      );
+      const facing = def.stand.y > def.tile.y ? 0.5 : -0.5;
+      zone.position.copy(toWorld(def.tile.x, def.tile.y + facing, 0.012));
+      this.group.add(zone);
+
       const node = new THREE.Group();
       node.position.copy(toWorld(def.tile.x, def.tile.y));
       node.add(this.buildStation(def));
+      node.userData.stationId = def.id;
       this.group.add(node);
+      this.stationNodes.set(def.id, node);
+      this.stationZones.set(def.id, zone);
     }
+  }
+
+  /** Objects the camera can pick against for hover. */
+  get pickables(): THREE.Object3D[] {
+    return [...this.stationNodes.values()];
+  }
+
+  /** Light the bay under whichever station the cursor is over. */
+  setHovered(id: string | null) {
+    if (this.hovered === id) return;
+    this.hovered = id;
+    for (const [key, zone] of this.stationZones) {
+      const material = zone.material as THREE.MeshStandardMaterial;
+      material.opacity = key === id ? 0.42 : 0.14;
+    }
+  }
+
+  stationWorldById(id: string): THREE.Vector3 | null {
+    const def = STATIONS.find((s) => s.id === id);
+    return def ? toWorld(def.tile.x, def.tile.y, 1.35) : null;
   }
 
   private buildStation(def: StationDef): THREE.Object3D {
