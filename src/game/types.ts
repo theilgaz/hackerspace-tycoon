@@ -46,6 +46,8 @@ export interface MemberData {
   traits: TraitKey[];
   /** Hour-of-day window they tend to appear in. */
   window: [number, number];
+  /** Reputation before they will even consider the place (applicants only). */
+  repRequired?: number;
 }
 
 /** A specific job: one stage of one project. Used for the player's chosen task. */

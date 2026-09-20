@@ -63,6 +63,7 @@ function runOnce(seed: number, mode: Mode): Result {
     shippedCount: 0,
     reputation: 0,
     backlog: [],
+    applicants: [],
     ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
     runtime: emptyRuntime(),
   });
@@ -86,7 +87,7 @@ function runOnce(seed: number, mode: Mode): Result {
 
     // --- every archetype does the unavoidable ------------------------------
     // Only start something there are actually free hands for.
-    if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 2) {
+    if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
       const offer = state.backlog[0];
       if (offer) sim.pitch(offer.defId, offer.id, draftCrew(sim, offer.defId));
       else {
@@ -102,6 +103,10 @@ function runOnce(seed: number, mode: Mode): Result {
     const printer = sim.printer;
     if (printer.consumable < FILAMENT.lowWarning && store.getState().cash >= FILAMENT.spoolCost) {
       sim.buyFilament();
+    }
+    // Take on anybody who is interested and affordable — the roster is the constraint.
+    for (const id of [...store.getState().applicants]) {
+      if (store.getState().cash >= sim.hireCost(id) * 3) sim.hire(id);
     }
 
     if (mode === 'hands-off') continue;

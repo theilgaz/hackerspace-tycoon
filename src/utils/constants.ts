@@ -244,8 +244,8 @@ export const PLAYER = {
   energyRestore: 42,
   /** Below this you are burnt out: shorter days until you back off. */
   burnoutEnergy: 30,
-  /** Hour of day you can start; you leave when the budget is gone. */
-  startHour: 9,
+  /** You are there whenever you like — nights included. The hour budget is the real limit. */
+  startHour: 0,
   walkSpeed: 22,
 };
 
@@ -257,6 +257,7 @@ export const VERB_HOURS: Record<string, number> = {
   order: 1,
   expedite: 1,
   filament: 0.5,
+  hire: 1,
 };
 
 // --- Eras (§8) --------------------------------------------------------------
@@ -352,62 +353,8 @@ function skills(partial: Partial<Record<SkillKey, number>>): Record<SkillKey, nu
   };
 }
 
+/** Day one is you and one other person. Everybody else is hired (§5). */
 export const ROSTER: MemberData[] = [
-  {
-    id: 'deniz',
-    name: 'Deniz',
-    skills: skills({ cad: 3, electronics: 4, software: 2 }),
-    passions: { fpv: 0.9, electronics: 0.6, iot: 0.45, software: 0.35, retro: 0.35, radio: 0.3 },
-    energy: 85,
-    mood: 70,
-    commitment: 14,
-    traits: ['nightOwl'],
-    window: [17, 24],
-  },
-  {
-    id: 'ada',
-    name: 'Ada',
-    skills: skills({ cad: 4, machining: 2, docs: 2 }),
-    passions: { cad: 0.75, design: 0.65, robotics: 0.45, fpv: 0.35, machining: 0.3 },
-    energy: 90,
-    mood: 75,
-    commitment: 10,
-    traits: ['perfectionist'],
-    window: [10, 18],
-  },
-  {
-    id: 'kerem',
-    name: 'Kerem',
-    skills: skills({ machining: 3, welding: 2, electronics: 2, docs: 2 }),
-    passions: { machining: 0.65, civic: 0.55, woodworking: 0.45, fpv: 0.4, food: 0.35 },
-    energy: 80,
-    mood: 60,
-    commitment: 8,
-    traits: ['ghost'],
-    window: [13, 21],
-  },
-  {
-    id: 'mehmet',
-    name: 'Mehmet',
-    skills: skills({ electronics: 3, machining: 3, docs: 2 }),
-    passions: { iot: 0.7, electronics: 0.6, fpv: 0.45 },
-    energy: 88,
-    mood: 72,
-    commitment: 15,
-    traits: [],
-    window: [9, 18],
-  },
-  {
-    id: 'bektas',
-    name: 'Bektaş',
-    skills: skills({ machining: 3, welding: 4, electronics: 2 }),
-    passions: { fpv: 0.7, machining: 0.6, robotics: 0.45 },
-    energy: 90,
-    mood: 66,
-    commitment: 14,
-    traits: [],
-    window: [12, 20],
-  },
   {
     id: 'safa',
     name: 'Safa',
@@ -417,7 +364,8 @@ export const ROSTER: MemberData[] = [
     mood: 72,
     commitment: 12,
     traits: ['documenter'],
-    window: [18, 24],
+    // Routine working hours — unlike you, Safa has a day job to get back to.
+    window: [9, 18],
   },
 ];
 
@@ -428,76 +376,107 @@ export const ROSTER: MemberData[] = [
  */
 export const APPLICANTS: MemberData[] = [
   {
-    id: 'zahid',
-    name: 'Zahid',
-    skills: skills({ machining: 4, welding: 3, cad: 2 }),
-    passions: { machining: 0.85, woodworking: 0.5, robotics: 0.4 },
-    energy: 88, mood: 65, commitment: 10, traits: ['gatekeeper'], window: [12, 20],
+    id: 'mehmet', name: 'Mehmet', repRequired: 0,
+    skills: skills({ electronics: 3, machining: 3, docs: 2 }),
+    passions: { iot: 0.7, electronics: 0.6, fpv: 0.45 },
+    energy: 88, mood: 72, commitment: 15, traits: [], window: [9, 18],
   },
   {
-    id: 'ibrahim',
-    name: 'İbrahim',
+    id: 'deniz', name: 'Deniz', repRequired: 80,
+    skills: skills({ cad: 3, electronics: 4, software: 2 }),
+    passions: { fpv: 0.9, electronics: 0.6, iot: 0.45, software: 0.35, retro: 0.35, radio: 0.3 },
+    energy: 85, mood: 70, commitment: 14, traits: ['nightOwl'], window: [17, 24],
+  },
+  {
+    id: 'bektas', name: 'Bektaş', repRequired: 160,
+    skills: skills({ machining: 3, welding: 4, electronics: 2 }),
+    passions: { fpv: 0.7, machining: 0.6, robotics: 0.45 },
+    energy: 90, mood: 66, commitment: 14, traits: [], window: [12, 20],
+  },
+  {
+    id: 'ada', name: 'Ada', repRequired: 260,
+    skills: skills({ cad: 4, machining: 2, docs: 2 }),
+    passions: { cad: 0.75, design: 0.65, robotics: 0.45, fpv: 0.35, machining: 0.3 },
+    energy: 90, mood: 75, commitment: 10, traits: ['perfectionist'], window: [10, 18],
+  },
+  {
+    id: 'kerem', name: 'Kerem', repRequired: 360,
+    skills: skills({ machining: 3, welding: 2, electronics: 2, docs: 2 }),
+    passions: { machining: 0.65, civic: 0.55, woodworking: 0.45, fpv: 0.4, food: 0.35 },
+    energy: 80, mood: 60, commitment: 8, traits: ['ghost'], window: [13, 21],
+  },
+  {
+    id: 'ibrahim', name: 'İbrahim', repRequired: 500,
     skills: skills({ cad: 4, machining: 2, docs: 2 }),
     passions: { cad: 0.8, design: 0.75, fpv: 0.3 },
     energy: 82, mood: 78, commitment: 9, traits: ['mentor'], window: [10, 17],
   },
   {
-    id: 'omer',
-    name: 'Ömer',
-    skills: skills({ electronics: 4, software: 3 }),
-    passions: { radio: 0.85, electronics: 0.6, iot: 0.5 },
-    energy: 80, mood: 68, commitment: 16, traits: ['nightOwl'], window: [19, 24],
-  },
-  {
-    id: 'furkan',
-    name: 'Furkan',
-    skills: skills({ software: 4, cad: 3, electronics: 2 }),
-    passions: { robotics: 0.8, software: 0.65, design: 0.35 },
-    energy: 86, mood: 74, commitment: 11, traits: ['scopeCreeper'], window: [13, 21],
-  },
-  {
-    id: 'yakup',
-    name: 'Yakup',
-    skills: skills({ machining: 3, welding: 2, cad: 2 }),
-    passions: { woodworking: 0.8, food: 0.6, machining: 0.45 },
-    energy: 78, mood: 62, commitment: 7, traits: ['ghost'], window: [14, 21],
-  },
-  {
-    id: 'fatih',
-    name: 'Fatih',
+    id: 'fatih', name: 'Fatih', repRequired: 700,
     skills: skills({ electronics: 4, docs: 2, cad: 2 }),
     passions: { retro: 0.85, electronics: 0.65, design: 0.4 },
     energy: 84, mood: 70, commitment: 13, traits: ['perfectionist'], window: [11, 19],
   },
   {
-    id: 'arif',
-    name: 'Arif',
+    id: 'zahid', name: 'Zahid', repRequired: 950,
+    skills: skills({ machining: 4, welding: 3, cad: 2 }),
+    passions: { machining: 0.85, woodworking: 0.5, robotics: 0.4 },
+    energy: 88, mood: 65, commitment: 10, traits: ['gatekeeper'], window: [12, 20],
+  },
+  {
+    id: 'omer', name: 'Ömer', repRequired: 1250,
+    skills: skills({ electronics: 4, software: 3 }),
+    passions: { radio: 0.85, electronics: 0.6, iot: 0.5 },
+    energy: 80, mood: 68, commitment: 16, traits: ['nightOwl'], window: [19, 24],
+  },
+  {
+    id: 'arif', name: 'Arif', repRequired: 1600,
     skills: skills({ docs: 4, software: 2, electronics: 2 }),
     passions: { civic: 0.85, iot: 0.5, software: 0.35 },
     energy: 80, mood: 76, commitment: 8, traits: ['documenter'], window: [10, 18],
   },
   {
-    id: 'safa-kemal',
-    name: 'Safa Kemal',
-    skills: skills({ cad: 5, software: 4 }),
-    passions: { cad: 0.8, design: 0.7, robotics: 0.5 },
-    energy: 76, mood: 80, commitment: 6, traits: ['mentor'], window: [20, 24],
+    id: 'furkan', name: 'Furkan', repRequired: 2100,
+    skills: skills({ software: 4, cad: 3, electronics: 2 }),
+    passions: { robotics: 0.8, software: 0.65, design: 0.35 },
+    energy: 86, mood: 74, commitment: 11, traits: ['scopeCreeper'], window: [13, 21],
   },
   {
-    id: 'abdullah',
-    name: 'Abdullah',
+    id: 'yakup', name: 'Yakup', repRequired: 2700,
+    skills: skills({ machining: 3, welding: 2, cad: 2 }),
+    passions: { woodworking: 0.8, food: 0.6, machining: 0.45 },
+    energy: 78, mood: 62, commitment: 7, traits: ['ghost'], window: [14, 21],
+  },
+  {
+    id: 'abdullah', name: 'Abdullah', repRequired: 3400,
     skills: skills({ software: 3, electronics: 3, docs: 3 }),
     passions: { radio: 0.7, software: 0.6, civic: 0.5 },
     energy: 82, mood: 70, commitment: 9, traits: ['nightOwl'], window: [17, 24],
   },
+  {
+    id: 'safa-kemal', name: 'Safa Kemal', repRequired: 4500,
+    skills: skills({ cad: 5, software: 4 }),
+    passions: { cad: 0.8, design: 0.7, robotics: 0.5 },
+    energy: 76, mood: 80, commitment: 6, traits: ['mentor'], window: [20, 24],
+  },
 ];
 
-/** §5 — shipping something attracts people who care about that kind of thing. */
+/**
+ * §5 — you do not get members, you get *applicants*. Reputation opens the pool, and a
+ * shipped project pulls in whoever cared about that kind of thing regardless of it. Turning
+ * an applicant into a member is a decision you make in the People menu, and it costs.
+ */
 export const RECRUIT = {
-  /** Applicants drawn in by a shipped project. */
+  /** Applicants drawn in by a shipped project, over and above the reputation gate. */
   perShip: [1, 2] as [number, number],
   /** Passion match below this and the project does not tempt them at all. */
   matchFloor: 0.25,
+  /** A matching write-up gets them past this fraction of their reputation bar. */
+  shipGateRelief: 0.5,
+  /** Induction, a key, a shelf, a tool induction: scales with how much they will be around. */
+  hireCostPerCommitmentHour: 60,
+  /** Your own time, showing them round and doing the paperwork. */
+  hireHours: 1,
 };
 
 /** A capable generalist — good enough to unblock anything, not good enough to do it all. */

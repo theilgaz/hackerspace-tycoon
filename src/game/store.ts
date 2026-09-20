@@ -21,6 +21,8 @@ export interface GameState {
   shippedCount: number;
   /** Cumulative hype from everything shipped; drives era progression and Phase 2. */
   reputation: number;
+  /** Applicant ids who would consider joining; hiring is a decision, not automatic. */
+  applicants: string[];
   /** Machine types the space owns; gates what can be attempted. */
   ownedMachines: MachineType[];
   /** Offers waiting to be pitched (CLAUDE.md §4a). */
@@ -40,6 +42,8 @@ export interface GameState {
   setBacklog: (backlog: BacklogEntry[]) => void;
   addOffer: (entry: BacklogEntry) => void;
   removeOffer: (id: string) => void;
+  openApplicant: (id: string) => void;
+  closeApplicant: (id: string) => void;
   ownMachine: (type: MachineType) => void;
   recordShipped: (hype: number) => void;
 }
@@ -62,6 +66,7 @@ export const store = createStore<GameState>((set, get) => ({
   reputation: 0,
   ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
   backlog: [],
+  applicants: [],
   runtime: emptyRuntime(),
   log: [],
 
@@ -95,6 +100,9 @@ export const store = createStore<GameState>((set, get) => ({
   setBacklog: (backlog) => set({ backlog }),
   addOffer: (entry) => set((s) => ({ backlog: [entry, ...s.backlog] })),
   removeOffer: (id) => set((s) => ({ backlog: s.backlog.filter((e) => e.id !== id) })),
+  openApplicant: (id) =>
+    set((s) => (s.applicants.includes(id) ? s : { applicants: [...s.applicants, id] })),
+  closeApplicant: (id) => set((s) => ({ applicants: s.applicants.filter((a) => a !== id) })),
   ownMachine: (type) =>
     set((s) => (s.ownedMachines.includes(type) ? s : { ownedMachines: [...s.ownedMachines, type] })),
 

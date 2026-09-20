@@ -148,6 +148,7 @@ export class Simulation {
       this.time -= TIME.hoursPerDay;
       this.day += 1;
       this.endOfDay();
+      this.openApplicants();
       this.planDay();
       this.player.startDay();
       this.refreshBacklog();
@@ -933,18 +934,38 @@ export class Simulation {
     return entity;
   }
 
+  /** Reputation is what makes people consider the place at all (§5). */
+  private openApplicants() {
+    const { reputation, applicants } = store.getState();
+    const known = new Set(this.members.map((m) => m.id));
+    for (const data of APPLICANTS) {
+      if (known.has(data.id) || applicants.includes(data.id)) continue;
+      if ((data.repRequired ?? 0) > reputation) continue;
+      store.getState().openApplicant(data.id);
+      this.log(`${data.name} has been asking about joining.`, 'good');
+    }
+  }
+
   /** §5 — a shipped project pulls in people who care about that kind of thing. */
   private recruit(project: ProjectData) {
     const known = new Set(this.members.map((m) => m.id));
-    const pool = APPLICANTS.filter((a) => !known.has(a.id));
+    const open = new Set(store.getState().applicants);
+    const pool = APPLICANTS.filter((a) => !known.has(a.id) && !open.has(a.id));
     if (!pool.length) return;
 
+    // Seeing the write-up gets you halfway past somebody's reputation bar, not all the way:
+    // otherwise the best person in town turns up on day five because of a lucky tag match.
+    const reputation = store.getState().reputation;
     const tempted = pool
       .map((data) => {
         const match = Math.max(0, ...project.tags.map((tag) => data.passions[tag] ?? 0));
         return { data, match };
       })
-      .filter((entry) => entry.match >= RECRUIT.matchFloor)
+      .filter(
+        (entry) =>
+          entry.match >= RECRUIT.matchFloor &&
+          (entry.data.repRequired ?? 0) * RECRUIT.shipGateRelief <= reputation,
+      )
       .sort((a, b) => b.match - a.match);
     if (!tempted.length) return;
 
@@ -952,9 +973,33 @@ export class Simulation {
     const count = Math.min(rng.int(lo, hi), tempted.length);
     for (let i = 0; i < count; i += 1) {
       const { data } = tempted[i];
-      this.joinMember(tempted[i].data);
-      this.log(`${data.name} turned up after seeing the ${project.name} write-up.`, 'good');
+      store.getState().openApplicant(data.id);
+      this.log(`${data.name} got in touch after seeing the ${project.name} write-up.`, 'good');
     }
+  }
+
+  /** What it costs to take somebody on: induction, a key, a shelf, a tool briefing. */
+  hireCost(id: string): number {
+    const data = APPLICANTS.find((a) => a.id === id);
+    return data ? Math.round(data.commitment * RECRUIT.hireCostPerCommitmentHour) : 0;
+  }
+
+  /** Turn an applicant into a member. The one place the roster grows. */
+  hire(id: string): boolean {
+    const data = APPLICANTS.find((a) => a.id === id);
+    if (!data || this.members.some((m) => m.id === id)) return false;
+    if (!store.getState().applicants.includes(id)) return false;
+    const cost = this.hireCost(id);
+    if (store.getState().cash < cost) {
+      this.log(`Not enough cash to take ${data.name} on.`, 'bad');
+      return false;
+    }
+    if (!this.chargeHours('hire')) return false;
+    store.getState().spend(cost);
+    store.getState().closeApplicant(id);
+    this.joinMember(data);
+    this.log(`${data.name} joined the space. ${data.commitment}h a week.`, 'good');
+    return true;
   }
 
   // -------------------------------------------------------------------------

@@ -54,6 +54,8 @@ export interface UIHandlers {
   moveJob(machineId: string, jobId: string, dir: -1 | 1): void;
   cancelJob(machineId: string, jobId: string): void;
   buyFilament(): void;
+  hire(memberId: string): void;
+  hireCost(memberId: string): number;
   allocation(): { used: number; total: number };
   totalHours(): number;
 }
@@ -147,7 +149,10 @@ export class UI {
   /** Last HTML written per section, so unchanged sections keep their DOM nodes. */
   private htmlCache = new Map<string, string>();
 
-  /** The Jobs wizard: pick a genre, narrow by size, choose the build, crew it up. */
+  /** Which build-menu panel is open, if any. */
+  private openModal: 'jobs' | 'people' | null = null;
+
+  /** The Jobs wizard: pick a genre, choose the build, crew it up. */
   private jobs: {
     open: boolean;
     step: JobStep;
@@ -223,11 +228,20 @@ export class UI {
         case 'noop':
           break;
         case 'jobs-open':
+          this.openModal = 'jobs';
           this.jobs = { open: true, step: 'category', source: null, size: 'any', defId: null, offerId: null };
           this.rerender();
           break;
+        case 'people-open':
+          this.openModal = 'people';
+          this.rerender();
+          break;
         case 'jobs-close':
-          this.jobs.open = false;
+          this.openModal = null;
+          this.rerender();
+          break;
+        case 'hire':
+          if (id) h.hire(id);
           this.rerender();
           break;
         case 'jobs-back':
@@ -261,7 +275,7 @@ export class UI {
           const draft = [...(this.draftTeams.get(id) ?? [])];
           h.pitch(id, id2 || undefined, draft);
           this.draftTeams.delete(id);
-          this.jobs.open = false;
+          this.openModal = null;
           this.rerender();
           break;
         }
@@ -340,7 +354,7 @@ export class UI {
     this.renderMachines(state);
     this.renderLog(state);
     this.renderBottomBar(state);
-    this.renderJobs(state);
+    this.renderModal(state);
   }
 
   // --- top bar --------------------------------------------------------------
@@ -391,22 +405,127 @@ export class UI {
     this.setHTML(
       this.bottombar,
       'bottombar',
-      `<button class="bar-item ${this.jobs.open ? 'active' : ''}" data-action="jobs-open"
+      `<button class="bar-item ${this.openModal === 'jobs' ? 'active' : ''}" data-action="jobs-open"
          title="${canPitch ? 'Start something new' : 'No hours left today to write a pitch'}">
          ${icon('clipboard', 'ui-icon bar-icon')}
          <span class="bar-label">Jobs</span>
          ${offers ? `<i class="pip">${offers}</i>` : ''}
+       </button>
+       <button class="bar-item ${this.openModal === 'people' ? 'active' : ''}" data-action="people-open"
+         title="Who is here, and who you could take on">
+         ${icon('users', 'ui-icon bar-icon')}
+         <span class="bar-label">People</span>
+         ${state.applicants.length ? `<i class="pip">${state.applicants.length}</i>` : ''}
        </button>`,
     );
   }
 
   // --- the Jobs wizard ------------------------------------------------------
 
-  private renderJobs(state: GameState) {
-    if (!this.jobs.open) {
+  private renderModal(state: GameState) {
+    if (this.openModal === null) {
       this.setHTML(this.modal, 'modal', '');
       return;
     }
+    const body = this.openModal === 'people' ? this.peopleBody(state) : this.jobsBody(state);
+    this.setHTML(
+      this.modal,
+      'modal',
+      `<div class="modal-backdrop" data-action="jobs-close">
+        <div class="modal" data-action="noop">
+          <header>
+            ${body.head}
+            <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="jobs-close">
+              ${icon('x')}Close
+            </button>
+          </header>
+          <div class="modal-body">${body.content}</div>
+          <footer>${body.foot}</footer>
+        </div>
+      </div>`,
+    );
+  }
+
+  // --- People: who is here, and who could be ------------------------------
+
+  private peopleBody(state: GameState): { head: string; content: string; foot: string } {
+    const members = state.runtime.members;
+    const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
+
+    const person = (id: string, name: string, trailing: string, note: string) => {
+      const data = MEMBER_DATA[id];
+      const top = topCategories(data?.passions ?? {}, 1)[0];
+      const profile = top ? profileOf(top.category) : null;
+      return `<div class="ui-row" style="cursor:default">
+        <span class="icon-chip" style="--tone:${profile?.accent ?? 'var(--muted-foreground)'}">
+          ${profile ? icon(CATEGORY_ICON[top!.category], 'ui-icon ui-icon--lg') : icon('users', 'ui-icon ui-icon--lg')}
+        </span>
+        <span class="ui-row__main">
+          <span class="row between" style="gap:8px">
+            <span class="ui-title">${name}</span>
+            ${trailing}
+          </span>
+          <p class="ui-desc" style="margin:3px 0 0">${note}</p>
+          <span class="ui-row__meta">
+            <span class="ui-badge" title="hours a week">${icon('clock')}${data?.commitment ?? '?'}h/wk</span>
+            <span class="ui-badge" title="when they are around">${data ? `${data.window[0]}:00-${data.window[1]}:00` : ''}</span>
+            ${topCategories(data?.passions ?? {})
+              .map(({ category, score }) => {
+                const pr = profileOf(category);
+                return `<span class="ui-badge ui-badge--tone" style="--tone:${pr.accent}">
+                  ${icon(CATEGORY_ICON[category])}${pr.label} ${pct(score)}</span>`;
+              })
+              .join('')}
+            ${(data?.traits ?? []).map((t) => `<span class="ui-badge" title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`).join('')}
+          </span>
+        </span>
+      </div>`;
+    };
+
+    const roster = members
+      .map((m) => {
+        const project = m.team ? state.runtime.projects.find((x) => x.id === m.team) : null;
+        const status = m.present
+          ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">in today</span>`
+          : `<span class="ui-badge">away</span>`;
+        return person(m.id, m.name, status, project ? `On ${esc(project.name)}` : 'Unallocated');
+      })
+      .join('');
+
+    const open = state.applicants
+      .map((id) => {
+        const data = MEMBER_DATA[id];
+        if (!data) return '';
+        const cost = this.handlers.hireCost(id);
+        const affordable = state.cash >= cost && hoursLeft >= VERB_HOURS.hire;
+        const button = `<button class="ui-btn ui-btn--primary ui-btn--sm" data-action="hire" data-id="${id}"
+          ${affordable ? '' : 'disabled'}>Hire · ${money(cost)} · ${VERB_HOURS.hire}h</button>`;
+        return person(id, data.name, button, 'Interested in joining');
+      })
+      .join('');
+
+    const next = APPLICANTS.filter(
+      (a) => !members.some((m) => m.id === a.id) && !state.applicants.includes(a.id),
+    ).sort((a, b) => (a.repRequired ?? 0) - (b.repRequired ?? 0))[0];
+
+    return {
+      head: `<div class="modal-head">${icon('users', 'ui-icon ui-icon--lg')}<b>People</b></div>`,
+      content: `
+        <div class="ui-label" style="margin-bottom:9px">Your people · ${members.length}</div>
+        ${roster}
+        <hr class="ui-sep" />
+        <div class="ui-label" style="margin-bottom:9px">Interested · ${state.applicants.length}</div>
+        ${open || `<p class="ui-desc">Nobody right now. Ship something and word gets around.</p>`}
+      `,
+      foot: next
+        ? `<span class="ui-desc" style="font-size:10.5px">
+             Next along: <b>${next.name}</b> at ${next.repRequired} reputation — you have ${state.reputation}.
+           </span>`
+        : `<span class="ui-desc" style="font-size:10.5px">Everybody in town knows about you now.</span>`,
+    };
+  }
+
+  private jobsBody(state: GameState): { head: string; content: string; foot: string } {
     const steps: { key: JobStep; label: string }[] = [
       { key: 'category', label: 'Kind of work' },
       { key: 'project', label: 'Project' },
@@ -426,41 +545,27 @@ export class UI {
       })
       .join(`<span class="step-sep">${icon('chevronRight', 'ui-icon')}</span>`);
 
-    const body =
-      this.jobs.step === 'category'
-        ? this.jobsCategoryStep(state)
-        : this.jobs.step === 'project'
-          ? this.jobsProjectStep(state)
-          : this.jobsCrewStep(state);
-
-    this.setHTML(
-      this.modal,
-      'modal',
-      `<div class="modal-backdrop" data-action="jobs-close">
-        <div class="modal" data-action="noop">
-          <header>
-            <div class="steps">${trail}</div>
-            <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="jobs-close">
-              ${icon('x')}Close
-            </button>
-          </header>
-          <div class="modal-body">${body}</div>
-          <footer>
-            ${
-              this.jobs.step === 'category'
-                ? ''
-                : `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="jobs-back">
-                     ${icon('arrowLeft')}Back
-                   </button>`
-            }
-            <span class="ui-desc" style="font-size:10.5px">
-              A pitch costs ${VERB_HOURS.pitch}h of your day. No limit on how many run at once —
-              people are.
-            </span>
-          </footer>
-        </div>
-      </div>`,
-    );
+    return {
+      head: `<div class="steps">${trail}</div>`,
+      content:
+        this.jobs.step === 'category'
+          ? this.jobsCategoryStep(state)
+          : this.jobs.step === 'project'
+            ? this.jobsProjectStep(state)
+            : this.jobsCrewStep(state),
+      foot: `
+        ${
+          this.jobs.step === 'category'
+            ? ''
+            : `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="jobs-back">
+                 ${icon('arrowLeft')}Back
+               </button>`
+        }
+        <span class="ui-desc" style="font-size:10.5px">
+          A pitch costs ${VERB_HOURS.pitch}h of your day. No limit on how many run at once —
+          people are.
+        </span>`,
+    };
   }
 
   /** Step 1: what kind of work, or one of the offers that came to you. */

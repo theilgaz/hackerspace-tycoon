@@ -40,6 +40,7 @@ function runProject(def: ProjectDef, seed: number): number | null {
     shippedCount: 0,
     reputation: 0,
     backlog: [],
+    applicants: [],
     ownedMachines: [...ALL_MACHINES],
     runtime: emptyRuntime(),
   });

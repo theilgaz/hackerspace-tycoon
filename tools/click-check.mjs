@@ -254,6 +254,44 @@ await check('player stays on the project across stage changes', async () =>
 // press and release and the browser never fired `click` — every button went dead on
 // unpause. Counting rebuilds catches that directly, where a click test only catches it
 // by luck of timing.
+await check('People opens and hiring works', async () => {
+  if (await evaluate(`document.querySelectorAll('#modal .modal').length > 0`)) {
+    await click('#modal header [data-action="jobs-close"]');
+  }
+  // Give it enough reputation that somebody is interested.
+  await evaluate(`
+    (() => {
+      const sim = window.__game.sim;
+      for (let i = 0; i < 40000 && __store.getState().applicants.length === 0; i += 1) {
+        sim.tick(0.05, 4);
+        const st = __store.getState();
+        if (sim.player.hoursLeft >= 2 && sim.projects.length < 2 && st.backlog[0]) {
+          sim.pitch(st.backlog[0].defId, st.backlog[0].id, []);
+        }
+        for (const p of sim.projects) {
+          if (!p.partsOrdered && st.cash >= p.bomCost) sim.orderParts(p.id);
+          if (p.stage === 'fabrication' && p.parts.some((x) => x.status === 'pending')) sim.queueAllPending(p.id);
+        }
+        if (sim.printer.consumable < 250) sim.buyFilament();
+        if (!sim.player.project && sim.player.present && sim.player.hoursLeft > 0) {
+          const t = sim.projects.find((p) => p.required[p.stage] > 0);
+          if (t) sim.workOn(t.id);
+        }
+      }
+      return __store.getState().applicants.length;
+    })()
+  `);
+  await click('[data-action="people-open"]');
+  const before = await evaluate(`__game.sim.members.length`);
+  const hireable = await evaluate(`document.querySelectorAll('#modal [data-action="hire"]:not([disabled])').length`);
+  await click('#modal [data-action="hire"]:not([disabled])');
+  const after = await evaluate(`__game.sim.members.length`);
+  if (!(hireable > 0 && after === before + 1)) {
+    console.log(`      hireable=${hireable} roster ${before} -> ${after}`);
+  }
+  return hireable > 0 && after === before + 1;
+});
+
 await check('unchanged panels keep their DOM (build menu and top bar)', async () => {
   await evaluate(`window.__store.getState().setSpeed(4)`);
   const churn = await evaluate(`

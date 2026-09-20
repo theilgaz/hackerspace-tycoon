@@ -967,3 +967,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .proj-now__val { font-size: 10.5px; color: var(--muted-foreground); }
 .project .defect { display: flex; align-items: center; gap: 5px; }
 .project .defect .ui-icon { width: 12px; height: 12px; flex: none; }
+
+.modal-head { display: flex; align-items: center; gap: 8px; flex: 1; }
+.modal-head b { font-size: 13.5px; }
+.modal-head .ui-icon { color: var(--muted-foreground); }

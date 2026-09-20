@@ -51,6 +51,8 @@ export class Game {
       moveJob: (machineId, jobId, dir) => act(() => sim.moveJob(machineId, jobId, dir)),
       cancelJob: (machineId, jobId) => act(() => sim.cancelJob(machineId, jobId)),
       buyFilament: () => act(() => sim.buyFilament()),
+      hire: (memberId) => act(() => sim.hire(memberId)),
+      hireCost: (memberId) => sim.hireCost(memberId),
       allocation: () => sim.allocation,
       totalHours: () => sim.totalHours,
     });

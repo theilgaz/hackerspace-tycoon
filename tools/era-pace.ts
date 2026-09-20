@@ -9,7 +9,7 @@ import { partsPending } from '@/systems/ProjectSystem';
 const rows: string[] = [];
 for (let seed = 1; seed <= 4; seed += 1) {
   rng.reseed(seed);
-  store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, backlog: [], runtime: emptyRuntime() });
+  store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, backlog: [], applicants: [], runtime: emptyRuntime() });
   const sim = new Simulation();
   const arrived: Record<number, number> = {};
   while (sim.day <= 220) {
@@ -17,7 +17,7 @@ for (let seed = 1; seed <= 4; seed += 1) {
     const state = store.getState();
     if (!arrived[state.era]) arrived[state.era] = sim.day;
     // Only start something there are actually free hands for.
-    if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 2) {
+    if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
       const offer = state.backlog[0];
       const pick = (id: string) =>
         sim.members.filter((m) => !m.team).sort((a, b) => b.passionMatch(CATALOG_MAP[id].tags) - a.passionMatch(CATALOG_MAP[id].tags)).slice(0, CATALOG_MAP[id].teamSize).map((m) => m.id);
@@ -36,6 +36,10 @@ for (let seed = 1; seed <= 4; seed += 1) {
       }
     }
     if (sim.printer.consumable < FILAMENT.lowWarning) sim.buyFilament();
+    // Take on anybody who is interested and affordable — the roster is the constraint.
+    for (const id of [...store.getState().applicants]) {
+      if (store.getState().cash >= sim.hireCost(id) * 3) sim.hire(id);
+    }
     if (!sim.player.project && sim.player.present && sim.player.hoursLeft > 0) {
       const t = sim.projects.find((p) => p.required[p.stage] > 0 && !(p.stage === 'assembly' && partsPending(p, sim.totalHours)));
       if (t) sim.workOn(t.id);

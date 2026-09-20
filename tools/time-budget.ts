@@ -23,7 +23,7 @@ const H = (DT * SPEED) / 2.5;
 const DAYS = Number(process.argv[2] ?? 120);
 
 rng.reseed(Number(process.argv[3] ?? 7));
-store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, backlog: [], runtime: emptyRuntime() });
+store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, backlog: [], applicants: [], runtime: emptyRuntime() });
 const sim = new Simulation();
 
 const budget: Record<string, number> = {};
@@ -43,7 +43,7 @@ while (sim.day <= DAYS) {
 
   const state = store.getState();
   // Only start something there are actually free hands for.
-    if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 2) {
+    if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
     const offer = state.backlog[0];
     if (offer) sim.pitch(offer.defId, offer.id);
     else {
