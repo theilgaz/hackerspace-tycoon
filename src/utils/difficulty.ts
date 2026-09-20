@@ -16,6 +16,7 @@ export interface DifficultyDef {
   /** Multipliers on how fast the rivals build and how much name they make doing it. */
   rivalPace: number;
   rivalRep: number;
+  /** Opening cash. The first two months are thin until a reputation brings dues in. */
   startCash: number;
   /**
    * The rivals get faster every year on top of their own compounding, so a long game
@@ -33,7 +34,7 @@ export const DIFFICULTIES: DifficultyDef[] = [
     accent: '#7ac74f',
     rivalPace: 0.7,
     rivalRep: 0.7,
-    startCash: 6000,
+    startCash: 10000,
     yearRamp: 0.04,
   },
   {
@@ -44,7 +45,7 @@ export const DIFFICULTIES: DifficultyDef[] = [
     accent: '#f0b429',
     rivalPace: 1,
     rivalRep: 1,
-    startCash: 4000,
+    startCash: 7000,
     yearRamp: 0.08,
   },
   {
@@ -55,7 +56,7 @@ export const DIFFICULTIES: DifficultyDef[] = [
     accent: '#e2725b',
     rivalPace: 1.3,
     rivalRep: 1.25,
-    startCash: 3000,
+    startCash: 5000,
     yearRamp: 0.13,
   },
 ];

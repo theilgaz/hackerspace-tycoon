@@ -37,6 +37,7 @@ import { clock, dayName, hours, money, pct } from '@/utils/format';
 import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import { DIFFICULTIES, type DifficultyKey } from '@/utils/difficulty';
+import { ECONOMY } from '@/utils/economy';
 import { projectProgress } from '@/systems/ProjectSystem';
 import { SHELVE } from '@/utils/constants';
 
@@ -65,6 +66,9 @@ export interface UIHandlers {
   canHireFullTime(memberId: string): boolean;
   begin(name: string, logo: number, difficulty: DifficultyKey): void;
   dismissCeremony(): void;
+  dismissBill(): void;
+  letGo(memberId: string): void;
+  previewBill(): { income: number; costs: number; net: number; dueInDays: number };
   scoreboard(): ScoreRow[];
   allocation(): { used: number; total: number };
   totalHours(): number;
@@ -311,6 +315,14 @@ export class UI {
           this.openModal = 'machines';
           this.rerender();
           break;
+        case 'bill-close':
+          h.dismissBill();
+          this.rerender();
+          break;
+        case 'let-go':
+          if (id) h.letGo(id);
+          this.rerender();
+          break;
         case 'ceremony-close':
           h.dismissCeremony();
           this.rerender();
@@ -462,6 +474,10 @@ export class UI {
       this.renderStart();
       return;
     }
+    if (state.gameOver) {
+      this.renderGameOver(state);
+      return;
+    }
     this.setHTML(this.startEl, 'start', '');
     this.renderTopbar(state);
     this.renderProjects(state);
@@ -470,6 +486,38 @@ export class UI {
     this.renderLog(state);
     this.renderBottomBar(state);
     this.renderModal(state);
+  }
+
+  private renderGameOver(state: GameState) {
+    const best = [...state.shipped].sort((a, b) => b.hype - a.hype)[0];
+    this.setHTML(
+      this.startEl,
+      'start',
+      `<div class="start-backdrop">
+        <div class="start-card">
+          <div class="start-brand">
+            <span class="icon-chip start-badge" style="--tone:var(--destructive)">${icon('x', 'ui-icon')}</span>
+            <div>
+              <div class="ui-label">Day ${state.gameOver!.day}</div>
+              <h1>${esc(state.identity?.name ?? 'The space')} is gone</h1>
+            </div>
+          </div>
+          <p class="ui-desc" style="margin:0 0 16px">${esc(state.gameOver!.reason)}</p>
+          <div class="over-stats">
+            <div><b>${state.shippedCount}</b><span>shipped</span></div>
+            <div><b>${state.reputation}</b><span>reputation</span></div>
+            <div><b>${state.runtime.members.length}</b><span>on the books</span></div>
+            <div><b>${state.ceremonies.reduce((n, c) => n + c.awards.filter((a) => a.playerWon).length, 0)}</b><span>awards</span></div>
+          </div>
+          ${
+            best
+              ? `<p class="ui-desc" style="margin:14px 0 0">The one people remember:
+                 <b>${esc(best.name)}</b>, day ${best.day}.</p>`
+              : `<p class="ui-desc" style="margin:14px 0 0">Nothing ever made it out of the door.</p>`
+          }
+        </div>
+      </div>`,
+    );
   }
 
   // --- start screen ---------------------------------------------------------
@@ -622,6 +670,14 @@ export class UI {
       </div>
       <div class="sep"></div>
       <div class="stat"><b class="cash cash--${cashTone}">${money(state.cash)}</b><span>cash</span></div>
+      ${(() => {
+        const next = this.handlers.previewBill();
+        const tone = next.net < 0 && state.cash + next.net < 0 ? 'bad' : next.net < 0 ? 'warn' : 'good';
+        return `<div class="stat" title="Rent, wages and power against membership dues">
+          <b class="cash cash--${tone}">${next.net < 0 ? '−' : '+'}${money(Math.abs(next.net))}</b>
+          <span>bill in ${next.dueInDays}d</span>
+        </div>`;
+      })()}
       <div class="stat"><b>${state.runtime.projects.length}</b><span>projects</span></div>
       <div class="stat" title="somebody can only be on one project at a time">
         <b>${allocation.used}/${allocation.total}</b><span>allocated</span>
@@ -877,7 +933,67 @@ export class UI {
     };
   }
 
+  /** The monthly books, as an event you have to look at. */
+  private renderBill(state: GameState): boolean {
+    const bill = state.bill;
+    if (!bill) return false;
+    const line = (l: { label: string; detail: string; amount: number }) => `
+      <div class="bill-line">
+        <span class="bill-label">${l.label}<i>${esc(l.detail)}</i></span>
+        <span class="mono bill-amount ${l.amount < 0 ? 'out' : 'in'}">
+          ${l.amount < 0 ? '−' : '+'}${money(Math.abs(l.amount))}
+        </span>
+      </div>`;
+    this.setHTML(
+      this.modal,
+      'modal',
+      `<div class="modal-backdrop">
+        <div class="modal bill" data-action="noop">
+          <header>
+            <div class="modal-head">${icon('coins', 'ui-icon ui-icon--lg')}
+              <b>The books · month ${bill.month}</b>
+              ${
+                bill.shortfall
+                  ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--destructive)">short ${money(bill.shortfall)}</span>`
+                  : `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">settled</span>`
+              }
+            </div>
+          </header>
+          <div class="modal-body">
+            ${bill.income.map(line).join('')}
+            ${bill.costs.map(line).join('')}
+            <div class="bill-line bill-total">
+              <span class="bill-label">On the month</span>
+              <span class="mono bill-amount ${bill.total < 0 ? 'out' : 'in'}">
+                ${bill.total < 0 ? '−' : '+'}${money(Math.abs(bill.total))}
+              </span>
+            </div>
+            <div class="bill-line">
+              <span class="bill-label">Balance</span>
+              <span class="mono bill-amount">${money(bill.balanceBefore)} → ${money(bill.balanceAfter)}</span>
+            </div>
+            ${
+              bill.shortfall
+                ? `<p class="defect" style="margin-top:12px">
+                     ${icon('clock')} You could not cover it. Miss the next one and the lease is gone —
+                     let somebody go, or ship something that pays.
+                   </p>`
+                : ''
+            }
+          </div>
+          <footer>
+            <button class="ui-btn ui-btn--primary ui-btn--block" data-action="bill-close">
+              ${bill.shortfall ? 'Sort it out' : 'Back to work'}
+            </button>
+          </footer>
+        </div>
+      </div>`,
+    );
+    return true;
+  }
+
   private renderModal(state: GameState) {
+    if (this.renderBill(state)) return;
     if (this.renderCeremony(state)) return;
     if (this.openModal === null) {
       this.setHTML(this.modal, 'modal', '');
@@ -959,9 +1075,17 @@ export class UI {
     const roster = members
       .map((m) => {
         const project = m.team ? state.runtime.projects.find((x) => x.id === m.team) : null;
-        const status = m.present
-          ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">in today</span>`
-          : `<span class="ui-badge">away</span>`;
+        const status = `<span class="row" style="gap:5px">
+          ${
+            m.present
+              ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">in today</span>`
+              : `<span class="ui-badge">away</span>`
+          }
+          <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="let-go" data-id="${m.id}"
+            title="End the contract — ${money(ECONOMY.wage[m.employment])} a month off the wage bill">
+            Let go
+          </button>
+        </span>`;
         return person(m.id, m.name, status, project ? `On ${esc(project.name)}` : 'Unallocated');
       })
       .join('');
@@ -1008,7 +1132,8 @@ export class UI {
       `,
       foot: next
         ? `<span class="ui-desc" style="font-size:10.5px">
-             Next along: <b>${next.name}</b> at ${next.repRequired} reputation — you have ${state.reputation}.
+             Wages ${money(members.reduce((sum, m) => sum + ECONOMY.wage[m.employment], 0))} a month ·
+             next along: <b>${next.name}</b> at ${next.repRequired} reputation — you have ${state.reputation}.
            </span>`
         : `<span class="ui-desc" style="font-size:10.5px">Everybody in town knows about you now.</span>`,
     };

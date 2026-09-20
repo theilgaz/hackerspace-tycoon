@@ -5,22 +5,33 @@ import { rng } from '@/utils/rng';
 import { FILAMENT, START_CASH, VERB_HOURS } from '@/utils/constants';
 import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 import { partsPending } from '@/systems/ProjectSystem';
+import { ECONOMY } from '@/utils/economy';
 import { STAGE_STATION } from '@/machines/layout';
 
 const rows: string[] = [];
 const standings: string[] = [];
 const firstNight: string[] = [];
+const outcomes: string[] = [];
 const SEEDS = Number(process.argv[2] ?? 4);
 for (let seed = 1; seed <= SEEDS; seed += 1) {
   rng.reseed(seed);
-  store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, ceremony: null, ceremonies: [],
+  store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, ceremony: null, ceremonies: [], bill: null, bills: [], missedBills: 0, gameOver: null,
     ceremony: null,
-    ceremonies: [], backlog: [], applicants: [], runtime: emptyRuntime() });
+    ceremonies: [],
+    bill: null,
+    bills: [],
+    missedBills: 0,
+    gameOver: null, backlog: [], applicants: [], runtime: emptyRuntime() });
   const sim = new Simulation();
   const arrived: Record<number, number> = {};
   let night: string | null = null;
   while (sim.day <= 220) {
     sim.tick(0.05, 4);
+    if (store.getState().bill) store.getState().setBill(null);
+    if (store.getState().gameOver) break;
+    // Keep the next bill covered — the *net* of it, since dues arrive at the same moment.
+    const reserve = Math.max(0, -sim.previewBill().net);
+    const spendable = () => store.getState().cash - reserve;
     const state = store.getState();
     if (!arrived[state.era]) arrived[state.era] = sim.day;
     // The first awards night is the one nearly every player will actually reach.
@@ -57,20 +68,25 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       }
     }
     for (const p of sim.projects) {
-      if (!p.partsOrdered && store.getState().cash >= p.bomCost) sim.orderParts(p.id);
+      if (!p.partsOrdered && spendable() >= p.bomCost) sim.orderParts(p.id);
       if (p.stage === 'fabrication' && p.parts.some((x) => x.status === 'pending')) sim.queueAllPending(p.id);
       if (p.team.length < p.teamSize) {
         const c = sim.members.filter((m) => !m.team && !m.isCoolingOff(p.id)).sort((a, b) => b.passionMatch(p.tags) - a.passionMatch(p.tags))[0];
         if (c) sim.inviteMember(p.id, c.id);
       }
     }
-    if (sim.printer.consumable < FILAMENT.lowWarning) sim.buyFilament();
+    if (sim.printer.consumable < FILAMENT.lowWarning && spendable() >= FILAMENT.spoolCost) sim.buyFilament();
     // Take on anybody who is interested and affordable — the roster is the constraint.
     for (const id of [...store.getState().applicants]) {
       // Take the biggest contract that is comfortably affordable.
       const full = sim.canHireFullTime(id);
-      if (full && store.getState().cash >= sim.hireCost(id, 'full-time') * 3) sim.hire(id, 'full-time');
-      else if (store.getState().cash >= sim.hireCost(id, 'part-time') * 3) sim.hire(id, 'part-time');
+      // Only take somebody on if the month still clears afterwards, with room to spare.
+      const afterHire = (wage: number) => sim.previewBill().net - wage > ECONOMY.rent[0];
+      if (full && spendable() >= sim.hireCost(id, 'full-time') * 3 && afterHire(ECONOMY.wage['full-time'])) {
+        sim.hire(id, 'full-time');
+      } else if (spendable() >= sim.hireCost(id, 'part-time') * 3 && afterHire(ECONOMY.wage['part-time'])) {
+        sim.hire(id, 'part-time');
+      }
     }
     // Step off a project that has nothing to do by hand — the sim keeps you on it
     // deliberately, but a player watching would move rather than idle for days.
@@ -99,6 +115,18 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   );
 
   firstNight.push(`  seed ${seed}: ${night ?? 'no ceremony reached'}`);
+  const over = store.getState().gameOver;
+  const bills = store.getState().bills;
+  const sum = (pick: (b: (typeof bills)[number]) => number) =>
+    bills.length ? Math.round(bills.reduce((n, b) => n + pick(b), 0) / bills.length) : 0;
+  const work = sum((b) => b.income.find((l) => l.label === 'Work shipped')?.amount ?? 0);
+  const dues = sum((b) => b.income.find((l) => l.label === 'Membership dues')?.amount ?? 0);
+  const costs = sum((b) => -b.costs.reduce((n, l) => n + l.amount, 0));
+  outcomes.push(
+    `  seed ${seed}: ${over ? `EVICTED day ${over.day}` : `survived ${sim.day}d`}`.padEnd(34) +
+      `staff ${String(sim.members.length).padStart(2)} · bills ${String(bills.length).padStart(2)} · ` +
+      `per month: work ${String(work).padStart(6)} + dues ${String(dues).padStart(5)} − costs ${String(costs).padStart(6)} = ${String(work + dues - costs).padStart(6)}`,
+  );
 
   const stuck = sim.projects.map((p) => {
     const why =
@@ -124,4 +152,5 @@ console.log(
   `\n  FIRST AWARDS NIGHT (day 90) — you took ${wins} of ${firstNight.length * 4} across ${firstNight.length} runs\n` +
     firstNight.join('\n'),
 );
+console.log('\n  THE BOOKS\n' + outcomes.join('\n'));
 console.log('\n  STANDINGS AT THE END\n' + standings.join('\n') + '\n');

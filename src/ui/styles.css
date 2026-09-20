@@ -1316,3 +1316,41 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 }
 .label--station b { font-family: var(--sans); font-size: 11.5px; font-weight: 600; }
 .label--station span { font-size: 10px; color: var(--muted-foreground); }
+
+/* --- the monthly books --------------------------------------------------- */
+
+.bill-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.bill-label { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
+.bill-label i { font-style: normal; font-size: 10.5px; color: var(--subtle-foreground); }
+.bill-amount { font-size: 12.5px; white-space: nowrap; }
+.bill-amount.in { color: var(--success); }
+.bill-amount.out { color: var(--destructive); }
+.bill-total { border-top: 1px solid var(--border-strong); border-bottom: none; margin-top: 6px; }
+.bill-total .bill-label { font-weight: 600; }
+.modal.bill { height: auto; max-height: min(660px, calc(100vh - 80px)); }
+.modal.bill footer { display: block; }
+
+/* --- run over ------------------------------------------------------------ */
+
+.over-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.over-stats div {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 6px;
+  text-align: center;
+}
+.over-stats b { display: block; font-family: var(--font); font-size: 17px; font-weight: 500; }
+.over-stats span {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--subtle-foreground);
+}

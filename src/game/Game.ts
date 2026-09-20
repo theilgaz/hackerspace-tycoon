@@ -77,6 +77,9 @@ export class Game {
         sim.publish();
       },
       dismissCeremony: () => store.getState().setCeremony(null),
+      dismissBill: () => store.getState().setBill(null),
+      letGo: (memberId) => act(() => sim.letGo(memberId)),
+      previewBill: () => sim.previewBill(),
       scoreboard: () => sim.scoreboard(),
       allocation: () => sim.allocation,
       totalHours: () => sim.totalHours,
@@ -116,7 +119,7 @@ export class Game {
     this.last = now;
 
     const state = store.getState();
-    if (state.started && !state.paused) this.sim.tick(dt, state.speed);
+    if (state.started && !state.paused && !state.gameOver) this.sim.tick(dt, state.speed);
 
     this.view.update(state.runtime, dt);
     const over = this.scene.pick(this.pointer.x, this.pointer.y, this.view.pickables);

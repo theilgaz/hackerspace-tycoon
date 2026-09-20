@@ -16,6 +16,7 @@ function draftCrew(sim: Simulation, defId: string): string[] {
 }
 import { STAGE_STATION } from '@/machines/layout';
 import { partsPending } from '@/systems/ProjectSystem';
+import { ECONOMY } from '@/utils/economy';
 
 const DT = 0.05;
 const SPEED = 4;
@@ -23,9 +24,13 @@ const H = (DT * SPEED) / 2.5;
 const DAYS = Number(process.argv[2] ?? 120);
 
 rng.reseed(Number(process.argv[3] ?? 7));
-store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, ceremony: null, ceremonies: [],
+store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, ceremony: null, ceremonies: [], bill: null, bills: [], missedBills: 0, gameOver: null,
     ceremony: null,
-    ceremonies: [], backlog: [], applicants: [], runtime: emptyRuntime() });
+    ceremonies: [],
+    bill: null,
+    bills: [],
+    missedBills: 0,
+    gameOver: null, backlog: [], applicants: [], runtime: emptyRuntime() });
 const sim = new Simulation();
 
 const budget: Record<string, number> = {};
@@ -56,12 +61,12 @@ while (sim.day <= DAYS) {
     }
   }
   for (const project of sim.projects) {
-    if (!project.partsOrdered && store.getState().cash >= project.bomCost) sim.orderParts(project.id);
+    if (!project.partsOrdered && spendable() >= project.bomCost) sim.orderParts(project.id);
     if (project.stage === 'fabrication' && project.parts.some((p) => p.status === 'pending')) {
       sim.queueAllPending(project.id);
     }
   }
-  if (sim.printer.consumable < FILAMENT.lowWarning) sim.buyFilament();
+  if (sim.printer.consumable < FILAMENT.lowWarning && spendable() >= FILAMENT.spoolCost) sim.buyFilament();
   if (!sim.player.project && sim.player.present && sim.player.hoursLeft > 0) {
     const target = sim.projects.find(
       (p) =>

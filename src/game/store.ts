@@ -8,6 +8,7 @@ import type {
   ShippedRecord,
 } from './types';
 import type { Ceremony } from '@/systems/RivalSystem';
+import type { Bill } from '@/utils/economy';
 import { START_CASH, eraDef } from '@/utils/constants';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
 import { uid } from '@/utils/format';
@@ -26,6 +27,13 @@ export interface GameState {
   /** Set when an awards night resolves; cleared when the player dismisses it. */
   ceremony: Ceremony | null;
   ceremonies: Ceremony[];
+  /** Set when the monthly bill lands; cleared when the player dismisses it. */
+  bill: Bill | null;
+  bills: Bill[];
+  /** Consecutive bills you could not cover. Two and the lease is gone. */
+  missedBills: number;
+  /** Why the run ended, if it has. */
+  gameOver: { reason: string; day: number } | null;
   /** Day 1, 2, 3 ... */
   day: number;
   /** Hour within the day, 0-24. */
@@ -50,6 +58,8 @@ export interface GameState {
 
   begin: (identity: Identity, difficulty: DifficultyKey) => void;
   setCeremony: (ceremony: Ceremony | null) => void;
+  setBill: (bill: Bill | null) => void;
+  endRun: (reason: string, day: number) => void;
   setSpeed: (speed: number) => void;
   togglePause: () => void;
   setPaused: (paused: boolean) => void;
@@ -84,6 +94,10 @@ export const store = createStore<GameState>((set, get) => ({
   started: false,
   ceremony: null,
   ceremonies: [],
+  bill: null,
+  bills: [],
+  missedBills: 0,
+  gameOver: null,
   day: 1,
   simTime: 9,
   speed: 1,
@@ -114,6 +128,14 @@ export const store = createStore<GameState>((set, get) => ({
       ceremonies: ceremony ? [...s.ceremonies, ceremony] : s.ceremonies,
       paused: ceremony ? true : s.paused,
     })),
+  setBill: (bill) =>
+    set((s) => ({
+      bill,
+      bills: bill ? [...s.bills, bill] : s.bills,
+      missedBills: bill ? bill.missesInARow : s.missedBills,
+      paused: bill ? true : s.paused,
+    })),
+  endRun: (reason, day) => set({ gameOver: { reason, day }, paused: true }),
   setSpeed: (speed) => set({ speed, paused: false }),
   togglePause: () => set((s) => ({ paused: !s.paused })),
   setPaused: (paused) => set({ paused }),

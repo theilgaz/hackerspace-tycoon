@@ -41,6 +41,10 @@ function runProject(def: ProjectDef, seed: number): number | null {
     reputation: 0,
     ceremony: null,
     ceremonies: [],
+    bill: null,
+    bills: [],
+    missedBills: 0,
+    gameOver: null,
     backlog: [],
     applicants: [],
     ownedMachines: [...ALL_MACHINES],
@@ -62,6 +66,8 @@ function runProject(def: ProjectDef, seed: number): number | null {
 
   while (sim.day - startDay <= MAX_DAYS) {
     sim.tick(DT, SPEED);
+    // Best-case measurement: the books are not what is under test here.
+    if (store.getState().bill) store.getState().setBill(null);
     if (!sim.projects.length) return sim.day - startDay;
 
     if (!project.partsOrdered) sim.orderParts(project.id);

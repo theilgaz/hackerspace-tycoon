@@ -334,14 +334,23 @@ Winning pays reputation. Two tuning notes worth keeping:
   the cap. Tuning work up 25% on the best-case reading pushed the campaign further backwards.
   Always check `era-pace` as well before trusting a change to labour supply.
 
-- **Known, and not a multiplier problem: the player plateaus, the rivals do not.** The roster
-  caps at fifteen, there is one printer, and eight people is the ceiling on one stage — so the
-  player's output flattens while linear rivals keep accumulating. A 220-day run therefore usually
-  ends mid-table even when the first awards night goes well. Several rounds of rescaling only
-  traded one end against the other: strong enough rivals to make the first night a contest are
-  strong enough to win the long table. The fix is late-game growth for the player — a second
-  printer, the bigger space, more Era 3 content — which is Phase 4 and Phase 6 work, not a
-  coefficient. Awards are calibrated (about 10 of 32 across eight runs); the standings are not.
+- **The economy fixed the plateau, which no coefficient could.** The player's output used to
+  flatten (roster caps at fifteen, one printer, eight per stage) while linear rivals kept
+  accumulating, so a long run ended mid-table however the numbers were pushed. Membership dues
+  scaling with reputation gave the player a compounding line the rivals do not have, and the
+  standings went from 9th-12th to **1st in every seed** without touching a rival multiplier.
+  Worth remembering: when both ends of a balance fight each other, the answer is usually a
+  missing system rather than a better multiplier.
+
+- **Rivals carry no overheads, so adding costs to the player moves the whole balance.** Rent and
+  wages landed on the player alone, and the first awards night fell from 10 of 32 to 0. The rival
+  curve had to come down about 30% to compensate. Any future cost added to the player needs the
+  same check.
+
+- **Over-hiring is what the wage bill is for.** Six of six harness runs were evicted while the
+  autoplayer hired whenever it could afford the induction fee. Teaching it to hire only when the
+  month still clears afterwards took survival to six of six with a full roster of fifteen — the
+  economy was fair, the player was not. Check which it is before softening a cost.
 
 - **Reset every field between harness runs.** `era-pace` left `ceremony` set from the previous
   seed, so runs 2 onward captured the leftover ceremony on day 1 and reported a leaderboard of
@@ -473,6 +482,37 @@ Income is patchwork by design; there is no salary and no reliable single source.
 
 Fixed costs: **rent** (monthly, by era), utilities (scales with machine runtime), consumables,
 machine maintenance. Note there are no wages — that is the volunteer model's one gift to the player.
+
+## 7a. The books — BUILT (`src/utils/economy.ts`)
+
+A bill lands every **30 days**, three to an awards year, and it is a real profit and loss
+rather than a demand:
+
+| Income | |
+|---|---|
+| Work shipped | payouts and sponsor money, already banked as it arrived |
+| Membership dues | the public paying to use the place |
+
+| Costs | |
+|---|---|
+| Rent | monthly, by era |
+| Wages | per contract, full-time or part-time |
+| Power and consumables | metered on machine-hours actually run |
+
+**Show the shipped work on the statement even though it is already banked.** Without it the
+month reads as "dues against rent" and looks like a disaster every single time, which is both
+wrong and demoralising. Only dues minus costs moves cash at the bill; the bottom line is the
+true month.
+
+**Dues are meant to carry the rent.** That makes the loop **ship → reputation → membership →
+the rent looks after itself**, and it is why the first two months are thin: no name yet, so
+nobody is paying to be there. It also turned out to fix something else — see §13.
+
+Miss a bill and you get a warning; miss two in a row and you are evicted and the run is over,
+with a post-mortem of what you shipped, who was on the books and the one people remember.
+
+**Letting somebody go** is the lever that answers a bill you cannot pay, and it is in the
+People panel next to the contract they are on.
 
 ## 8. Eras (progression)
 
@@ -729,7 +769,8 @@ A playthrough runs 20-36 days depending on how hard the player pushes (§13).
 **Still open, and only a human can answer it: is the loop fun?**
 
 Phase 2 — Reddit + hype + crowdfunding (the novel layer, on top of a real project).
-Phase 3 — Economy: dues, rent, consumables, the monthly bill, eviction.
+**Phase 3 — Economy — BUILT.** Dues, rent, wages, metered consumables, the monthly statement
+and eviction (§7a).
 Phase 4 — Space builder: tile painting, machine placement, rooms, power, adjacency.
 Phase 5 — Recruitment: events, policies, mood/commitment loop. *(The applicant pool is built:
 twelve named people join when a shipped project matches their passions — see §5.)*

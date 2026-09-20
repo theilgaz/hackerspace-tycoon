@@ -30,6 +30,7 @@ function draftCrew(sim: Simulation, defId: string): string[] {
 }
 import { STAGE_STATION } from '@/machines/layout';
 import { partsPending } from '@/systems/ProjectSystem';
+import { ECONOMY } from '@/utils/economy';
 
 const RUNS = Number(process.argv[2] ?? 6);
 const SEED = Number(process.argv[3] ?? 1);
@@ -64,6 +65,10 @@ function runOnce(seed: number, mode: Mode): Result {
     reputation: 0,
     ceremony: null,
     ceremonies: [],
+    bill: null,
+    bills: [],
+    missedBills: 0,
+    gameOver: null,
     backlog: [],
     applicants: [],
     ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
@@ -80,6 +85,11 @@ function runOnce(seed: number, mode: Mode): Result {
 
   while (sim.day <= MAX_DAYS) {
     sim.tick(DT, SPEED);
+    if (store.getState().bill) store.getState().setBill(null);
+    if (store.getState().gameOver) break;
+    // Keep the next bill covered — the *net* of it, since dues arrive at the same moment.
+    const reserve = Math.max(0, -sim.previewBill().net);
+    const spendable = () => store.getState().cash - reserve;
     if (sim.player.activity === 'working' || sim.player.activity === 'babysitting') {
       playerHoursWorked += HOURS_PER_TICK;
     }
@@ -100,18 +110,23 @@ function runOnce(seed: number, mode: Mode): Result {
       }
     }
     for (const project of sim.projects) {
-      if (!project.partsOrdered && store.getState().cash >= project.bomCost) sim.orderParts(project.id);
+      if (!project.partsOrdered && spendable() >= project.bomCost) sim.orderParts(project.id);
     }
     const printer = sim.printer;
-    if (printer.consumable < FILAMENT.lowWarning && store.getState().cash >= FILAMENT.spoolCost) {
+    if (printer.consumable < FILAMENT.lowWarning && spendable() >= FILAMENT.spoolCost) {
       sim.buyFilament();
     }
     // Take on anybody who is interested and affordable — the roster is the constraint.
     for (const id of [...store.getState().applicants]) {
       // Take the biggest contract that is comfortably affordable.
       const full = sim.canHireFullTime(id);
-      if (full && store.getState().cash >= sim.hireCost(id, 'full-time') * 3) sim.hire(id, 'full-time');
-      else if (store.getState().cash >= sim.hireCost(id, 'part-time') * 3) sim.hire(id, 'part-time');
+      // Only take somebody on if the month still clears afterwards, with room to spare.
+      const afterHire = (wage: number) => sim.previewBill().net - wage > ECONOMY.rent[0];
+      if (full && spendable() >= sim.hireCost(id, 'full-time') * 3 && afterHire(ECONOMY.wage['full-time'])) {
+        sim.hire(id, 'full-time');
+      } else if (spendable() >= sim.hireCost(id, 'part-time') * 3 && afterHire(ECONOMY.wage['part-time'])) {
+        sim.hire(id, 'part-time');
+      }
     }
 
     if (mode === 'hands-off') continue;
@@ -160,7 +175,7 @@ function runOnce(seed: number, mode: Mode): Result {
           STAGE_MAP[project.stage].work > 0 &&
           project.required[project.stage] > 0 &&
           !project.bounties.includes(project.stage) &&
-          store.getState().cash >= sim.bountyCost(project.id) &&
+          spendable() >= sim.bountyCost(project.id) &&
           sim.player.hoursLeft >= VERB_HOURS.bounty
         ) {
           if (sim.postBounty(project.id)) bounties += 1;

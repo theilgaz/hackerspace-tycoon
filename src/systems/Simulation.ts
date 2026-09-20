@@ -52,6 +52,7 @@ import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
 import { RIVAL_MAP, YEAR_DAYS } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
+import { ECONOMY, membershipFor, rentFor, type Bill, type BillLine } from '@/utils/economy';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
 import { clock, money, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
@@ -99,6 +100,10 @@ export class Simulation {
   rivals: RivalState[] = createRivals();
   private yearStart = { day: 1, projects: 0, reputation: 0 };
   private rivalYearStart = new Map<string, { projects: number; reputation: number }>();
+  /** Machine-hours run since the last bill, for the utilities line. */
+  private machineHoursThisMonth = 0;
+  /** What the work actually brought in since the last bill — payouts and sponsor money. */
+  private incomeThisMonth = 0;
 
   constructor() {
     resetStations();
@@ -171,6 +176,7 @@ export class Simulation {
       this.day += 1;
       this.endOfDay();
       tickRivals(this.rivals, this.rivalPressure());
+      this.runBilling();
       this.checkAwards();
       this.openApplicants();
       this.planDay();
@@ -727,6 +733,7 @@ export class Simulation {
       );
       if (!operated && !(this.player.present && this.player.calibrating)) machine.operatorSkill = 0;
 
+      if (machine.running) this.machineHoursThisMonth += dt;
       const result = machine.tick(dt);
       if (!result) continue;
 
@@ -871,6 +878,7 @@ export class Simulation {
 
     if (def.payout > 0) {
       store.getState().earn(def.payout);
+      this.incomeThisMonth += def.payout;
       this.log(`${project.name} shipped on day ${this.day} — ₺${def.payout.toLocaleString('tr-TR')}.`, 'good');
     } else {
       this.log(`${project.name} shipped on day ${this.day}.`, 'good');
@@ -986,6 +994,115 @@ export class Simulation {
     this.members.push(entity);
     this.plans.set(data.id, { attending: false, arriveAt: 0, leaveAt: 0 });
     return entity;
+  }
+
+  /** Paying members of the public — the passive income a reputation earns you. */
+  get membership(): number {
+    return membershipFor(store.getState().reputation);
+  }
+
+  /** What the next bill will look like if nothing changes. */
+  previewBill(): { income: number; costs: number; net: number; dueInDays: number } {
+    // Preview is cash movement only — project money is banked as it arrives.
+    const state = store.getState();
+    const wages = this.members.reduce((sum, m) => sum + ECONOMY.wage[m.employment], 0);
+    const rent = rentFor(state.era);
+    const utilities = Math.round(this.machineHoursThisMonth * ECONOMY.utilityPerMachineHour);
+    const dues = this.membership * ECONOMY.duesPerMember;
+    return {
+      income: dues,
+      costs: wages + rent + utilities,
+      net: dues - wages - rent - utilities,
+      dueInDays: ECONOMY.billEvery - ((this.day - 1) % ECONOMY.billEvery),
+    };
+  }
+
+  /**
+   * The monthly bill. Rent and wages do not care whether you shipped anything, which is
+   * the point: a quiet month still costs you a month.
+   */
+  private runBilling() {
+    if ((this.day - 1) % ECONOMY.billEvery !== 0 || this.day === 1) return;
+    const state = store.getState();
+
+    const dues = this.membership * ECONOMY.duesPerMember;
+    // Project money is already banked; it is on the statement so the month reads as a real
+    // profit and loss rather than "dues against rent", which always looks like a disaster.
+    const income: BillLine[] = [
+      {
+        label: 'Work shipped',
+        detail: 'payouts and sponsor money, already banked',
+        amount: Math.round(this.incomeThisMonth),
+      },
+      {
+        label: 'Membership dues',
+        detail: `${this.membership} members · ${ECONOMY.duesPerMember} each`,
+        amount: dues,
+      },
+    ];
+
+    const full = this.members.filter((m) => m.employment === 'full-time').length;
+    const part = this.members.length - full;
+    const wages = full * ECONOMY.wage['full-time'] + part * ECONOMY.wage['part-time'];
+    const rent = rentFor(state.era);
+    const utilities = Math.round(this.machineHoursThisMonth * ECONOMY.utilityPerMachineHour);
+    const costs: BillLine[] = [
+      { label: 'Rent', detail: eraDef(state.era).name, amount: -rent },
+      {
+        label: 'Wages',
+        detail: `${full} full-time · ${part} part-time`,
+        amount: -wages,
+      },
+      {
+        label: 'Power and consumables',
+        detail: `${Math.round(this.machineHoursThisMonth)} machine-hours`,
+        amount: -utilities,
+      },
+    ];
+
+    // The statement's bottom line is the true month; only dues and costs move cash now.
+    const total = Math.round(this.incomeThisMonth) + dues - rent - wages - utilities;
+    const cashDelta = dues - rent - wages - utilities;
+    const balanceBefore = state.cash;
+    const shortfall = Math.max(0, -(balanceBefore + cashDelta));
+    const balanceAfter = Math.max(0, balanceBefore + cashDelta);
+    const missesInARow = shortfall > 0 ? state.missedBills + 1 : 0;
+    const evicted = missesInARow >= ECONOMY.missesBeforeEviction;
+
+    store.setState({ cash: balanceAfter });
+    const bill: Bill = {
+      month: Math.floor((this.day - 1) / ECONOMY.billEvery),
+      day: this.day,
+      income,
+      costs,
+      total,
+      balanceBefore,
+      balanceAfter,
+      shortfall,
+      missesInARow,
+      evicted,
+    };
+    store.getState().setBill(bill);
+    this.machineHoursThisMonth = 0;
+    this.incomeThisMonth = 0;
+
+    if (evicted) {
+      store.getState().endRun(
+        `Rent went unpaid twice. The lease is gone and so is the space.`,
+        this.day,
+      );
+      this.log(`Evicted on day ${this.day}.`, 'bad');
+    } else if (shortfall > 0) {
+      this.log(
+        `Could not cover the bill — short by ${money(shortfall)}. Miss the next one and you are out.`,
+        'bad',
+      );
+    } else {
+      this.log(
+        `Bill settled. ${total >= 0 ? 'Up' : 'Down'} ${money(Math.abs(total))} on the month.`,
+        total >= 0 ? 'good' : 'warn',
+      );
+    }
   }
 
   /** Difficulty and the yearly ramp, folded into the multipliers the rivals tick on. */
@@ -1111,6 +1228,19 @@ export class Simulation {
     }
   }
 
+  /** End somebody's contract. The only way to cut the wage bill in a hurry. */
+  letGo(id: string) {
+    const member = this.member(id);
+    if (!member) return;
+    if (member.team) {
+      const project = this.project(member.team);
+      if (project) project.team = project.team.filter((x) => x !== id);
+    }
+    this.members = this.members.filter((m) => m.id !== id);
+    this.plans.delete(id);
+    this.log(`${member.name} is off the books.`, 'warn');
+  }
+
   /** What a contract costs to set up: induction, a key, a shelf, a tool briefing. */
   hireCost(id: string, employment: Employment = 'full-time'): number {
     const data = APPLICANTS.find((a) => a.id === id);
@@ -1189,6 +1319,7 @@ export class Simulation {
       store.getState().removeOffer(offer.id);
       if (offer.sponsorCash) {
         store.getState().earn(offer.sponsorCash);
+        this.incomeThisMonth += offer.sponsorCash;
         this.log(`Sponsor paid ₺${offer.sponsorCash.toLocaleString('tr-TR')} up front for ${def.name}.`, 'good');
       }
       if (offer.proposerId) {
