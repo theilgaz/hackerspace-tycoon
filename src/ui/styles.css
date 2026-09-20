@@ -903,3 +903,23 @@ button.primary { padding: 9px 12px; font-size: 12.5px; }
   margin-bottom: 7px;
 }
 .job-group__head .ui-label { margin: 0; }
+
+/* Completed breadcrumb steps navigate; they have to look like it. */
+button.step {
+  padding: 2px 6px 2px 2px;
+  margin: -2px -6px -2px -2px;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+button.step:hover { background: var(--muted); color: var(--foreground); }
+button.step:hover i {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }

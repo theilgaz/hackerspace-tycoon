@@ -129,6 +129,11 @@ is what a step could never do:
 Filtering collapses the group headings, since they would then be saying the same thing twice.
 The general rule: a wizard step should ask something the list cannot answer.
 
+**The breadcrumb navigates.** A completed step is a button back to itself — the check-marked
+crumbs take a pill background on hover so they read as clickable. The current step and the ones
+ahead are plain text: you are already on one and the others do not exist yet. Back still walks
+one step at a time; the breadcrumb is for jumping past it.
+
 **The wizard is built from the design-system primitives (§11), not bespoke markup.** The first
 version used ten saturated left borders, emoji at mixed sizes and cards of different heights —
 which is what "assembled rather than designed" looks like.

@@ -131,6 +131,15 @@ async function click(selector, gapMs = 400) {
   return true;
 }
 
+/** Open the wizard from a known state — the Jobs button sits under the backdrop when it is
+ *  already open, so clicking it there closes the wizard instead. */
+async function openWizard() {
+  if (await evaluate(`document.querySelectorAll('#modal .modal').length > 0`)) {
+    await click('#modal header [data-action="jobs-close"]');
+  }
+  await click('[data-action="jobs-open"]');
+}
+
 const results = [];
 const check = async (name, fn) => {
   const ok = await fn();
@@ -151,7 +160,7 @@ await sleep(500);
 
 await check('the wizard pitched a project', async () => (await evaluate(`__game.sim.projects.length`)) > 0);
 await check('Jobs opens while a project runs', async () => {
-  await click('[data-action="jobs-open"]');
+  await openWizard();
   return (await evaluate(`document.querySelectorAll('#modal .modal').length`)) === 1;
 });
 await check('a second project can be started with one already running', async () => {
@@ -166,7 +175,7 @@ await check('the wizard keeps one size across every step', async () => {
       if (!el) return 'none';
       const r = el.getBoundingClientRect();
       return Math.round(r.width) + 'x' + Math.round(r.height) + '@' + Math.round(r.y); })()`);
-  await click('[data-action="jobs-open"]');
+  await openWizard();
   const sizes = [await box()];
   await click('#modal [data-action="jobs-category"]:not([disabled])');
   sizes.push(await box());
@@ -179,8 +188,26 @@ await check('the wizard keeps one size across every step', async () => {
   return unique.length === 1 && unique[0] !== 'none';
 });
 
+await check('breadcrumb jumps back to a completed step', async () => {
+  await openWizard();
+  await click('#modal [data-action="jobs-category"]:not([disabled])');
+  await click('#modal [data-action="jobs-project"]:not([disabled])');
+  const onCrew = await evaluate(`document.querySelector('#modal .step.now')?.textContent.trim()`);
+  // Jump straight past the project step back to the first one.
+  await click('#modal button.step[data-value="category"]');
+  const afterJump = await evaluate(`document.querySelector('#modal .step.now')?.textContent.trim()`);
+  // Steps that are not yet reached must not be clickable.
+  const aheadClickable = await evaluate(
+    `document.querySelectorAll('#modal button.step').length`,
+  );
+  if (!onCrew?.includes('Crew') || !afterJump?.includes('Kind of work')) {
+    console.log(`      crew step read "${onCrew}", after jump "${afterJump}"`);
+  }
+  return Boolean(onCrew?.includes('Crew')) && Boolean(afterJump?.includes('Kind of work')) && aheadClickable === 0;
+});
+
 await check('closing the wizard', async () => {
-  await click('[data-action="jobs-open"]');
+  await openWizard();
   await click('#modal header [data-action="jobs-close"]');
   return (await evaluate(`document.querySelectorAll('#modal .modal').length`)) === 0;
 });

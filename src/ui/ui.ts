@@ -234,6 +234,11 @@ export class UI {
           this.jobs.step = this.jobs.step === 'crew' ? 'project' : 'category';
           this.rerender();
           break;
+        case 'jobs-step':
+          // Breadcrumb: a step you have already completed is a way back to it.
+          this.jobs.step = value as JobStep;
+          this.rerender();
+          break;
         case 'jobs-category':
           this.jobs.source = value === 'offers' ? 'offers' : (value as ProjectCategory);
           this.jobs.size = 'any';
@@ -410,10 +415,14 @@ export class UI {
     const current = steps.findIndex((x) => x.key === this.jobs.step);
     const trail = steps
       .map((x, index) => {
-        const at = steps.findIndex((y) => y.key === x.key);
-        const state = at === current ? 'now' : at < current ? 'done' : '';
-        return `<span class="step ${state}">
-          <i>${state === 'done' ? icon('check', 'ui-icon step-check') : index + 1}</i>${x.label}</span>`;
+        const state = index === current ? 'now' : index < current ? 'done' : '';
+        const inner = `<i>${state === 'done' ? icon('check', 'ui-icon step-check') : index + 1}</i>${x.label}`;
+        // Only a completed step is a destination; the current one is where you are and the
+        // ones ahead do not exist yet.
+        return state === 'done'
+          ? `<button class="step done" data-action="jobs-step" data-value="${x.key}"
+               title="Back to ${x.label.toLowerCase()}">${inner}</button>`
+          : `<span class="step ${state}">${inner}</span>`;
       })
       .join(`<span class="step-sep">${icon('chevronRight', 'ui-icon')}</span>`);
 
