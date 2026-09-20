@@ -556,8 +556,9 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
   z-index: 20;
 }
 .modal {
+  /* Fixed box, not content-sized: the wizard must not jump about between steps. */
   width: min(680px, calc(100vw - 48px));
-  max-height: min(680px, calc(100vh - 80px));
+  height: min(660px, calc(100vh - 80px));
   display: flex;
   flex-direction: column;
   background: var(--panel-solid);
@@ -575,7 +576,10 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
   border-bottom: 1px solid var(--line);
 }
 .modal footer { border-bottom: none; border-top: 1px solid var(--line); }
-.modal .modal-body { padding: 14px; overflow-y: auto; }
+.modal .modal-body { flex: 1; min-height: 0; padding: 14px; overflow-y: auto; }
+/* header and footer keep their height so only the body scrolls */
+.modal header,
+.modal footer { flex: none; }
 
 .steps { display: flex; align-items: center; gap: 7px; flex: 1; flex-wrap: wrap; }
 .step {
@@ -649,3 +653,25 @@ button.primary { padding: 9px 12px; font-size: 12.5px; }
 
 /* the left panel lost its tabs */
 #left h2 { border-bottom: 1px solid var(--line); }
+
+/* --- what a pitch commits you to ----------------------------------------- */
+
+.modal-body { display: flex; flex-direction: column; }
+.breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 18px;
+  margin-top: 4px;
+}
+.breakdown .section { margin-top: 0; }
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  padding: 2.5px 0;
+  border-bottom: 1px solid #1f2530;
+}
+.breakdown-row .mono { color: var(--muted); font-size: 10.5px; }
+.breakdown-row.skip { opacity: 0.38; }
+.pitch-cta { width: 100%; margin-top: auto; }

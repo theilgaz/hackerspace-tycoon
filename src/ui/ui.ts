@@ -525,6 +525,37 @@ export class UI {
     const picked = this.draftTeams.get(def.id) ?? new Set<string>();
     const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
 
+    // The commit step has room to spare, so show what is actually being committed to.
+    // It doubles as the place the genre's stage names are introduced.
+    const stages = STAGE_ORDER.map((key) => {
+      const need = def.work[key] ?? STAGE_MAP[key].work;
+      const label = stageLabel(def.category, key);
+      const machine = key === 'fabrication';
+      const value = machine
+        ? def.parts.length
+          ? `${def.parts.reduce((sum, part) => sum + part.hours, 0)}h machine`
+          : '—'
+        : need > 0
+          ? `${need}`
+          : '—';
+      return `<div class="breakdown-row ${need > 0 || machine ? '' : 'skip'}">
+        <span>${label}</span><span class="mono">${value}</span>
+      </div>`;
+    }).join('');
+
+    const parts = def.parts.length
+      ? `<div class="section">Parts to make</div>
+         ${def.parts
+           .map(
+             (part) => `<div class="breakdown-row">
+               <span>${esc(part.name)}</span>
+               <span class="mono">${hours(part.hours)}${part.material ? ` · ${part.material}g` : ''}</span>
+             </div>`,
+           )
+           .join('')}`
+      : `<div class="section">Parts to make</div>
+         <p class="blurb">Nothing to print. It never touches the machine queue.</p>`;
+
     return `
       <div class="row between" style="margin-bottom:6px">
         <b style="font-size:15px">${esc(def.name)}</b>
@@ -534,7 +565,14 @@ export class UI {
       ${this.defStats(def)}
       ${entry ? this.offerMeta(entry, state) : ''}
       ${this.draftPicker(def, state)}
-      <button class="primary" style="width:100%;margin-top:4px" data-action="pitch"
+      <div class="breakdown">
+        <div>
+          <div class="section">Stages</div>
+          ${stages}
+        </div>
+        <div>${parts}</div>
+      </div>
+      <button class="primary pitch-cta" data-action="pitch"
         data-id="${def.id}" data-id2="${entry?.id ?? ''}"
         ${hoursLeft >= VERB_HOURS.pitch ? '' : 'disabled'}>
         ${

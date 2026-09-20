@@ -121,6 +121,14 @@ opens a four-step wizard:
 
 Offers skip step 2; there are never many of them.
 
+**The wizard is a fixed box — 680×660, never content-sized.** A dialog that resizes between
+steps is unpleasant to use and makes the Back button move under the cursor. The body scrolls; the
+header, footer and the Pitch button stay put. The crew step would otherwise be mostly empty, so
+it carries the commitment breakdown: every stage with its work (under the genre's own stage
+names) and every part with its machine hours — or, for software, the line that says it never
+touches the machine queue at all. `npm run click-check` asserts the box is identical on every
+step; without the fix it measures 529 → 326 → 238 → 474.
+
 **Crews are picked on the pitch screen.** Each backlog and catalog card carries a crew selector
 listing unallocated members ranked by passion match, capped at the project's team size. Pitching
 asks each of them — so a crew you picked can still turn up short, which is the volunteer model

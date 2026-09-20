@@ -162,6 +162,25 @@ await check('a second project can be started with one already running', async ()
   await click('#modal [data-action="pitch"]:not([disabled])');
   return (await evaluate(`__game.sim.projects.length`)) >= 2;
 });
+await check('the wizard keeps one size across every step', async () => {
+  const box = () =>
+    evaluate(`(() => { const el = document.querySelector('#modal .modal');
+      if (!el) return 'none';
+      const r = el.getBoundingClientRect();
+      return Math.round(r.width) + 'x' + Math.round(r.height) + '@' + Math.round(r.y); })()`);
+  await click('[data-action="jobs-open"]');
+  const sizes = [await box()];
+  await click('#modal [data-action="jobs-category"]:not([disabled])');
+  sizes.push(await box());
+  await click('#modal [data-action="jobs-size"]:not([disabled])');
+  sizes.push(await box());
+  await click('#modal .job:not([disabled])');
+  sizes.push(await box());
+  const unique = [...new Set(sizes)];
+  if (unique.length !== 1) console.log(`      sizes seen: ${unique.join(' | ')}`);
+  return unique.length === 1 && unique[0] !== 'none';
+});
+
 await check('closing the wizard', async () => {
   await click('[data-action="jobs-open"]');
   await click('#modal header [data-action="jobs-close"]');
