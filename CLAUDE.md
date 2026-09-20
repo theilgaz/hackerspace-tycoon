@@ -217,9 +217,16 @@ land inside their tier. **Before tuning work numbers, check lead times.**
 ### Bought parts and lead times
 
 Printed parts are only half of a build; the other half arrives in a box. Every project carries a
-**bill of materials** with a cost and a lead time (10-30 days), and **Assembly cannot start until
-the order lands**. Ordering is cheap and early; forgetting is expensive and late. You can pay to
-expedite a late order, at a punitive multiple.
+**bill of materials** with a cost and a lead time, and **Assembly cannot start until the order
+lands**.
+
+**The order goes in with the pitch**, automatically. It used to be a separate button on every
+project, which was busywork: forgetting it never produced an interesting decision, only a stall
+at Assembly that had to be unpicked. Pitching now spends the money there and then, so the pitch
+screen states the cost and what it leaves you with — a pitch is a cash commitment, and the player
+has to see that before committing. The manual Order button survives as a recovery path for the
+one case that still matters: pitching something you cannot yet afford the parts for. Expediting
+a slow delivery is unchanged and still a real decision.
 
 This is what makes the catalog's electronics projects play differently from its mechanical ones:
 a cyberdeck is print-light and spends three weeks waiting on an order, while a drone is

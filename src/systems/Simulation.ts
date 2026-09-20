@@ -47,7 +47,7 @@ import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
 import { RIVAL_MAP, YEAR_DAYS } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
-import { clock, uid } from '@/utils/format';
+import { clock, money, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
 import {
   addWork,
@@ -1132,7 +1132,24 @@ export class Simulation {
         }
       }
     }
-    this.log(`Pitched ${def.name}. ${def.blurb}`, 'info');
+    // The order goes in with the pitch: making the player click Order on every single
+    // project was busywork, and forgetting it only ever produced a stall, never a decision.
+    if (project.bomCost > 0) {
+      if (this.placeOrder(project)) {
+        this.log(
+          `Pitched ${def.name}. Parts ordered — ${money(def.bomCost)}, ${def.leadDays} days out.`,
+          'info',
+        );
+      } else {
+        this.log(
+          `Pitched ${def.name}, but there is no cash for the ${money(def.bomCost)} bill of materials. ` +
+            `Nothing can be assembled until it is ordered.`,
+          'warn',
+        );
+      }
+    } else {
+      this.log(`Pitched ${def.name}. ${def.blurb}`, 'info');
+    }
 
     // Ask the crew you picked on the pitch screen. They can still decline.
     for (const memberId of draftTeam) {
@@ -1210,7 +1227,23 @@ export class Simulation {
     return true;
   }
 
-  /** Order the bought parts. Cheap now, expensive to have forgotten (CLAUDE.md §4). */
+  /**
+   * Place the order. Split out from the verb below so that pitching can do it without
+   * charging your hours twice — the paperwork is part of writing the pitch up.
+   */
+  private placeOrder(project: ProjectData): boolean {
+    if (project.partsOrdered) return true;
+    if (store.getState().cash < project.bomCost) return false;
+    store.getState().spend(project.bomCost);
+    project.partsOrdered = true;
+    project.partsArriveAt = this.totalHours + project.leadDays * TIME.hoursPerDay;
+    return true;
+  }
+
+  /**
+   * Order the bought parts by hand. Only reachable when the order could not go in at pitch
+   * time — normally the money is not there — so it is a recovery path, not routine work.
+   */
   orderParts(projectId: string): boolean {
     const project = this.project(projectId);
     if (!project || project.partsOrdered) return false;
@@ -1219,9 +1252,7 @@ export class Simulation {
       return false;
     }
     if (!this.chargeHours('order')) return false;
-    store.getState().spend(project.bomCost);
-    project.partsOrdered = true;
-    project.partsArriveAt = this.totalHours + project.leadDays * TIME.hoursPerDay;
+    this.placeOrder(project);
     this.log(`Ordered parts for ${project.name}. ${project.leadDays} days out.`, 'info');
     return true;
   }
