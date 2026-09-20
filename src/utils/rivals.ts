@@ -27,46 +27,51 @@ export interface RivalDef {
 }
 
 /**
- * The competition. Their shapes are deliberately different so no single number wins the
- * leaderboard: Bit Alanı is rich and unknown, Demirhane is famous and slow.
+ * The competition: real hackerspaces, as a nod rather than a portrait. Their in-game
+ * numbers are pure balance — each inherits one of five deliberately different shapes so the
+ * leaderboard is not a single ladder — but the tone stays affectionate. These are actual
+ * communities, so the blurbs describe what each is known for rather than scoring points off
+ * them.
  */
 export const RIVALS: RivalDef[] = [
   {
-    id: 'bit-alani',
-    name: 'Bit Alanı',
-    blurb: 'Half consultancy, half hackerspace. Does client work and does it well.',
-    icon: 'code',
-    colour: '#5aa9f0',
-    startMembers: 6,
-    maxMembers: 15,
-    startCash: 30000,
-    shipPace: 0.12,
-    repPerProject: 110,
-    cashPerProject: 9000,
-    cashPerDay: 320,
-    repPerMember: 260,
-    paceGrowth: 7000,
-  },
-  {
-    id: 'demirhane',
-    name: 'Demirhane',
-    blurb: 'Metal, welding and one enormous project a season. Everyone knows their work.',
-    icon: 'cog',
-    colour: '#e2725b',
-    startMembers: 4,
-    maxMembers: 12,
-    startCash: 6000,
+    id: 'c-base',
+    name: 'c-base',
+    blurb: 'Berlin. Half hackerspace, half crashed space station. Everybody has heard of it.',
+    icon: 'antenna',
+    colour: '#5ad2e0',
+    startMembers: 7,
+    maxMembers: 14,
+    startCash: 12000,
     shipPace: 0.045,
     repPerProject: 560,
     cashPerProject: 5200,
-    cashPerDay: 70,
+    cashPerDay: 90,
     repPerMember: 340,
     paceGrowth: 6000,
   },
   {
-    id: 'lehimhane',
-    name: 'Lehimhane',
-    blurb: 'Boards, badges and a soldering night every Thursday. Steady as anything.',
+    id: 'london-hackspace',
+    name: 'London Hackspace',
+    blurb: 'Hundreds of members, a room for every craft, and a rota for the washing up.',
+    icon: 'users',
+    colour: '#7fb2f0',
+    startMembers: 10,
+    // Fifteen, deliberately: a complete roster is you plus fourteen, so Biggest Crew is
+    // winnable — but only if you have hired everybody.
+    maxMembers: 15,
+    startCash: 28000,
+    shipPace: 0.11,
+    repPerProject: 200,
+    cashPerProject: 4000,
+    cashPerDay: 320,
+    repPerMember: 180,
+    paceGrowth: 7000,
+  },
+  {
+    id: 'konya',
+    name: 'Konya Hackerspace',
+    blurb: 'The other space in town. Practical, steady, and always at the same table.',
     icon: 'cpu',
     colour: '#f0b429',
     startMembers: 5,
@@ -80,27 +85,25 @@ export const RIVALS: RivalDef[] = [
     paceGrowth: 6500,
   },
   {
-    id: 'acik-atolye',
-    name: 'Açık Atölye',
-    blurb: 'Open to the whole neighbourhood. Enormous membership, permanently skint.',
-    icon: 'users',
-    colour: '#7fb2f0',
-    startMembers: 12,
-    // Fifteen, deliberately: a complete roster is you plus fourteen, so Biggest Crew is
-    // winnable — but only if you have hired everybody.
-    maxMembers: 15,
-    startCash: 2500,
+    id: 'tokyo',
+    name: 'Tokyo HackerSpace',
+    blurb: 'Community first. Turns up and builds things when the city needs them.',
+    icon: 'wrench',
+    colour: '#e2725b',
+    startMembers: 7,
+    maxMembers: 13,
+    startCash: 4000,
     shipPace: 0.07,
     repPerProject: 255,
     cashPerProject: 900,
     cashPerDay: 90,
-    repPerMember: 120,
+    repPerMember: 200,
     paceGrowth: 7500,
   },
   {
-    id: 'prototip',
-    name: 'Prototip Ofisi',
-    blurb: 'Ships something every other week. Nobody can name a single one of them.',
+    id: 'garaj',
+    name: 'Garaj',
+    blurb: 'A garage, a printer and a lot of enthusiasm. Ships something most weeks.',
     icon: 'printer',
     colour: '#c58ef0',
     startMembers: 5,

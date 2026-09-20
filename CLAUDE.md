@@ -235,13 +235,18 @@ you into the top bar and onto the leaderboard.
 `src/utils/rivals.ts`. They are not running the real pipeline — they are a pace-setter — but
 their shapes differ on purpose, so the leaderboard is not one ladder:
 
+The five are **real hackerspaces**, used as a nod rather than a portrait. The numbers are pure
+balance; the tone is affectionate on purpose. Blurbs should say what a space is actually known
+for — these are living communities, and the earlier invented rivals carried jokes at their
+expense that would not be fair aimed at a real one.
+
 | Space | Shape |
 |---|---|
-| Bit Alanı | Client work. Rich, barely known. |
-| Demirhane | One enormous build a season. Famous, slow, skint. |
-| Lehimhane | Boards and badges every Thursday. Relentlessly steady. |
-| Açık Atölye | The whole neighbourhood. Huge crew, no money. |
-| Prototip Ofisi | Ships constantly. Nobody can name one of them. |
+| c-base | Famous and slow. Enormous reputation per build. |
+| London Hackspace | The big one: largest crew, strongest dues income. |
+| Konya Hackerspace | The peer down the road. Steady on every axis. |
+| Tokyo HackerSpace | Community work. Good reputation, thin margins. |
+| Garaj | Ships constantly, each one small. |
 
 Their pace **compounds with their reputation**, as the player's does. Without that they grow
 linearly while the player's roster snowballs, and by day 200 the table is a formality.
