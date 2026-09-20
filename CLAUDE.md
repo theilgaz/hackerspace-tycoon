@@ -243,7 +243,13 @@ expense that would not be fair aimed at a real one.
 | Space | Shape |
 |---|---|
 | c-base | Famous and slow. Enormous reputation per build. |
-| London Hackspace | The big one: largest crew, strongest dues income. |
+| Noisebridge | Famous, radically open, permanently broke. |
+| NYC Resistor | Small, influential, electronics-meets-craft. |
+| Metalab | One of the originals. Steady and well regarded. |
+| London Hackspace | Big crew, strong dues income. |
+| Dallas Makerspace | The biggest crew of all, and the deepest pockets. |
+| Xinchejian | Hardware, fast iteration, close to the supply chain. |
+| HacDC | Radio, a ground station, and a class every week. |
 | Konya Hackerspace | The peer down the road. Steady on every axis. |
 | Tokyo HackerSpace | Community work. Good reputation, thin margins. |
 | Garaj | Ships constantly, each one small. |
@@ -262,8 +268,18 @@ Winning pays reputation. Two tuning notes worth keeping:
 - **Every category must be winnable.** Açık Atölye's crew is capped at 15 because a complete
   roster is you plus fourteen — so Biggest Crew is reachable, but only if you have hired
   everybody. It was capped at 40 first, which made one of the four awards decoration.
-- `npm run era-pace` prints the final standings. An engaged player should finish first without
-  finishing at four times the field; a bad run should finish last, and does.
+- `npm run era-pace [seeds]` prints the first awards night, the day each era arrives, and the
+  final standings. Targets: an engaged player takes **one or two of four** on the first night
+  (currently 10 of 32 across eight runs, ranging 0-3), finishes **first overall** by day 220
+  without finishing at twice the field, and no single rival wins two categories every time.
+- **Tune the awards from computed values, not by nudging.** Lowering whichever space happened
+  to be winning Deepest Pockets simply handed it to the next one along, four times in a row.
+  Work out every rival's day-90 balance from `startCash + 90 × cashPerDay + projects ×
+  cashPerProject` and set the whole distribution at once.
+- **Reset every field between harness runs.** `era-pace` left `ceremony` set from the previous
+  seed, so runs 2 onward captured the leftover ceremony on day 1 and reported a leaderboard of
+  starting values. Three rounds of "tuning" were done against that before the `[captured day N]`
+  line exposed it. If a harness resets the store, it resets *all* of it.
 
 ## 4b. Genres (`src/utils/categories.ts`)
 

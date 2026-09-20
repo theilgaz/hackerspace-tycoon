@@ -8,15 +8,42 @@ import { partsPending } from '@/systems/ProjectSystem';
 
 const rows: string[] = [];
 const standings: string[] = [];
-for (let seed = 1; seed <= 4; seed += 1) {
+const firstNight: string[] = [];
+const SEEDS = Number(process.argv[2] ?? 4);
+for (let seed = 1; seed <= SEEDS; seed += 1) {
   rng.reseed(seed);
-  store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, backlog: [], applicants: [], runtime: emptyRuntime() });
+  store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, ceremony: null, ceremonies: [],
+    ceremony: null,
+    ceremonies: [], backlog: [], applicants: [], runtime: emptyRuntime() });
   const sim = new Simulation();
   const arrived: Record<number, number> = {};
+  let night: string | null = null;
   while (sim.day <= 220) {
     sim.tick(0.05, 4);
     const state = store.getState();
     if (!arrived[state.era]) arrived[state.era] = sim.day;
+    // The first awards night is the one nearly every player will actually reach.
+    if (!night && state.ceremony) {
+      const board = sim.scoreboard().sort((a, b) => b.members - a.members);
+      night =
+        state.ceremony.awards
+          .map((a) => `${a.category}: ${a.playerWon ? 'US' : a.winnerName}`)
+          .join('  ·  ') +
+        `\n           [captured day ${sim.day}, rival rep ${sim.rivals.map((r) => r.reputation).join('/')}]` +
+        `\n           crews: ` +
+        board
+          .slice(0, 4)
+          .map((r) => `${r.isPlayer ? '*' : ''}${r.name} ${r.members}`)
+          .join(', ') +
+        `  |  cash: ` +
+        [...board]
+          .sort((a, b) => b.cash - a.cash)
+          .slice(0, 3)
+          .map((r) => `${r.isPlayer ? '*' : ''}${r.name} ${Math.round(r.cash / 1000)}k`)
+          .join(', ');
+      store.getState().setCeremony(null);
+      store.setState({ paused: false });
+    }
     // Only start something there are actually free hands for.
     if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
       const offer = state.backlog[0];
@@ -56,6 +83,8 @@ for (let seed = 1; seed <= 4; seed += 1) {
         .join('  ·  '),
   );
 
+  firstNight.push(`  seed ${seed}: ${night ?? 'no ceremony reached'}`);
+
   const stuck = sim.projects.map((p) => {
     const why =
       p.stage === 'assembly' && partsPending(p, sim.totalHours)
@@ -75,4 +104,9 @@ for (let seed = 1; seed <= 4; seed += 1) {
   );
 }
 console.log('\n  ERA PACING (220 days, engaged player)\n' + rows.join('\n'));
+const wins = firstNight.reduce((n, line) => n + (line.match(/: US/g) ?? []).length, 0);
+console.log(
+  `\n  FIRST AWARDS NIGHT (day 90) — you took ${wins} of ${firstNight.length * 4} across ${firstNight.length} runs\n` +
+    firstNight.join('\n'),
+);
 console.log('\n  STANDINGS AT THE END\n' + standings.join('\n') + '\n');

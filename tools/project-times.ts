@@ -39,6 +39,8 @@ function runProject(def: ProjectDef, seed: number): number | null {
     era: 3,
     shippedCount: 0,
     reputation: 0,
+    ceremony: null,
+    ceremonies: [],
     backlog: [],
     applicants: [],
     ownedMachines: [...ALL_MACHINES],

@@ -23,7 +23,9 @@ const H = (DT * SPEED) / 2.5;
 const DAYS = Number(process.argv[2] ?? 120);
 
 rng.reseed(Number(process.argv[3] ?? 7));
-store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, backlog: [], applicants: [], runtime: emptyRuntime() });
+store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, ceremony: null, ceremonies: [],
+    ceremony: null,
+    ceremonies: [], backlog: [], applicants: [], runtime: emptyRuntime() });
 const sim = new Simulation();
 
 const budget: Record<string, number> = {};

@@ -62,6 +62,8 @@ function runOnce(seed: number, mode: Mode): Result {
     era: 1,
     shippedCount: 0,
     reputation: 0,
+    ceremony: null,
+    ceremonies: [],
     backlog: [],
     applicants: [],
     ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],

@@ -51,6 +51,16 @@ const PATHS: Record<string, string> = {
   effort: '<path d="M22 12h-4l-3 8.5L9 3.5 6 12H2"/>',
   coins: '<circle cx="8" cy="8" r="5.5"/><path d="M15 6.2a5.5 5.5 0 0 1 0 11.6"/><path d="M6.5 8h3"/>',
   flame: '<path d="M12 22a7 7 0 0 0 7-7c0-5-4-6-4-10 0 0-3 1.5-3 5 0-2-2-3-2-3s-1 2-1 4c0 1.5-2 2-2 4a7 7 0 0 0 5 7z"/>',
+  building:
+    '<rect x="4" y="3" width="16" height="18" rx="1.5"/>' +
+    '<path d="M8.5 7h2M13.5 7h2M8.5 11h2M13.5 11h2M8.5 15h2M13.5 15h2"/>' +
+    '<path d="M10 21v-2.5h4V21"/>',
+  lightbulb:
+    '<path d="M9.5 18h5"/><path d="M10.5 21h3"/>' +
+    '<path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.8 1 .9 1.6l.1.6h5.2l.1-.6c.1-.6.4-1.2.9-1.6A6 6 0 0 0 12 3z"/>',
+  dish:
+    '<circle cx="12" cy="12" r="8.5"/><path d="M12 12 18.2 5.8"/>' +
+    '<path d="M7.6 12A4.4 4.4 0 0 1 12 7.6"/>',
 };
 
 export type IconName = keyof typeof PATHS;
