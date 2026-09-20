@@ -46,7 +46,29 @@ push back against drift — they are the game's clock, not decoration.
 
 ## 3. The Influence Model (§1 consequence)
 
-### Members (the space starts with six; nine more arrive — see §5)
+### The working day (§3d)
+
+Nine to six, Monday to Friday, with **lunch from twelve to one** when the lounge finally earns
+its floor space. Two contracts:
+
+| | Hours | Span |
+|---|---|---|
+| **Full-time** | 8h/day, 40h/week | 09:00-18:00 |
+| **Part-time** | 4h/day, 20h/week | mornings 09:00-14:00 or afternoons 14:00-18:00 |
+
+You choose the contract when you hire, and it is the decision: more hours from fewer people, or
+more people on fewer hours. Some applicants have a day job and can only take a part-time shift.
+
+Hours come from the contract now, not a dice roll. The only randomness left is whether somebody
+turns up at all, which is where mood and the Ghost still live. **A bounty therefore buys overtime
+rather than a better roll** — a part-timer stays on for the rest of the day, a full-timer stays
+past six. Keep that: §13's rule is that every verb has to move hours in the building, and with a
+rota the only hours left to move are the ones past the end of a shift.
+
+You are the exception. The owner is there at any hour, weekends included; the daily budget, not
+the clock, is what limits you.
+
+### Members (the space starts with two; the rest are hired — see §5)
 ```
 Member {
   id, name,
@@ -241,7 +263,17 @@ a yearly ramp, so a long game keeps tightening instead of settling once you are 
 
 **The run starts with a name and a badge.** A start screen asks what the place is called and
 which of eight badges it wears; nothing ticks until the doors open. The name and badge follow
-you into the top bar and onto the leaderboard.
+you into the top bar and onto the leaderboard. Both arrive pre-filled with a suggestion — an
+empty field under a dead **Open the doors** button is a poor first frame, and the field is
+selected so typing replaces it. The title and the button update as you type, without a
+re-render that would replace the input under the caret.
+
+**A setting has to state its terms.** The three difficulty cards used to be stacked boxes of
+different heights carrying flavour text only, so the one thing the choice actually changes for
+the player — the opening cash — was invisible. They are now `.ui-option` cards in a three-column
+grid (§11 primitives, uniform height, clamped blurb), each showing a three-bar pressure meter,
+a tick when chosen so the selection is not carried by colour alone, and `₺x to start`. A
+footnote says the rest out loud: difficulty moves the other spaces and nothing else.
 
 **Five other hackerspaces are simulated** in `src/systems/RivalSystem.ts`, defined in
 `src/utils/rivals.ts`. They are not running the real pipeline — they are a pace-setter — but
@@ -294,6 +326,22 @@ Winning pays reputation. Two tuning notes worth keeping:
   a ◆, and the current leader of every column picked out — so "who beats me to Deepest
   Pockets" is answerable at a glance. **Use a table whenever the job is comparison; use cards
   only when each item is read on its own.**
+
+- **`project-times` alone cannot tune the campaign.** It measures best case — a full roster —
+  where the eight-worker cap binds, so it hides anything that changes how many *people* are
+  available. Moving to contracted hours took ~30% off best-case durations but made the campaign
+  *slower*, because weekends cost members two days in seven and a partial roster never reaches
+  the cap. Tuning work up 25% on the best-case reading pushed the campaign further backwards.
+  Always check `era-pace` as well before trusting a change to labour supply.
+
+- **Known, and not a multiplier problem: the player plateaus, the rivals do not.** The roster
+  caps at fifteen, there is one printer, and eight people is the ceiling on one stage — so the
+  player's output flattens while linear rivals keep accumulating. A 220-day run therefore usually
+  ends mid-table even when the first awards night goes well. Several rounds of rescaling only
+  traded one end against the other: strong enough rivals to make the first night a contest are
+  strong enough to win the long table. The fix is late-game growth for the player — a second
+  printer, the bigger space, more Era 3 content — which is Phase 4 and Phase 6 work, not a
+  coefficient. Awards are calibrated (about 10 of 32 across eight runs); the standings are not.
 
 - **Reset every field between harness runs.** `era-pace` left `ceremony` set from the previous
   seed, so runs 2 onward captured the leftover ceremony on day 1 and reported a leaderboard of

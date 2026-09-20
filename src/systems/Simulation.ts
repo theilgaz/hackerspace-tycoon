@@ -1,6 +1,7 @@
 import { store } from '@/game/store';
 import type {
   BacklogEntry,
+  Employment,
   MemberData,
   RivalState,
   ScoreRow,
@@ -41,7 +42,11 @@ import {
   STAGE_MAP,
   TIME,
   VERB_HOURS,
+  WORKDAY,
   eraDef,
+  isLunch,
+  isWorkingDay,
+  weeklyHoursFor,
 } from '@/utils/constants';
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
 import { RIVAL_MAP, YEAR_DAYS } from '@/utils/rivals';
@@ -101,7 +106,12 @@ export class Simulation {
       if (!FAB_MACHINES.includes(def.type)) continue;
       this.machines.push(new Machine(def, def.type === 'fdm' ? FILAMENT.spoolGrams : 0));
     }
-    this.members = ROSTER.map((data) => new MemberEntity({ ...data }, DOOR));
+    this.members = ROSTER.map((data) => {
+      const member = new MemberEntity({ ...data }, DOOR);
+      member.employment = data.partTimeOnly ? 'part-time' : 'full-time';
+      member.shift = member.employment === 'part-time' ? data.prefers ?? 'morning' : null;
+      return member;
+    });
     this.player = new PlayerEntity(DOOR);
     this.player.arrive(DOOR);
     for (const rival of this.rivals) {
@@ -223,35 +233,41 @@ export class Simulation {
     }
   }
 
-  /** §13.2 — commitment (hours/week) decides whether they turn up at all. */
+  /**
+   * The rota. Hours come from a contract now, not a dice roll — the only randomness left
+   * is whether somebody actually turns up, which is where mood and the Ghost still live.
+   */
   private planDay() {
+    const working = isWorkingDay(this.day);
+    const bountied = this.projects.filter(
+      (p) => p.bounties.includes(p.stage) && p.required[p.stage] > 0,
+    );
+
     for (const m of this.members) {
-      const moodFactor = 0.6 + m.data.mood / 125;
-      // A live bounty on something they care about drags them in and keeps them longer.
-      const tempted = this.projects.some(
-        (p) =>
-          p.bounties.includes(p.stage) &&
-          p.required[p.stage] > 0 &&
-          m.passionMatch(p.tags) >= BOUNTY.temptThreshold,
-      );
-      const chance = Math.min(
-        0.95,
-        Math.max(
-          0.05,
-          m.data.commitment *
-            MEMBER.showUpPerCommitmentHour *
-            m.ghostFactor *
-            moodFactor *
-            (tempted ? BOUNTY.attendanceBoost : 1),
-        ),
-      );
-      const attending = rng.chance(chance);
-      const [open, close] = m.data.window;
-      const todayHours =
-        Math.max(1.5, (m.data.commitment / 4) * rng.range(0.7, 1.3)) * (tempted ? BOUNTY.stayBoost : 1);
-      const arriveAt = rng.range(open, Math.max(open + 0.5, close - todayHours));
-      this.plans.set(m.id, { attending, arriveAt, leaveAt: Math.min(close, arriveAt + todayHours) });
-      m.leaveAt = Math.min(close, arriveAt + todayHours);
+      if (!working) {
+        this.plans.set(m.id, { attending: false, arriveAt: 0, leaveAt: 0 });
+        m.leaveAt = 0;
+        continue;
+      }
+
+      const moodFactor = 0.85 + m.data.mood / 400;
+      const base =
+        m.employment === 'full-time' ? WORKDAY.attendanceBase : WORKDAY.partTimeAttendance;
+      const attending = rng.chance(Math.min(0.99, Math.max(0.3, base * m.ghostFactor * moodFactor)));
+
+      // A bounty buys overtime rather than a better roll: a part-timer stays on for the
+      // rest of the day, a full-timer stays past six.
+      const tempted = bountied.some((p) => m.passionMatch(p.tags) >= BOUNTY.temptThreshold);
+      const span = m.span;
+      const overtime = tempted && rng.chance(BOUNTY.overtimeChance);
+      const leaveAt = overtime
+        ? m.employment === 'part-time'
+          ? WORKDAY.end
+          : WORKDAY.overtimeEnd
+        : span.end;
+
+      this.plans.set(m.id, { attending, arriveAt: span.start, leaveAt });
+      m.leaveAt = leaveAt;
     }
   }
 
@@ -430,6 +446,17 @@ export class Simulation {
 
   /** The influence model in one function: nobody is told what to do. */
   private decideActivity(m: MemberEntity, _dt: number) {
+    // Twelve to one, nobody works. The lounge exists for exactly this.
+    if (isLunch(this.time)) {
+      m.note = 'lunch';
+      if (this.atStation(m, 'lounge')) {
+        m.activity = 'resting';
+      } else if (!m.walking) {
+        m.walkTo(stationOfType('lounge')!.stand);
+      }
+      return;
+    }
+
     if (m.activity === 'resting') {
       if (m.data.energy >= 65) {
         m.activity = 'idle';
@@ -1084,18 +1111,28 @@ export class Simulation {
     }
   }
 
-  /** What it costs to take somebody on: induction, a key, a shelf, a tool briefing. */
-  hireCost(id: string): number {
+  /** What a contract costs to set up: induction, a key, a shelf, a tool briefing. */
+  hireCost(id: string, employment: Employment = 'full-time'): number {
     const data = APPLICANTS.find((a) => a.id === id);
-    return data ? Math.round(data.commitment * RECRUIT.hireCostPerCommitmentHour) : 0;
+    if (!data) return 0;
+    if (data.partTimeOnly && employment === 'full-time') return 0;
+    return Math.round(weeklyHoursFor(employment) * RECRUIT.hireCostPerWeeklyHour);
   }
 
-  /** Turn an applicant into a member. The one place the roster grows. */
-  hire(id: string): boolean {
+  canHireFullTime(id: string): boolean {
+    return !APPLICANTS.find((a) => a.id === id)?.partTimeOnly;
+  }
+
+  /** Turn an applicant into a member on a contract. The one place the roster grows. */
+  hire(id: string, employment: Employment = 'full-time'): boolean {
     const data = APPLICANTS.find((a) => a.id === id);
     if (!data || this.members.some((m) => m.id === id)) return false;
     if (!store.getState().applicants.includes(id)) return false;
-    const cost = this.hireCost(id);
+    if (data.partTimeOnly && employment === 'full-time') {
+      this.log(`${data.name} has a day job — part-time only.`, 'warn');
+      return false;
+    }
+    const cost = this.hireCost(id, employment);
     if (store.getState().cash < cost) {
       this.log(`Not enough cash to take ${data.name} on.`, 'bad');
       return false;
@@ -1103,8 +1140,14 @@ export class Simulation {
     if (!this.chargeHours('hire')) return false;
     store.getState().spend(cost);
     store.getState().closeApplicant(id);
-    this.joinMember(data);
-    this.log(`${data.name} joined the space. ${data.commitment}h a week.`, 'good');
+    const member = this.joinMember(data);
+    member.employment = employment;
+    member.shift = employment === 'part-time' ? data.prefers ?? 'morning' : null;
+    this.log(
+      `${data.name} joined ${employment === 'full-time' ? 'full-time' : `part-time (${member.shift}s)`} — ` +
+        `${weeklyHoursFor(employment)}h a week.`,
+      'good',
+    );
     return true;
   }
 

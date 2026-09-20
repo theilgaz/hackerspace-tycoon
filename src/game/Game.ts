@@ -68,8 +68,9 @@ export class Game {
       moveJob: (machineId, jobId, dir) => act(() => sim.moveJob(machineId, jobId, dir)),
       cancelJob: (machineId, jobId) => act(() => sim.cancelJob(machineId, jobId)),
       buyFilament: () => act(() => sim.buyFilament()),
-      hire: (memberId) => act(() => sim.hire(memberId)),
-      hireCost: (memberId) => sim.hireCost(memberId),
+      hire: (memberId, employment) => act(() => sim.hire(memberId, employment)),
+      hireCost: (memberId, employment) => sim.hireCost(memberId, employment),
+      canHireFullTime: (memberId) => sim.canHireFullTime(memberId),
       begin: (name, logo, difficulty) => {
         const badge = LOGOS[logo] ?? LOGOS[0];
         store.getState().begin({ name, icon: badge.icon, colour: badge.colour }, difficulty);

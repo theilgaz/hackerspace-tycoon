@@ -26,12 +26,50 @@ export const FILAMENT = {
 
 // --- People -----------------------------------------------------------------
 
+/**
+ * The working day. Nine to six with an hour for lunch, Monday to Friday — the space is a
+ * workplace now, not a rota of whoever happens to drop in. Full-time covers the whole day
+ * (8h); part-time covers a half (4h), either side of lunch.
+ *
+ * You are the exception: the owner is there whenever they like, weekends included.
+ */
+export const WORKDAY = {
+  start: 9,
+  end: 18,
+  lunchStart: 12,
+  lunchEnd: 13,
+  /** Monday is day 1; days 6 and 7 of each week are the weekend. */
+  daysPerWeek: 7,
+  workingDays: 5,
+  shifts: {
+    'full-time': { start: 9, end: 18, hours: 8 },
+    morning: { start: 9, end: 14, hours: 4 },
+    afternoon: { start: 14, end: 18, hours: 4 },
+  },
+  /** They are employed, so they turn up — barring mood, and whatever a Ghost is doing. */
+  attendanceBase: 0.97,
+  partTimeAttendance: 0.95,
+  /** How late a bounty will keep somebody. */
+  overtimeEnd: 20,
+};
+
+export function weeklyHoursFor(employment: 'full-time' | 'part-time'): number {
+  return (employment === 'full-time' ? WORKDAY.shifts['full-time'].hours : WORKDAY.shifts.morning.hours) *
+    WORKDAY.workingDays;
+}
+
+export function isWorkingDay(day: number): boolean {
+  return (day - 1) % WORKDAY.daysPerWeek < WORKDAY.workingDays;
+}
+
+export function isLunch(hour: number): boolean {
+  return hour >= WORKDAY.lunchStart && hour < WORKDAY.lunchEnd;
+}
+
 export const MEMBER = {
   /** Tiles per sim-hour. Tuned so a cross-garage walk reads on screen (~1s at 1x)
    * without eating the visit: at 2.6 it consumed 80% of every volunteer's day. */
   walkSpeed: 22,
-  /** §13.2 commitment (h/week) → chance of showing up on a given day. */
-  showUpPerCommitmentHour: 0.055,
   /** Work units produced per sim-hour at skill 1, mood 50, full energy. */
   baseWorkRate: 1.0,
   /** Each skill level above 1 adds this much rate. */
@@ -92,13 +130,12 @@ export const BOUNTY = {
   costPerWorkUnit: 14,
   minCost: 150,
   /**
-   * A bounty must move the binding constraint, and the binding constraint is attendance —
-   * not interest. Interest only matters for somebody already in the building. Cash and
-   * pizza are exactly what makes a volunteer turn up on a Tuesday evening.
-   * Posted today, felt tomorrow: planDay() runs at the day rollover.
+   * A bounty still has to move the binding constraint, which is hours in the building. With
+   * contracted shifts it buys **overtime** rather than a better dice roll: a part-timer
+   * stays on for the rest of the day, a full-timer stays past six. Posted today, felt
+   * tomorrow — planDay() runs at the day rollover.
    */
-  attendanceBoost: 1.75,
-  stayBoost: 1.45,
+  overtimeChance: 0.7,
   /** Passion match needed before the bounty tempts them in at all. */
   temptThreshold: 0.3,
 };
@@ -370,6 +407,7 @@ export const ROSTER: MemberData[] = [
     commitment: 12,
     traits: ['documenter'],
     // Routine working hours — unlike you, Safa has a day job to get back to.
+    prefers: 'morning',
     window: [9, 18],
   },
 ];
@@ -384,84 +422,107 @@ export const APPLICANTS: MemberData[] = [
     id: 'mehmet', name: 'Mehmet', repRequired: 0,
     skills: skills({ electronics: 3, machining: 3, docs: 2 }),
     passions: { iot: 0.7, electronics: 0.6, fpv: 0.45 },
+    prefers: 'morning',
     energy: 88, mood: 72, commitment: 15, traits: [], window: [9, 18],
   },
   {
     id: 'deniz', name: 'Deniz', repRequired: 80,
     skills: skills({ cad: 3, electronics: 4, software: 2 }),
     passions: { fpv: 0.9, electronics: 0.6, iot: 0.45, software: 0.35, retro: 0.35, radio: 0.3 },
+    prefers: 'afternoon',
     energy: 85, mood: 70, commitment: 14, traits: ['nightOwl'], window: [17, 24],
   },
   {
     id: 'bektas', name: 'Bektaş', repRequired: 160,
     skills: skills({ machining: 3, welding: 4, electronics: 2 }),
     passions: { fpv: 0.7, machining: 0.6, robotics: 0.45 },
+    prefers: 'morning',
     energy: 90, mood: 66, commitment: 14, traits: [], window: [12, 20],
   },
   {
     id: 'ada', name: 'Ada', repRequired: 260,
     skills: skills({ cad: 4, machining: 2, docs: 2 }),
     passions: { cad: 0.75, design: 0.65, robotics: 0.45, fpv: 0.35, machining: 0.3 },
+    partTimeOnly: true,
+    prefers: 'morning',
     energy: 90, mood: 75, commitment: 10, traits: ['perfectionist'], window: [10, 18],
   },
   {
     id: 'kerem', name: 'Kerem', repRequired: 360,
     skills: skills({ machining: 3, welding: 2, electronics: 2, docs: 2 }),
     passions: { machining: 0.65, civic: 0.55, woodworking: 0.45, fpv: 0.4, food: 0.35 },
+    partTimeOnly: true,
+    prefers: 'afternoon',
     energy: 80, mood: 60, commitment: 8, traits: ['ghost'], window: [13, 21],
   },
   {
     id: 'ibrahim', name: 'İbrahim', repRequired: 500,
     skills: skills({ cad: 4, machining: 2, docs: 2 }),
     passions: { cad: 0.8, design: 0.75, fpv: 0.3 },
+    partTimeOnly: true,
+    prefers: 'morning',
     energy: 82, mood: 78, commitment: 9, traits: ['mentor'], window: [10, 17],
   },
   {
     id: 'fatih', name: 'Fatih', repRequired: 700,
     skills: skills({ electronics: 4, docs: 2, cad: 2 }),
     passions: { retro: 0.85, electronics: 0.65, design: 0.4 },
+    prefers: 'morning',
     energy: 84, mood: 70, commitment: 13, traits: ['perfectionist'], window: [11, 19],
   },
   {
     id: 'zahid', name: 'Zahid', repRequired: 950,
     skills: skills({ machining: 4, welding: 3, cad: 2 }),
     passions: { machining: 0.85, woodworking: 0.5, robotics: 0.4 },
+    partTimeOnly: true,
+    prefers: 'morning',
     energy: 88, mood: 65, commitment: 10, traits: ['gatekeeper'], window: [12, 20],
   },
   {
     id: 'omer', name: 'Ömer', repRequired: 1250,
     skills: skills({ electronics: 4, software: 3 }),
     passions: { radio: 0.85, electronics: 0.6, iot: 0.5 },
+    prefers: 'afternoon',
     energy: 80, mood: 68, commitment: 16, traits: ['nightOwl'], window: [19, 24],
   },
   {
     id: 'arif', name: 'Arif', repRequired: 1600,
     skills: skills({ docs: 4, software: 2, electronics: 2 }),
     passions: { civic: 0.85, iot: 0.5, software: 0.35 },
+    partTimeOnly: true,
+    prefers: 'morning',
     energy: 80, mood: 76, commitment: 8, traits: ['documenter'], window: [10, 18],
   },
   {
     id: 'furkan', name: 'Furkan', repRequired: 2100,
     skills: skills({ software: 4, cad: 3, electronics: 2 }),
     passions: { robotics: 0.8, software: 0.65, design: 0.35 },
+    partTimeOnly: true,
+    prefers: 'afternoon',
     energy: 86, mood: 74, commitment: 11, traits: ['scopeCreeper'], window: [13, 21],
   },
   {
     id: 'yakup', name: 'Yakup', repRequired: 2700,
     skills: skills({ machining: 3, welding: 2, cad: 2 }),
     passions: { woodworking: 0.8, food: 0.6, machining: 0.45 },
+    partTimeOnly: true,
+    prefers: 'afternoon',
     energy: 78, mood: 62, commitment: 7, traits: ['ghost'], window: [14, 21],
   },
   {
     id: 'abdullah', name: 'Abdullah', repRequired: 3400,
     skills: skills({ software: 3, electronics: 3, docs: 3 }),
     passions: { radio: 0.7, software: 0.6, civic: 0.5 },
+    partTimeOnly: true,
+    prefers: 'afternoon',
     energy: 82, mood: 70, commitment: 9, traits: ['nightOwl'], window: [17, 24],
   },
   {
     id: 'safa-kemal', name: 'Safa Kemal', repRequired: 4500,
     skills: skills({ cad: 5, software: 4 }),
     passions: { cad: 0.8, design: 0.7, robotics: 0.5 },
+    partTimeOnly: true,
+    prefers: 'afternoon',
     energy: 76, mood: 80, commitment: 6, traits: ['mentor'], window: [20, 24],
   },
 ];
@@ -478,8 +539,8 @@ export const RECRUIT = {
   matchFloor: 0.25,
   /** A matching write-up gets them past this fraction of their reputation bar. */
   shipGateRelief: 0.5,
-  /** Induction, a key, a shelf, a tool induction: scales with how much they will be around. */
-  hireCostPerCommitmentHour: 60,
+  /** Induction, a key, a shelf, a tool briefing: scales with the contracted hours. */
+  hireCostPerWeeklyHour: 22,
   /** Your own time, showing them round and doing the paperwork. */
   hireHours: 1,
 };

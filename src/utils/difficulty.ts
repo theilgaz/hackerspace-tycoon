@@ -9,6 +9,10 @@ export interface DifficultyDef {
   key: DifficultyKey;
   label: string;
   blurb: string;
+  /** Bars lit on the pressure meter, out of three. The setting's one visual. */
+  pressure: number;
+  /** Accent for the meter and the badge tint — the §11 inline `--tone` exception. */
+  accent: string;
   /** Multipliers on how fast the rivals build and how much name they make doing it. */
   rivalPace: number;
   rivalRep: number;
@@ -25,6 +29,8 @@ export const DIFFICULTIES: DifficultyDef[] = [
     key: 'easy',
     label: 'Easy',
     blurb: 'The other spaces potter along. Room to make mistakes and still place well.',
+    pressure: 1,
+    accent: '#7ac74f',
     rivalPace: 0.7,
     rivalRep: 0.7,
     startCash: 6000,
@@ -34,6 +40,8 @@ export const DIFFICULTIES: DifficultyDef[] = [
     key: 'normal',
     label: 'Normal',
     blurb: 'A real scene. Win an award and you earned it.',
+    pressure: 2,
+    accent: '#f0b429',
     rivalPace: 1,
     rivalRep: 1,
     startCash: 4000,
@@ -42,7 +50,9 @@ export const DIFFICULTIES: DifficultyDef[] = [
   {
     key: 'hard',
     label: 'Hard',
-    blurb: 'Everyone else is on it, and getting quicker every year. Thin margins from day one.',
+    blurb: 'Everyone is on it, and getting quicker every year. Thin margins from day one.',
+    pressure: 3,
+    accent: '#e2725b',
     rivalPace: 1.3,
     rivalRep: 1.25,
     startCash: 3000,

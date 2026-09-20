@@ -5,6 +5,7 @@ import { rng } from '@/utils/rng';
 import { FILAMENT, START_CASH, VERB_HOURS } from '@/utils/constants';
 import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 import { partsPending } from '@/systems/ProjectSystem';
+import { STAGE_STATION } from '@/machines/layout';
 
 const rows: string[] = [];
 const standings: string[] = [];
@@ -66,7 +67,21 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     if (sim.printer.consumable < FILAMENT.lowWarning) sim.buyFilament();
     // Take on anybody who is interested and affordable — the roster is the constraint.
     for (const id of [...store.getState().applicants]) {
-      if (store.getState().cash >= sim.hireCost(id) * 3) sim.hire(id);
+      // Take the biggest contract that is comfortably affordable.
+      const full = sim.canHireFullTime(id);
+      if (full && store.getState().cash >= sim.hireCost(id, 'full-time') * 3) sim.hire(id, 'full-time');
+      else if (store.getState().cash >= sim.hireCost(id, 'part-time') * 3) sim.hire(id, 'part-time');
+    }
+    // Step off a project that has nothing to do by hand — the sim keeps you on it
+    // deliberately, but a player watching would move rather than idle for days.
+    if (sim.player.project) {
+      const current = sim.projects.find((p) => p.id === sim.player.project);
+      const busy =
+        current &&
+        current.required[current.stage] > 0 &&
+        STAGE_STATION[current.stage] !== null &&
+        !(current.stage === 'assembly' && partsPending(current, sim.totalHours));
+      if (!busy) sim.stopWork();
     }
     if (!sim.player.project && sim.player.present && sim.player.hoursLeft > 0) {
       const t = sim.projects.find((p) => p.required[p.stage] > 0 && !(p.stage === 'assembly' && partsPending(p, sim.totalHours)));

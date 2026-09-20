@@ -49,7 +49,12 @@ function runProject(def: ProjectDef, seed: number): number | null {
 
   const sim = new Simulation();
   sim.installMachine('cnc');
-  for (const data of APPLICANTS) sim.joinMember(data);
+  // Best case means everyone on a full contract.
+  for (const data of APPLICANTS) {
+    const member = sim.joinMember(data);
+    member.employment = data.partTimeOnly ? 'part-time' : 'full-time';
+    member.shift = member.employment === 'part-time' ? data.prefers ?? 'morning' : null;
+  }
   if (!sim.pitch(def.id)) return null;
 
   const project = sim.projects[0];

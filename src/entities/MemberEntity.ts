@@ -1,5 +1,13 @@
-import type { MemberActivity, MemberData, MemberSnapshot, SkillKey, Tag } from '@/game/types';
-import { MEMBER } from '@/utils/constants';
+import type {
+  Employment,
+  MemberActivity,
+  MemberData,
+  MemberSnapshot,
+  Shift,
+  SkillKey,
+  Tag,
+} from '@/game/types';
+import { MEMBER, WORKDAY, weeklyHoursFor } from '@/utils/constants';
 import { findPath, sameTile, type Tile } from '@/utils/grid';
 import { GRID, isBlocked } from '@/machines/layout';
 
@@ -23,6 +31,20 @@ export class MemberEntity {
   ghostFactor = 1;
   /** Hour of day they will go home. */
   leaveAt = 0;
+  /** Their contract. Full-time covers the day; part-time covers a shift. */
+  employment: Employment = 'part-time';
+  shift: Shift | null = 'morning';
+
+  /** The hours their contract actually buys, allowing for lunch. */
+  get weeklyHours(): number {
+    return weeklyHoursFor(this.employment);
+  }
+
+  /** Today's span, from the contract rather than from a dice roll. */
+  get span(): { start: number; end: number } {
+    if (this.employment === 'full-time') return WORKDAY.shifts['full-time'];
+    return this.shift === 'afternoon' ? WORKDAY.shifts.afternoon : WORKDAY.shifts.morning;
+  }
   /** Stages they have burned out on, with sim-hours left before they will reconsider. */
   private cooldowns = new Map<string, number>();
 
@@ -144,6 +166,9 @@ export class MemberEntity {
       present: this.present,
       activity: this.activity,
       team: this.team,
+      employment: this.employment,
+      shift: this.shift,
+      weeklyHours: this.weeklyHours,
       affinity: {},
       interest: this.interest,
       energy: this.data.energy,

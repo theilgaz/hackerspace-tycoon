@@ -8,6 +8,7 @@ import type {
   PlayerSnapshot,
   ProjectData,
   ProjectDef,
+  Employment,
 } from '@/game/types';
 import { CATALOG_MAP, catalogForEra, canBuild, missingMachines } from '@/utils/catalog';
 import {
@@ -28,7 +29,9 @@ import {
   TRAIT_BLURB,
   TRAIT_LABEL,
   VERB_HOURS,
+  WORKDAY,
   eraDef,
+  weeklyHoursFor,
 } from '@/utils/constants';
 import { clock, dayName, hours, money, pct } from '@/utils/format';
 import { CATEGORY_ICON, icon, type IconName } from './icons';
@@ -57,8 +60,9 @@ export interface UIHandlers {
   moveJob(machineId: string, jobId: string, dir: -1 | 1): void;
   cancelJob(machineId: string, jobId: string): void;
   buyFilament(): void;
-  hire(memberId: string): void;
-  hireCost(memberId: string): number;
+  hire(memberId: string, employment: Employment): void;
+  hireCost(memberId: string, employment: Employment): number;
+  canHireFullTime(memberId: string): boolean;
   begin(name: string, logo: number, difficulty: DifficultyKey): void;
   dismissCeremony(): void;
   scoreboard(): ScoreRow[];
@@ -103,6 +107,17 @@ const SOURCE_BADGE: Record<BacklogEntry['source'], { label: string; cls: string 
 
 type JobStep = 'category' | 'project' | 'crew';
 type RankKey = 'projectsThisYear' | 'projects' | 'members' | 'cash' | 'reputationThisYear' | 'reputation';
+
+/** The clock face of somebody's contract, e.g. "09:00-14:00". */
+function shiftSpan(member: MemberSnapshot): string {
+  const span =
+    member.employment === 'full-time'
+      ? WORKDAY.shifts['full-time']
+      : member.shift === 'afternoon'
+        ? WORKDAY.shifts.afternoon
+        : WORKDAY.shifts.morning;
+  return `${String(span.start).padStart(2, '0')}:00-${String(span.end).padStart(2, '0')}:00`;
+}
 
 /** Narrow enough to keep six numeric columns comparable at a glance. */
 function compactMoney(value: number): string {
@@ -166,7 +181,15 @@ export class UI {
   /** Which build-menu panel is open, if any. */
   private openModal: 'jobs' | 'people' | 'ranking' | 'machines' | 'projects' | null = null;
   /** Start screen state; the sim is not running yet so nothing clobbers it. */
-  private start = { name: '', logo: 0, difficulty: 'normal' as DifficultyKey };
+  private start = {
+    // Pre-named and pre-badged: an empty form with a dead CTA is a worse first frame
+    // than a suggestion you can shuffle or type straight over (the field is selected).
+    name: NAME_SUGGESTIONS[Math.floor(Math.random() * NAME_SUGGESTIONS.length)] ?? '',
+    logo: Math.floor(Math.random() * LOGOS.length),
+    difficulty: 'normal' as DifficultyKey,
+  };
+  /** The name box is focused once, not on every re-render of the start screen. */
+  private startFocused = false;
   /** Which column the leaderboard is sorted by. */
   private rankSort: { key: RankKey; dir: 1 | -1 } = { key: 'reputation', dir: -1 };
 
@@ -233,6 +256,20 @@ export class UI {
   }
 
   private bind() {
+    this.root.addEventListener('input', (event) => {
+      const target = event.target as HTMLElement;
+      if (target.id === 'space-name') this.onNameTyped(target as HTMLInputElement);
+    });
+
+    // Enter in the name box opens the doors: the field and the button are the whole form.
+    this.root.addEventListener('keydown', (event) => {
+      const target = event.target as HTMLElement;
+      if (target.id !== 'space-name' || event.key !== 'Enter') return;
+      event.preventDefault();
+      const name = this.nameField().trim();
+      if (name) this.handlers.begin(name, this.start.logo, this.start.difficulty);
+    });
+
     // pointerdown, NOT click. The panels re-render as the sim advances, so the element
     // under the cursor can be replaced between press and release — and the browser then
     // never fires `click` at all. Acting on press is immune to that.
@@ -309,7 +346,7 @@ export class UI {
           this.rerender();
           break;
         case 'hire':
-          if (id) h.hire(id);
+          if (id) h.hire(id, (value as Employment) ?? 'full-time');
           this.rerender();
           break;
         case 'jobs-back':
@@ -439,62 +476,111 @@ export class UI {
 
   private renderStart() {
     const name = this.start.name;
+    const badge = LOGOS[this.start.logo];
     this.setHTML(
       this.startEl,
       'start',
       `<div class="start-backdrop">
         <div class="start-card">
-          <div class="start-brand">
-            <span class="icon-chip start-badge" style="--tone:${LOGOS[this.start.logo].colour}">
-              ${icon(LOGOS[this.start.logo].icon, 'ui-icon')}
+          <header class="start-brand">
+            <span class="icon-chip start-badge" style="--tone:${badge.colour}">
+              ${icon(badge.icon, 'ui-icon')}
             </span>
-            <div>
+            <div class="start-brand__text">
               <div class="ui-label">A new hackerspace</div>
-              <h1>${esc(name) || 'Name it'}</h1>
+              <h1 id="start-title" class="${name ? '' : 'is-empty'}">${esc(name) || 'Name it'}</h1>
             </div>
-          </div>
-          <p class="ui-desc" style="margin:0 0 16px">
+          </header>
+          <p class="ui-desc start-intro">
             Two of you, one printer, and a landlord. Everything else you will have to talk
             people into.
           </p>
 
-          <div class="ui-label" style="margin-bottom:6px">What is it called?</div>
-          <div class="row" style="gap:6px;margin-bottom:16px">
-            <input id="space-name" class="ui-input" maxlength="28" placeholder="Lehim ve Kahve"
-              value="${esc(name)}" />
-            <button class="ui-btn ui-btn--outline" data-action="shuffle-name" title="Suggest one">
-              ${icon('flame')}
-            </button>
-          </div>
+          <section class="start-section">
+            <label class="ui-label" for="space-name">What is it called?</label>
+            <div class="row" style="gap:6px">
+              <input id="space-name" class="ui-input" maxlength="28" placeholder="Lehim ve Kahve"
+                autocomplete="off" spellcheck="false" value="${esc(name)}" />
+              <button class="ui-btn ui-btn--outline" data-action="shuffle-name"
+                title="Suggest one" aria-label="Suggest a name">${icon('shuffle')}</button>
+            </div>
+          </section>
 
-          <div class="ui-label" style="margin-bottom:6px">Pick a badge</div>
-          <div class="logo-grid">
-            ${LOGOS.map(
-              (logo, index) => `<button class="logo-pick ${index === this.start.logo ? 'on' : ''}"
-                style="--tone:${logo.colour}" data-action="logo" data-value="${index}">
-                ${icon(logo.icon, 'ui-icon ui-icon--lg')}
-              </button>`,
-            ).join('')}
-          </div>
+          <section class="start-section">
+            <div class="ui-label">Pick a badge</div>
+            <div class="logo-grid" role="radiogroup" aria-label="Badge">
+              ${LOGOS.map((logo, index) => {
+                const on = index === this.start.logo;
+                return `<button class="logo-pick ${on ? 'on' : ''}" role="radio"
+                  aria-checked="${on}" aria-label="Badge ${index + 1}"
+                  style="--tone:${logo.colour}" data-action="logo" data-value="${index}">
+                  ${icon(logo.icon, 'ui-icon ui-icon--lg')}
+                </button>`;
+              }).join('')}
+            </div>
+          </section>
 
-          <div class="ui-label" style="margin:16px 0 6px">How hard should the others push?</div>
-          <div class="diff-grid">
-            ${DIFFICULTIES.map(
-              (level) => `<button class="diff-pick ${level.key === this.start.difficulty ? 'on' : ''}"
-                data-action="difficulty" data-value="${level.key}">
-                <b>${level.label}</b>
-                <span>${esc(level.blurb)}</span>
-              </button>`,
-            ).join('')}
-          </div>
+          <section class="start-section">
+            <div class="ui-label">How hard should the others push?</div>
+            <div class="ui-grid ui-grid--3" role="radiogroup" aria-label="Difficulty">
+              ${DIFFICULTIES.map((level) => {
+                const on = level.key === this.start.difficulty;
+                // Three bars, not three adjectives: the setting is one quantity and it
+                // deserves one visual. Colour arrives as --tone (§11), never a raw hex here.
+                const meter = [1, 2, 3]
+                  .map((step) => `<i class="${step <= level.pressure ? 'lit' : ''}"></i>`)
+                  .join('');
+                return `<button class="ui-option diff-pick ${on ? 'on' : ''}" role="radio"
+                  aria-checked="${on}" style="--tone:${level.accent}"
+                  data-action="difficulty" data-value="${level.key}">
+                  <div class="ui-option__head">
+                    <span class="icon-chip pace">${meter}</span>
+                    <span class="ui-title">${level.label}</span>
+                    ${on ? `<span class="diff-tick">${icon('check')}</span>` : ''}
+                  </div>
+                  <span class="ui-option__desc ui-clamp-3">${esc(level.blurb)}</span>
+                  <span class="ui-badge ui-badge--tone">${money(level.startCash)} to start</span>
+                </button>`;
+              }).join('')}
+            </div>
+            <p class="ui-desc start-note">
+              Difficulty only moves the other spaces. Your own hours, costs and pipeline are
+              the same at every setting.
+            </p>
+          </section>
 
-          <button class="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" style="margin-top:18px"
-            data-action="begin">Open the doors</button>
+          <button id="start-go" class="ui-btn ui-btn--primary ui-btn--lg ui-btn--block"
+            data-action="begin" ${name.trim() ? '' : 'disabled'}>Open the doors</button>
         </div>
       </div>`,
     );
     const input = this.root.querySelector<HTMLInputElement>('#space-name');
-    if (input && document.activeElement !== input) input.value = name;
+    if (!input) return;
+    if (document.activeElement !== input) input.value = name;
+    // Focus once, on the first paint of the screen — never on every re-render, which
+    // would steal the caret back to the start of the field mid-word.
+    if (!this.startFocused) {
+      this.startFocused = true;
+      input.focus();
+      input.select();
+    }
+  }
+
+  /**
+   * Typing updates the title and the Open-the-doors button in place. Re-rendering on
+   * every keystroke would replace the input under the caret, so this touches only the
+   * two things that actually change.
+   */
+  private onNameTyped(input: HTMLInputElement) {
+    this.start.name = input.value;
+    const typed = input.value.trim();
+    const title = this.root.querySelector<HTMLElement>('#start-title');
+    if (title) {
+      title.textContent = input.value || 'Name it';
+      title.classList.toggle('is-empty', !input.value);
+    }
+    const go = this.root.querySelector<HTMLButtonElement>('#start-go');
+    if (go) go.disabled = !typed;
   }
 
   // --- top bar --------------------------------------------------------------
@@ -833,6 +919,7 @@ export class UI {
 
     const person = (id: string, name: string, trailing: string, note: string) => {
       const data = MEMBER_DATA[id];
+      const member = members.find((m) => m.id === id);
       const top = topCategories(data?.passions ?? {}, 1)[0];
       const profile = top ? profileOf(top.category) : null;
       return `<div class="ui-row" style="cursor:default">
@@ -846,8 +933,16 @@ export class UI {
           </span>
           <p class="ui-desc" style="margin:3px 0 0">${note}</p>
           <span class="ui-row__meta">
-            <span class="ui-badge" title="hours a week">${icon('clock')}${data?.commitment ?? '?'}h/wk</span>
-            <span class="ui-badge" title="when they are around">${data ? `${data.window[0]}:00-${data.window[1]}:00` : ''}</span>
+            ${
+              member
+                ? `<span class="ui-badge ui-badge--tone" style="--tone:${member.employment === 'full-time' ? 'var(--primary)' : 'var(--warning)'}"
+                     title="${member.weeklyHours}h a week">
+                     ${icon('clock')}${member.employment === 'full-time' ? 'Full-time' : `Part-time · ${member.shift}s`}
+                   </span>
+                   <span class="ui-badge">${shiftSpan(member)}</span>`
+                : `<span class="ui-badge">${icon('clock')}wants ~${data?.commitment ?? '?'}h/wk</span>
+                   <span class="ui-badge">prefers ${data?.prefers ?? 'morning'}s</span>`
+            }
             ${topCategories(data?.passions ?? {})
               .map(({ category, score }) => {
                 const pr = profileOf(category);
@@ -875,11 +970,26 @@ export class UI {
       .map((id) => {
         const data = MEMBER_DATA[id];
         if (!data) return '';
-        const cost = this.handlers.hireCost(id);
-        const affordable = state.cash >= cost && hoursLeft >= VERB_HOURS.hire;
-        const button = `<button class="ui-btn ui-btn--primary ui-btn--sm" data-action="hire" data-id="${id}"
-          ${affordable ? '' : 'disabled'}>Hire · ${money(cost)} · ${VERB_HOURS.hire}h</button>`;
-        return person(id, data.name, button, 'Interested in joining');
+        const canFull = this.handlers.canHireFullTime(id);
+        const offer = (employment: Employment, label: string) => {
+          const cost = this.handlers.hireCost(id, employment);
+          const ok = state.cash >= cost && hoursLeft >= VERB_HOURS.hire;
+          return `<button class="ui-btn ${employment === 'full-time' ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
+            data-action="hire" data-id="${id}" data-value="${employment}" ${ok ? '' : 'disabled'}
+            title="${weeklyHoursFor(employment)}h a week">
+            ${label} · ${money(cost)}
+          </button>`;
+        };
+        const buttons = `<span class="row" style="gap:5px">
+          ${offer('part-time', 'Part-time')}
+          ${canFull ? offer('full-time', 'Full-time') : ''}
+        </span>`;
+        return person(
+          id,
+          data.name,
+          buttons,
+          canFull ? 'Interested in joining' : 'Has a day job — part-time only',
+        );
       })
       .join('');
 

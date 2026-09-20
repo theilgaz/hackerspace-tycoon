@@ -19,9 +19,11 @@ export interface RivalDef {
   /** Reputation needed to attract each additional member. */
   repPerMember: number;
   /**
-   * Reputation at which their shipping pace doubles. Without this they grow linearly while
-   * the player compounds — more members, more projects — and by day 200 the leaderboard is
-   * a formality.
+   * Reputation at which their shipping pace would double. Set effectively out of reach on
+   * purpose: the rivals grow **linearly** and the player compounds, because that is the only
+   * shape that satisfies both ends at once — a field strong enough to take most of the first
+   * awards night, and a back half where a full roster pulls clear. Making them compound too
+   * meant either the first night was a walkover or the final table was.
    */
   paceGrowth: number;
 }
@@ -43,12 +45,12 @@ export const RIVALS: RivalDef[] = [
     startMembers: 7,
     maxMembers: 14,
     startCash: 12000,
-    shipPace: 0.045,
-    repPerProject: 540,
+    shipPace: 0.06,
+    repPerProject: 725,
     cashPerProject: 4200,
     cashPerDay: 90,
     repPerMember: 340,
-    paceGrowth: 6000,
+    paceGrowth: 100000,
   },
   {
     id: 'london-hackspace',
@@ -59,12 +61,12 @@ export const RIVALS: RivalDef[] = [
     startMembers: 10,
     maxMembers: 14,
     startCash: 10000,
-    shipPace: 0.11,
-    repPerProject: 225,
+    shipPace: 0.146,
+    repPerProject: 301,
     cashPerProject: 1500,
     cashPerDay: 170,
     repPerMember: 180,
-    paceGrowth: 7000,
+    paceGrowth: 100000,
   },
   {
     id: 'konya',
@@ -75,12 +77,12 @@ export const RIVALS: RivalDef[] = [
     startMembers: 5,
     maxMembers: 14,
     startCash: 9000,
-    shipPace: 0.1,
-    repPerProject: 230,
+    shipPace: 0.132,
+    repPerProject: 309,
     cashPerProject: 1700,
     cashPerDay: 130,
     repPerMember: 250,
-    paceGrowth: 6500,
+    paceGrowth: 100000,
   },
   {
     id: 'tokyo',
@@ -91,12 +93,12 @@ export const RIVALS: RivalDef[] = [
     startMembers: 7,
     maxMembers: 13,
     startCash: 4000,
-    shipPace: 0.07,
-    repPerProject: 280,
+    shipPace: 0.093,
+    repPerProject: 377,
     cashPerProject: 900,
     cashPerDay: 90,
     repPerMember: 200,
-    paceGrowth: 7500,
+    paceGrowth: 100000,
   },
   {
     id: 'garaj',
@@ -107,12 +109,12 @@ export const RIVALS: RivalDef[] = [
     startMembers: 5,
     maxMembers: 11,
     startCash: 11000,
-    shipPace: 0.23,
-    repPerProject: 65,
+    shipPace: 0.305,
+    repPerProject: 87,
     cashPerProject: 800,
     cashPerDay: 150,
     repPerMember: 300,
-    paceGrowth: 8000,
+    paceGrowth: 100000,
   },
   {
     id: 'noisebridge',
@@ -123,12 +125,12 @@ export const RIVALS: RivalDef[] = [
     startMembers: 9,
     maxMembers: 14,
     startCash: 900,
-    shipPace: 0.08,
-    repPerProject: 320,
+    shipPace: 0.106,
+    repPerProject: 429,
     cashPerProject: 500,
     cashPerDay: 25,
     repPerMember: 190,
-    paceGrowth: 6800,
+    paceGrowth: 100000,
   },
   {
     id: 'nyc-resistor',
@@ -139,12 +141,12 @@ export const RIVALS: RivalDef[] = [
     startMembers: 6,
     maxMembers: 10,
     startCash: 14000,
-    shipPace: 0.06,
-    repPerProject: 400,
+    shipPace: 0.079,
+    repPerProject: 537,
     cashPerProject: 2200,
     cashPerDay: 180,
     repPerMember: 300,
-    paceGrowth: 6200,
+    paceGrowth: 100000,
   },
   {
     id: 'metalab',
@@ -155,12 +157,12 @@ export const RIVALS: RivalDef[] = [
     startMembers: 7,
     maxMembers: 13,
     startCash: 8000,
-    shipPace: 0.07,
-    repPerProject: 360,
+    shipPace: 0.093,
+    repPerProject: 483,
     cashPerProject: 2400,
     cashPerDay: 110,
     repPerMember: 260,
-    paceGrowth: 6400,
+    paceGrowth: 100000,
   },
   {
     id: 'dallas',
@@ -175,12 +177,12 @@ export const RIVALS: RivalDef[] = [
     // Biggest Crew stays winnable — but only by hiring everybody.
     maxMembers: 15,
     startCash: 9000,
-    shipPace: 0.17,
-    repPerProject: 140,
+    shipPace: 0.225,
+    repPerProject: 188,
     cashPerProject: 1100,
     cashPerDay: 150,
     repPerMember: 170,
-    paceGrowth: 7200,
+    paceGrowth: 100000,
   },
   {
     id: 'xinchejian',
@@ -191,12 +193,12 @@ export const RIVALS: RivalDef[] = [
     startMembers: 6,
     maxMembers: 12,
     startCash: 9000,
-    shipPace: 0.2,
-    repPerProject: 125,
+    shipPace: 0.265,
+    repPerProject: 167,
     cashPerProject: 950,
     cashPerDay: 120,
     repPerMember: 280,
-    paceGrowth: 7600,
+    paceGrowth: 100000,
   },
   {
     id: 'hacdc',
@@ -207,12 +209,12 @@ export const RIVALS: RivalDef[] = [
     startMembers: 6,
     maxMembers: 11,
     startCash: 7000,
-    shipPace: 0.075,
-    repPerProject: 255,
+    shipPace: 0.099,
+    repPerProject: 342,
     cashPerProject: 1600,
     cashPerDay: 140,
     repPerMember: 270,
-    paceGrowth: 7000,
+    paceGrowth: 100000,
   },
 ];
 

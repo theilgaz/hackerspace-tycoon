@@ -32,6 +32,12 @@ export type TraitKey =
   | 'nightOwl'
   | 'documenter';
 
+/** How somebody is engaged. Full-time is 8h a day, part-time a 4h shift. */
+export type Employment = 'full-time' | 'part-time';
+
+/** Which half of the day a part-timer covers. */
+export type Shift = 'morning' | 'afternoon';
+
 export interface MemberData {
   id: string;
   name: string;
@@ -41,8 +47,15 @@ export interface MemberData {
   energy: number;
   /** 0-100, driven by policies, tools, events, project outcomes. */
   mood: number;
-  /** Hours per week they actually show up. The honest capacity constraint. */
+  /**
+   * Hours a week they would *like* to give. Kept as character rather than capacity — the
+   * contract decides the hours now — and it is what gates full-time availability.
+   */
   commitment: number;
+  /** Some people have a day job; they can only ever take a part-time shift. */
+  partTimeOnly?: boolean;
+  /** Which shift a part-timer prefers. */
+  prefers?: Shift;
   traits: TraitKey[];
   /** Hour-of-day window they tend to appear in. */
   window: [number, number];
@@ -64,6 +77,10 @@ export interface MemberSnapshot {
   activity: MemberActivity;
   /** Project they are on the team of, if any. One project at a time. */
   team: string | null;
+  employment: Employment;
+  shift: Shift | null;
+  /** Contracted hours a week. */
+  weeklyHours: number;
   interest: number;
   /** Best passion overlap with each active project, for the allocation UI. */
   affinity: Record<string, number>;

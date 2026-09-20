@@ -58,6 +58,10 @@ const PATHS: Record<string, string> = {
   lightbulb:
     '<path d="M9.5 18h5"/><path d="M10.5 21h3"/>' +
     '<path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.8 1 .9 1.6l.1.6h5.2l.1-.6c.1-.6.4-1.2.9-1.6A6 6 0 0 0 12 3z"/>',
+  /* Crossing arrows: one run clear, the other broken where it passes under. */
+  shuffle:
+    '<path d="M3 21 21 3"/><path d="M16 3h5v5"/>' +
+    '<path d="M3 3 9 9"/><path d="M15 15 21 21"/><path d="M16 21h5v-5"/>',
   dish:
     '<circle cx="12" cy="12" r="8.5"/><path d="M12 12 18.2 5.8"/>' +
     '<path d="M7.6 12A4.4 4.4 0 0 1 12 7.6"/>',

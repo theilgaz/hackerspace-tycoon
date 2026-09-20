@@ -108,7 +108,10 @@ function runOnce(seed: number, mode: Mode): Result {
     }
     // Take on anybody who is interested and affordable — the roster is the constraint.
     for (const id of [...store.getState().applicants]) {
-      if (store.getState().cash >= sim.hireCost(id) * 3) sim.hire(id);
+      // Take the biggest contract that is comfortably affordable.
+      const full = sim.canHireFullTime(id);
+      if (full && store.getState().cash >= sim.hireCost(id, 'full-time') * 3) sim.hire(id, 'full-time');
+      else if (store.getState().cash >= sim.hireCost(id, 'part-time') * 3) sim.hire(id, 'part-time');
     }
 
     if (mode === 'hands-off') continue;
@@ -130,6 +133,17 @@ function runOnce(seed: number, mode: Mode): Result {
     }
 
     // Put yourself on whatever hand-work is open.
+    // Step off a project that has nothing to do by hand — the sim keeps you on it
+    // deliberately, but a player watching would move rather than idle for days.
+    if (sim.player.project) {
+      const current = sim.projects.find((p) => p.id === sim.player.project);
+      const busy =
+        current &&
+        current.required[current.stage] > 0 &&
+        STAGE_STATION[current.stage] !== null &&
+        !(current.stage === 'assembly' && partsPending(current, sim.totalHours));
+      if (!busy) sim.stopWork();
+    }
     if (!sim.player.project && sim.player.present && sim.player.hoursLeft > 0) {
       const target = sim.projects.find(
         (p) =>
