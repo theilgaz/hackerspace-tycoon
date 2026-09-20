@@ -852,3 +852,54 @@ button.primary { padding: 9px 12px; font-size: 12.5px; }
 /* badges carry inline icons */
 .ui-badge .ui-icon { width: 11px; height: 11px; opacity: 0.8; }
 .ui-toggle .ui-icon { width: 11px; height: 11px; }
+
+/* --- segmented filter (size lives in the list, not in a step) ------------ */
+
+.ui-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.ui-segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.ui-segmented button:hover:not(:disabled):not([aria-pressed='true']) { color: var(--foreground); }
+.ui-segmented button[aria-pressed='true'] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.ui-segmented button:disabled { opacity: 0.35; cursor: not-allowed; }
+.seg-count {
+  font-family: var(--font);
+  font-size: 9.5px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground) 9%, transparent);
+  color: var(--subtle-foreground);
+}
+.ui-segmented button[aria-pressed='true'] .seg-count { color: var(--muted-foreground); }
+
+.job-group + .job-group { margin-top: 15px; }
+.job-group__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.job-group__head .ui-label { margin: 0; }

@@ -144,7 +144,6 @@ console.log('\n  Clicking the real UI while the sim runs\n');
 // then pitch.
 await click('[data-action="jobs-open"]');
 await click('#modal [data-action="jobs-category"]:not([disabled])');
-await click('#modal [data-action="jobs-size"]:not([disabled])');
 await click('#modal [data-action="jobs-project"]:not([disabled])');
 await click('#modal [data-action="pitch"]:not([disabled])');
 await evaluate(`window.__store.getState().setSpeed(4)`);
@@ -157,7 +156,6 @@ await check('Jobs opens while a project runs', async () => {
 });
 await check('a second project can be started with one already running', async () => {
   await click('#modal [data-action="jobs-category"]:not([disabled])');
-  await click('#modal [data-action="jobs-size"]:not([disabled])');
   await click('#modal [data-action="jobs-project"]:not([disabled])');
   await click('#modal [data-action="pitch"]:not([disabled])');
   return (await evaluate(`__game.sim.projects.length`)) >= 2;
@@ -172,9 +170,9 @@ await check('the wizard keeps one size across every step', async () => {
   const sizes = [await box()];
   await click('#modal [data-action="jobs-category"]:not([disabled])');
   sizes.push(await box());
-  await click('#modal [data-action="jobs-size"]:not([disabled])');
+  await click('#modal [data-action="jobs-size"][data-value="solo"]:not([disabled])');
   sizes.push(await box());
-  await click('#modal .job:not([disabled])');
+  await click('#modal [data-action="jobs-project"]:not([disabled])');
   sizes.push(await box());
   const unique = [...new Set(sizes)];
   if (unique.length !== 1) console.log(`      sizes seen: ${unique.join(' | ')}`);

@@ -110,16 +110,24 @@ the whole pipeline in a couple of days. First ship lands around day 4.
 
 The backlog is not a tab. It lives behind **Jobs** in the build menu along the bottom of the
 screen — the bar that will also hold Shop, Events and the space builder in later phases. Jobs
-opens a four-step wizard:
+opens a three-step wizard:
 
 1. **Kind of work** — the ten genres as tiles, each showing how many projects it currently
    offers, plus an **Offers** tile at the top for proposals, sponsors and trends.
-2. **Size** — team-size buckets (1-2 / 3-4 / 5+ people), each showing the match count. This is
-   the filter that matters, because team size is what decides how much of the space a job eats.
-3. **Project** — the shortlist.
-4. **Crew** — pick who to ask, then pitch.
+2. **Project** — the shortlist, with size handled *in place*.
+3. **Crew** — pick who to ask, then pitch.
 
-Offers skip step 2; there are never many of them.
+**Size is not a step.** It briefly was, and it was redundant: every project already states its
+team size, so the list simply had to say it properly. It now appears three ways at once, which
+is what a step could never do:
+
+- a **segmented filter** above the list (All / 1-2 / 3-4 / 5+) with a count on each;
+- **group headings** when nothing is filtered, so the whole range is visible at a glance, with
+  a `short-handed` badge when the roster cannot fill the smallest job in that band;
+- a **tinted crew badge** leading each row's meta line — "1 person", "3 people".
+
+Filtering collapses the group headings, since they would then be saying the same thing twice.
+The general rule: a wizard step should ask something the list cannot answer.
 
 **The wizard is built from the design-system primitives (§11), not bespoke markup.** The first
 version used ten saturated left borders, emoji at mixed sizes and cards of different heights —

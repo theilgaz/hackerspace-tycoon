@@ -93,16 +93,21 @@ const SOURCE_BADGE: Record<BacklogEntry['source'], { label: string; cls: string 
   trending: { label: 'trending', cls: 'src-trending' },
 };
 
-type JobStep = 'category' | 'size' | 'project' | 'crew';
+type JobStep = 'category' | 'project' | 'crew';
 type SizeFilter = 'any' | 'solo' | 'small' | 'big';
 
-/** Team-size buckets for narrowing the job list (CLAUDE.md §4c). */
-const SIZE_FILTERS: { key: SizeFilter; label: string; hint: string; test: (team: number) => boolean }[] = [
-  { key: 'any', label: 'Any size', hint: 'everything on offer', test: () => true },
-  { key: 'solo', label: '1-2 people', hint: 'fits alongside a long build', test: (t) => t <= 2 },
-  { key: 'small', label: '3-4 people', hint: 'most of the space', test: (t) => t >= 3 && t <= 4 },
-  { key: 'big', label: '5+ people', hint: 'everyone you have', test: (t) => t >= 5 },
+/**
+ * Team-size buckets. These narrow and group the job list in place — size was briefly its own
+ * wizard step, which was redundant: every project already states its team size, so the list
+ * just had to say it properly.
+ */
+const SIZE_FILTERS: { key: SizeFilter; label: string; short: string; hint: string; test: (team: number) => boolean }[] = [
+  { key: 'any', label: 'All sizes', short: 'All', hint: 'everything on offer', test: () => true },
+  { key: 'solo', label: '1-2 people', short: '1-2', hint: 'fits alongside a long build', test: (t) => t <= 2 },
+  { key: 'small', label: '3-4 people', short: '3-4', hint: 'most of the space', test: (t) => t >= 3 && t <= 4 },
+  { key: 'big', label: '5+ people', short: '5+', hint: 'everyone you have', test: (t) => t >= 5 },
 ];
+const SIZE_GROUPS = SIZE_FILTERS.filter((f) => f.key !== 'any');
 
 /** The promise each tier makes about length (CLAUDE.md §4). */
 const TIER_DAYS: Record<ProjectDef['tier'], string> = {
@@ -226,24 +231,18 @@ export class UI {
           this.rerender();
           break;
         case 'jobs-back':
-          this.jobs.step =
-            this.jobs.step === 'crew'
-              ? 'project'
-              : this.jobs.step === 'project'
-                ? this.jobs.source === 'offers'
-                  ? 'category'
-                  : 'size'
-                : 'category';
+          this.jobs.step = this.jobs.step === 'crew' ? 'project' : 'category';
           this.rerender();
           break;
         case 'jobs-category':
           this.jobs.source = value === 'offers' ? 'offers' : (value as ProjectCategory);
-          this.jobs.step = value === 'offers' ? 'project' : 'size';
+          this.jobs.size = 'any';
+          this.jobs.step = 'project';
           this.rerender();
           break;
         case 'jobs-size':
+          // Narrows the list in place; it is a filter, not a step.
           this.jobs.size = value as SizeFilter;
-          this.jobs.step = 'project';
           this.rerender();
           break;
         case 'jobs-project':
@@ -405,13 +404,11 @@ export class UI {
     }
     const steps: { key: JobStep; label: string }[] = [
       { key: 'category', label: 'Kind of work' },
-      { key: 'size', label: 'Size' },
       { key: 'project', label: 'Project' },
       { key: 'crew', label: 'Crew' },
     ];
     const current = steps.findIndex((x) => x.key === this.jobs.step);
     const trail = steps
-      .filter((x) => !(x.key === 'size' && this.jobs.source === 'offers'))
       .map((x, index) => {
         const at = steps.findIndex((y) => y.key === x.key);
         const state = at === current ? 'now' : at < current ? 'done' : '';
@@ -423,11 +420,9 @@ export class UI {
     const body =
       this.jobs.step === 'category'
         ? this.jobsCategoryStep(state)
-        : this.jobs.step === 'size'
-          ? this.jobsSizeStep(state)
-          : this.jobs.step === 'project'
-            ? this.jobsProjectStep(state)
-            : this.jobsCrewStep(state);
+        : this.jobs.step === 'project'
+          ? this.jobsProjectStep(state)
+          : this.jobsCrewStep(state);
 
     this.setHTML(
       this.modal,
@@ -496,61 +491,64 @@ export class UI {
     `;
   }
 
-  /** Step 2: how much of the space do you want to commit? */
-  private jobsSizeStep(state: GameState): string {
-    const defs = this.availableDefs(state).filter((def) => def.category === this.jobs.source);
-    const free = state.runtime.members.filter((m) => !m.team).length;
-    const profile = profileOf(this.jobs.source as ProjectCategory);
-    return `
-      <div class="row between" style="margin-bottom:10px">
-        <div class="ui-label" style="margin:0">How big a job?</div>
-        ${categoryChip(this.jobs.source as ProjectCategory)}
-      </div>
-      <p class="ui-desc" style="margin:0 0 12px">
-        ${free} ${free === 1 ? 'person is' : 'people are'} unallocated. Nobody can be on two projects at
-        once, so team size is what really decides how much you can run.
-      </p>
-      <div class="ui-grid ui-grid--2">
-        ${SIZE_FILTERS.map((filter) => {
-          const count = defs.filter((f) => filter.test(f.teamSize)).length;
-          const enough = free >= (filter.key === 'big' ? 5 : filter.key === 'small' ? 3 : 1);
-          return `<button class="ui-option" data-action="jobs-size" data-value="${filter.key}"
-            ${count ? '' : 'disabled'}>
-            <div class="ui-option__head">
-              <span class="icon-chip" style="--tone:${profile.accent}">${icon('users', 'ui-icon ui-icon--lg')}</span>
-              <span class="ui-title">${filter.label}</span>
-            </div>
-            <span class="ui-option__desc">${filter.hint}</span>
-            <span class="row" style="gap:5px">
-              <span class="ui-badge">${count === 1 ? '1 project' : `${count} projects`}</span>
-              ${enough ? '' : `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">short-handed</span>`}
-            </span>
-          </button>`;
-        }).join('')}
-      </div>
-    `;
-  }
-
-  /** Step 3: the shortlist. */
+  /** Step 2: the shortlist, with size filtered and grouped in place. */
   private jobsProjectStep(state: GameState): string {
     if (this.jobs.source === 'offers') {
       return `<div class="ui-label" style="margin-bottom:9px">Offers</div>
         ${state.backlog.map((entry) => this.jobCard(CATALOG_MAP[entry.defId], state, entry)).join('')}`;
     }
-    const filter = SIZE_FILTERS.find((f) => f.key === this.jobs.size)!;
-    const defs = this.availableDefs(state)
-      .filter((def) => def.category === this.jobs.source && filter.test(def.teamSize))
-      .sort((a, b) => a.teamSize - b.teamSize);
-    if (!defs.length) return `<p class="ui-desc">Nothing matches. Try a different size.</p>`;
+
+    const all = this.availableDefs(state).filter((def) => def.category === this.jobs.source);
+    const active = SIZE_FILTERS.find((f) => f.key === this.jobs.size)!;
+    const free = state.runtime.members.filter((m) => !m.team).length;
+
+    const segmented = `<div class="ui-segmented">
+      ${SIZE_FILTERS.map((filter) => {
+        const count = all.filter((def) => filter.test(def.teamSize)).length;
+        return `<button data-action="jobs-size" data-value="${filter.key}"
+          aria-pressed="${filter.key === this.jobs.size}" ${count ? '' : 'disabled'}>
+          ${filter.short}<span class="seg-count">${count}</span>
+        </button>`;
+      }).join('')}
+    </div>`;
+
+    const shown = all.filter((def) => active.test(def.teamSize));
+    if (!shown.length) {
+      return `
+        <div class="row between" style="margin-bottom:10px">${segmented}${categoryChip(this.jobs.source as ProjectCategory)}</div>
+        <p class="ui-desc">Nothing this size. Try another.</p>`;
+    }
+
+    // Grouped by size when nothing is filtered, so the whole range is visible at once.
+    const groups =
+      this.jobs.size === 'any'
+        ? SIZE_GROUPS.map((group) => {
+            const defs = shown.filter((def) => group.test(def.teamSize)).sort((a, b) => a.teamSize - b.teamSize);
+            if (!defs.length) return '';
+            const short = free < Math.min(...defs.map((d) => d.teamSize));
+            return `<div class="job-group">
+              <div class="job-group__head">
+                <span class="ui-label">${group.label}</span>
+                <span class="ui-desc" style="font-size:10.5px">${group.hint}</span>
+                ${short ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">short-handed</span>` : ''}
+              </div>
+              ${defs.map((def) => this.jobCard(def, state)).join('')}
+            </div>`;
+          }).join('')
+        : shown
+            .sort((a, b) => a.teamSize - b.teamSize)
+            .map((def) => this.jobCard(def, state))
+            .join('');
+
     return `
-      <div class="row between" style="margin-bottom:9px">
-        <div class="ui-label" style="margin:0">${filter.label}</div>
+      <div class="row between" style="gap:10px;margin-bottom:11px">
+        ${segmented}
         ${categoryChip(this.jobs.source as ProjectCategory)}
       </div>
-      ${defs.map((def) => this.jobCard(def, state)).join('')}`;
+      ${groups}`;
   }
 
-  /** Step 4: who is going to do it. */
+  /** Step 3: who is going to do it. */
   private jobsCrewStep(state: GameState): string {
     const def = this.jobs.defId ? CATALOG_MAP[this.jobs.defId] : null;
     if (!def) return `<p class="empty">Pick a project first.</p>`;
@@ -923,7 +921,9 @@ export class UI {
     const printHours = def.parts.reduce((sum, part) => sum + part.hours, 0);
     const workUnits = STAGE_ORDER.reduce((sum, key) => sum + (def.work[key] ?? STAGE_MAP[key].work), 0);
     return `
-      <span class="ui-badge" title="team size">${icon('users')}${def.teamSize}</span>
+      <span class="ui-badge ui-badge--tone" style="--tone:var(--primary)" title="team size">
+        ${icon('users')}${def.teamSize} ${def.teamSize === 1 ? 'person' : 'people'}
+      </span>
       <span class="ui-badge" title="hand work">${icon('effort')}${workUnits}</span>
       <span class="ui-badge" title="machine time">${icon('printer')}${printHours ? `${printHours}h` : 'none'}</span>
       <span class="ui-badge" title="bill of materials and lead time">
