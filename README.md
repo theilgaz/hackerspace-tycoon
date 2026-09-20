@@ -63,7 +63,7 @@ nothing to print, and never touches the machine queue. It also pays several time
 pays while earning a fraction of the reputation. **Software pays the bills; hardware builds the
 name.**
 
-**Current state:** Phase 1.10. One garage, six people to start, nine more who show up as your
+**Current state:** Phase 1.11. One garage, six people to start, nine more who show up as your
 reputation grows, one printer — and you. Thirty projects from a desk cable tidy to a
 3D-printed motorcycle, arriving through a backlog of catalog picks, member proposals, sponsor
 offers and Reddit trends. You're a maker too, with about seven hours a day shared between building

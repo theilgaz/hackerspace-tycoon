@@ -31,6 +31,7 @@ import {
   eraDef,
 } from '@/utils/constants';
 import { clock, dayName, hours, money, pct } from '@/utils/format';
+import { CATEGORY_ICON, icon } from './icons';
 import { SHELVE } from '@/utils/constants';
 
 export interface UIHandlers {
@@ -110,11 +111,17 @@ const TIER_DAYS: Record<ProjectDef['tier'], string> = {
   large: '10-30d',
 };
 
-/** Genre chip: icon, name, and the category's own colour. */
-function categoryChip(category: ProjectCategory, extraClass = ''): string {
+/** Genre badge: the genre's icon and name, tinted by its own colour and nothing more. */
+function categoryChip(category: ProjectCategory): string {
   const profile = profileOf(category);
-  return `<span class="chip cat ${extraClass}"
-    style="--cat:${profile.accent}" title="${esc(profile.blurb)}">${profile.icon} ${profile.label}</span>`;
+  return `<span class="ui-badge ui-badge--tone" style="--tone:${profile.accent}"
+    title="${esc(profile.blurb)}">${icon(CATEGORY_ICON[category])}${profile.label}</span>`;
+}
+
+/** Tier badge — the length promise, in the tier's own muted tone. */
+function tierBadge(tier: ProjectDef['tier']): string {
+  const tone = { small: '#7ac74f', medium: '#7fb2f0', large: '#c58ef0' }[tier];
+  return `<span class="ui-badge ui-badge--tone" style="--tone:${tone}">${tier} · ${TIER_DAYS[tier]}</span>`;
 }
 
 function bar(value: number, max: number, tone = ''): string {
@@ -382,7 +389,7 @@ export class UI {
       'bottombar',
       `<button class="bar-item ${this.jobs.open ? 'active' : ''}" data-action="jobs-open"
          title="${canPitch ? 'Start something new' : 'No hours left today to write a pitch'}">
-         <span class="bar-icon">🧾</span>
+         ${icon('clipboard', 'ui-icon bar-icon')}
          <span class="bar-label">Jobs</span>
          ${offers ? `<i class="pip">${offers}</i>` : ''}
        </button>`,
@@ -407,10 +414,11 @@ export class UI {
       .filter((x) => !(x.key === 'size' && this.jobs.source === 'offers'))
       .map((x, index) => {
         const at = steps.findIndex((y) => y.key === x.key);
-        return `<span class="step ${at === current ? 'now' : at < current ? 'done' : ''}">
-          <i>${index + 1}</i>${x.label}</span>`;
+        const state = at === current ? 'now' : at < current ? 'done' : '';
+        return `<span class="step ${state}">
+          <i>${state === 'done' ? icon('check', 'ui-icon step-check') : index + 1}</i>${x.label}</span>`;
       })
-      .join('<span class="step-sep">›</span>');
+      .join(`<span class="step-sep">${icon('chevronRight', 'ui-icon')}</span>`);
 
     const body =
       this.jobs.step === 'category'
@@ -428,14 +436,22 @@ export class UI {
         <div class="modal" data-action="noop">
           <header>
             <div class="steps">${trail}</div>
-            <button class="tiny" data-action="jobs-close">Close</button>
+            <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="jobs-close">
+              ${icon('x')}Close
+            </button>
           </header>
           <div class="modal-body">${body}</div>
           <footer>
-            ${this.jobs.step === 'category' ? '' : `<button class="tiny" data-action="jobs-back">← Back</button>`}
-            <span class="muted" style="font-size:10.5px">
-              A pitch costs ${VERB_HOURS.pitch}h of your day. No limit on how many projects run at once —
-              people are the limit.
+            ${
+              this.jobs.step === 'category'
+                ? ''
+                : `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="jobs-back">
+                     ${icon('arrowLeft')}Back
+                   </button>`
+            }
+            <span class="ui-desc" style="font-size:10.5px">
+              A pitch costs ${VERB_HOURS.pitch}h of your day. No limit on how many run at once —
+              people are.
             </span>
           </footer>
         </div>
@@ -450,28 +466,33 @@ export class UI {
     const tiles = CATEGORY_ORDER.map((category) => {
       const count = available.filter((def) => def.category === category).length;
       const profile = profileOf(category);
-      return `<button class="tile ${count ? '' : 'empty'}" style="--cat:${profile.accent}"
-        data-action="jobs-category" data-value="${category}" ${count ? '' : 'disabled'}>
-        <span class="tile-icon">${profile.icon}</span>
-        <b>${profile.label}</b>
-        <span class="tile-count">${count} project${count === 1 ? '' : 's'}</span>
-        <span class="tile-blurb">${esc(profile.blurb)}</span>
+      return `<button class="ui-option" data-action="jobs-category" data-value="${category}"
+        ${count ? '' : 'disabled'}>
+        <div class="ui-option__head">
+          <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[category], 'ui-icon ui-icon--lg')}</span>
+          <span class="ui-title">${profile.label}</span>
+          <span class="ui-badge">${count || '—'}</span>
+        </div>
+        <span class="ui-option__desc ui-clamp-2">${esc(profile.blurb)}</span>
       </button>`;
     }).join('');
 
     return `
       ${
         offers
-          ? `<button class="tile offers" data-action="jobs-category" data-value="offers">
-              <span class="tile-icon">✉️</span>
-              <b>Offers</b>
-              <span class="tile-count">${offers} waiting</span>
-              <span class="tile-blurb">Proposals, sponsors and whatever Reddit is excited about</span>
-            </button>`
+          ? `<button class="ui-row offers-row" data-action="jobs-category" data-value="offers">
+              <span class="icon-chip" style="--tone:var(--primary)">${icon('mail', 'ui-icon ui-icon--lg')}</span>
+              <span class="ui-row__main">
+                <span class="ui-title">Offers</span>
+                <p class="ui-desc" style="margin:3px 0 0">Proposals, sponsors, and whatever Reddit is excited about</p>
+              </span>
+              <span class="ui-badge ui-badge--accent">${offers} waiting</span>
+              <span class="ui-row__chevron">${icon('chevronRight')}</span>
+            </button>
+            <hr class="ui-sep" />`
           : ''
       }
-      <div class="section">Kind of work</div>
-      <div class="tile-grid">${tiles}</div>
+      <div class="ui-grid ui-grid--3">${tiles}</div>
     `;
   }
 
@@ -479,19 +500,31 @@ export class UI {
   private jobsSizeStep(state: GameState): string {
     const defs = this.availableDefs(state).filter((def) => def.category === this.jobs.source);
     const free = state.runtime.members.filter((m) => !m.team).length;
+    const profile = profileOf(this.jobs.source as ProjectCategory);
     return `
-      <div class="section">How big a job?</div>
-      <p class="blurb" style="margin-bottom:10px">
-        ${free} ${free === 1 ? 'person is' : 'people are'} unallocated right now. Nobody can be on two
-        projects at once, so team size is what really decides how much you can run.
+      <div class="row between" style="margin-bottom:10px">
+        <div class="ui-label" style="margin:0">How big a job?</div>
+        ${categoryChip(this.jobs.source as ProjectCategory)}
+      </div>
+      <p class="ui-desc" style="margin:0 0 12px">
+        ${free} ${free === 1 ? 'person is' : 'people are'} unallocated. Nobody can be on two projects at
+        once, so team size is what really decides how much you can run.
       </p>
-      <div class="tile-grid wide">
+      <div class="ui-grid ui-grid--2">
         ${SIZE_FILTERS.map((filter) => {
-          const count = defs.filter((def) => filter.test(def.teamSize)).length;
-          return `<button class="tile" data-action="jobs-size" data-value="${filter.key}" ${count ? '' : 'disabled'}>
-            <b>${filter.label}</b>
-            <span class="tile-count">${count} project${count === 1 ? '' : 's'}</span>
-            <span class="tile-blurb">${filter.hint}</span>
+          const count = defs.filter((f) => filter.test(f.teamSize)).length;
+          const enough = free >= (filter.key === 'big' ? 5 : filter.key === 'small' ? 3 : 1);
+          return `<button class="ui-option" data-action="jobs-size" data-value="${filter.key}"
+            ${count ? '' : 'disabled'}>
+            <div class="ui-option__head">
+              <span class="icon-chip" style="--tone:${profile.accent}">${icon('users', 'ui-icon ui-icon--lg')}</span>
+              <span class="ui-title">${filter.label}</span>
+            </div>
+            <span class="ui-option__desc">${filter.hint}</span>
+            <span class="row" style="gap:5px">
+              <span class="ui-badge">${count === 1 ? '1 project' : `${count} projects`}</span>
+              ${enough ? '' : `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">short-handed</span>`}
+            </span>
           </button>`;
         }).join('')}
       </div>
@@ -501,17 +534,19 @@ export class UI {
   /** Step 3: the shortlist. */
   private jobsProjectStep(state: GameState): string {
     if (this.jobs.source === 'offers') {
-      return `<div class="section">Offers</div>${state.backlog
-        .map((entry) => this.jobCard(CATALOG_MAP[entry.defId], state, entry))
-        .join('')}`;
+      return `<div class="ui-label" style="margin-bottom:9px">Offers</div>
+        ${state.backlog.map((entry) => this.jobCard(CATALOG_MAP[entry.defId], state, entry)).join('')}`;
     }
     const filter = SIZE_FILTERS.find((f) => f.key === this.jobs.size)!;
     const defs = this.availableDefs(state)
       .filter((def) => def.category === this.jobs.source && filter.test(def.teamSize))
       .sort((a, b) => a.teamSize - b.teamSize);
-    if (!defs.length) return `<p class="empty">Nothing matches. Try a different size.</p>`;
-    const profile = profileOf(this.jobs.source as ProjectCategory);
-    return `<div class="section">${profile.icon} ${profile.label} · ${filter.label}</div>
+    if (!defs.length) return `<p class="ui-desc">Nothing matches. Try a different size.</p>`;
+    return `
+      <div class="row between" style="margin-bottom:9px">
+        <div class="ui-label" style="margin:0">${filter.label}</div>
+        ${categoryChip(this.jobs.source as ProjectCategory)}
+      </div>
       ${defs.map((def) => this.jobCard(def, state)).join('')}`;
   }
 
@@ -544,7 +579,7 @@ export class UI {
     }).join('');
 
     const parts = def.parts.length
-      ? `<div class="section">Parts to make</div>
+      ? `<div class="ui-label" style="margin-bottom:6px">Parts to make</div>
          ${def.parts
            .map(
              (part) => `<div class="breakdown-row">
@@ -553,26 +588,35 @@ export class UI {
              </div>`,
            )
            .join('')}`
-      : `<div class="section">Parts to make</div>
-         <p class="blurb">Nothing to print. It never touches the machine queue.</p>`;
+      : `<div class="ui-label" style="margin-bottom:6px">Parts to make</div>
+         <p class="ui-desc">Nothing to print. It never touches the machine queue.</p>`;
 
+    const profile = profileOf(def.category);
     return `
-      <div class="row between" style="margin-bottom:6px">
-        <b style="font-size:15px">${esc(def.name)}</b>
-        ${categoryChip(def.category)}
+      <div class="row" style="gap:11px;margin-bottom:9px">
+        <span class="icon-chip" style="--tone:${profile.accent};width:38px;height:38px">
+          ${icon(CATEGORY_ICON[def.category], 'ui-icon ui-icon--lg')}
+        </span>
+        <div style="flex:1;min-width:0">
+          <div class="row between" style="gap:8px">
+            <span class="ui-title" style="font-size:15px">${esc(def.name)}</span>
+            ${categoryChip(def.category)}
+          </div>
+          <p class="ui-desc" style="margin:3px 0 0">${esc(def.blurb)}</p>
+        </div>
       </div>
-      <p class="blurb">${esc(def.blurb)}</p>
       ${this.defStats(def)}
       ${entry ? this.offerMeta(entry, state) : ''}
       ${this.draftPicker(def, state)}
+      <hr class="ui-sep" />
       <div class="breakdown">
         <div>
-          <div class="section">Stages</div>
+          <div class="ui-label" style="margin-bottom:6px">Stages</div>
           ${stages}
         </div>
         <div>${parts}</div>
       </div>
-      <button class="primary pitch-cta" data-action="pitch"
+      <button class="ui-btn ui-btn--primary ui-btn--lg pitch-cta" data-action="pitch"
         data-id="${def.id}" data-id2="${entry?.id ?? ''}"
         ${hoursLeft >= VERB_HOURS.pitch ? '' : 'disabled'}>
         ${
@@ -595,31 +639,46 @@ export class UI {
   private offerMeta(entry: BacklogEntry, state: GameState): string {
     const proposer = entry.proposerId ? MEMBER_DATA[entry.proposerId]?.name : null;
     const daysLeft = entry.expiresOnDay ? entry.expiresOnDay - state.day : null;
-    return `<div class="offer-meta">
-      ${proposer ? `<span>👤 ${proposer} will take a stage</span>` : ''}
-      ${entry.sponsorCash ? `<span class="good">💰 ${money(entry.sponsorCash)} up front</span>` : ''}
-      ${entry.hypeMultiplier ? `<span class="hot">🔥 ×${entry.hypeMultiplier} hype while it lasts</span>` : ''}
-      ${daysLeft !== null ? `<span class="${daysLeft <= 3 ? 'bad' : ''}">expires in ${daysLeft}d</span>` : ''}
-    </div>`;
+    const bits = [
+      proposer ? `<span class="ui-badge">${icon('users')}${proposer} will take a stage</span>` : '',
+      entry.sponsorCash
+        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('coins')}${money(entry.sponsorCash)} up front</span>`
+        : '',
+      entry.hypeMultiplier
+        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('flame')}×${entry.hypeMultiplier} hype</span>`
+        : '',
+      daysLeft !== null
+        ? `<span class="ui-badge ${daysLeft <= 3 ? 'ui-badge--tone' : ''}" ${daysLeft <= 3 ? 'style="--tone:var(--destructive)"' : ''}>${icon('clock')}${daysLeft}d left</span>`
+        : '',
+    ].filter(Boolean);
+    return bits.length ? `<span class="ui-row__meta">${bits.join('')}</span>` : '';
   }
 
   private jobCard(def: ProjectDef, state: GameState, entry?: BacklogEntry): string {
     const badge = entry ? SOURCE_BADGE[entry.source] : null;
     const missing = missingMachines(def, state.ownedMachines);
-    return `<button class="job ${badge?.cls ?? ''}" data-action="jobs-project"
+    const profile = profileOf(def.category);
+    return `<button class="ui-row" data-action="jobs-project"
       data-id="${def.id}" data-id2="${entry?.id ?? ''}" ${missing.length ? 'disabled' : ''}>
-      <div class="row between">
-        <b>${esc(def.name)}</b>
-        ${badge?.label ? `<span class="chip ${badge.cls}">${badge.label}</span>` : categoryChip(def.category)}
-      </div>
-      <p class="blurb">${esc(def.blurb)}</p>
-      ${this.defStats(def)}
-      ${entry ? this.offerMeta(entry, state) : ''}
-      ${missing.length ? `<div class="locked-note">needs ${missing.join(', ')}</div>` : ''}
+      <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[def.category], 'ui-icon ui-icon--lg')}</span>
+      <span class="ui-row__main">
+        <span class="row between" style="gap:8px">
+          <span class="ui-title">${esc(def.name)}</span>
+          ${badge?.label ? `<span class="ui-badge ui-badge--accent">${badge.label}</span>` : ''}
+        </span>
+        <p class="ui-desc ui-clamp-2" style="margin:4px 0 0">${esc(def.blurb)}</p>
+        <span class="ui-row__meta">
+          ${tierBadge(def.tier)}
+          ${this.statBadges(def)}
+        </span>
+        ${entry ? this.offerMeta(entry, state) : ''}
+        ${missing.length ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning);margin-top:6px">needs ${missing.join(', ')}</span>` : ''}
+      </span>
+      <span class="ui-row__chevron">${icon('chevronRight')}</span>
     </button>`;
   }
 
-  // --- active projects ------------------------------------------------------
+  // --- active projects ---  // --- active projects ------------------------------------------------------
 
   private renderProjects(state: GameState) {
     const projects = state.runtime.projects;
@@ -781,10 +840,18 @@ export class UI {
         ${categoryChip(project.category)}
         ${(() => {
           const def = CATALOG_MAP[project.defId];
-          return def ? `<span class="chip tier ${def.tier}">${def.tier} · ${TIER_DAYS[def.tier]}</span>` : '';
+          return def ? tierBadge(def.tier) : '';
         })()}
-        ${project.hypeMultiplier > 1 ? `<span class="chip hot">🔥 ×${project.hypeMultiplier}</span>` : ''}
-        ${project.sponsorCash ? `<span class="chip cash">sponsored</span>` : ''}
+        ${
+          project.hypeMultiplier > 1
+            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('flame')}×${project.hypeMultiplier}</span>`
+            : ''
+        }
+        ${
+          project.sponsorCash
+            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('coins')}sponsored</span>`
+            : ''
+        }
       </div>
       ${pipeline}
       <p class="blurb">${stageDef.blurb}</p>
@@ -824,48 +891,56 @@ export class UI {
       .sort((a, b) => b.match - a.match);
 
     if (!free.length) {
-      return `<div class="draft"><span class="muted" style="font-size:10.5px">Everybody is already on something.</span></div>`;
+      return `<div class="ui-card" style="padding:11px">
+        <p class="ui-desc" style="margin:0">Everybody is already on something. You can still pitch it
+        and crew it later from the project card.</p>
+      </div>`;
     }
-    return `<div class="draft">
-      <div class="row between" style="margin-bottom:5px">
-        <span class="muted" style="font-size:10px;letter-spacing:.07em;text-transform:uppercase">
-          Crew ${picked.size}/${def.teamSize}
-        </span>
-        ${picked.size ? `<span class="muted" style="font-size:10px">they can still say no</span>` : ''}
+    return `<div class="ui-card" style="padding:11px">
+      <div class="row between" style="margin-bottom:8px">
+        <span class="ui-label">Crew ${picked.size}/${def.teamSize}</span>
+        <span class="ui-desc" style="font-size:10.5px">they can still say no</span>
       </div>
-      <div class="row wrap" style="gap:4px">
+      <div class="row wrap" style="gap:5px">
         ${free
           .slice(0, 8)
           .map(({ m, match }) => {
             const on = picked.has(m.id);
-            const tone = match >= 0.6 ? 'keen' : match >= 0.3 ? '' : 'cold';
             const full = !on && picked.size >= def.teamSize;
-            return `<button class="person ask ${tone} ${on ? 'picked' : ''} ${full ? 'full' : ''}"
-                      data-action="draft" data-id="${def.id}" data-id2="${m.id}"
-                      title="passion match ${pct(match)}${m.present ? '' : ' · not in today'}">
-                      ${on ? '✓' : '+'} ${m.name} <i>${pct(match)}</i>
-                    </button>`;
+            return `<button class="ui-toggle" aria-pressed="${on}" ${full ? 'disabled' : ''}
+              data-action="draft" data-id="${def.id}" data-id2="${m.id}"
+              title="${profileOf(def.category).label} match ${pct(match)}${m.present ? '' : ' · not in today'}">
+              ${icon(on ? 'check' : 'plus')}${m.name}<span class="ui-toggle__pct">${pct(match)}</span>
+            </button>`;
           })
           .join('')}
       </div>
     </div>`;
   }
 
-  private defStats(def: ProjectDef): string {
-    const printHours = def.parts.reduce((sum, p) => sum + p.hours, 0);
+  /** The numbers that decide whether a job is worth it, as a row of badges. */
+  private statBadges(def: ProjectDef): string {
+    const printHours = def.parts.reduce((sum, part) => sum + part.hours, 0);
     const workUnits = STAGE_ORDER.reduce((sum, key) => sum + (def.work[key] ?? STAGE_MAP[key].work), 0);
-    const window = TIER_DAYS[def.tier];
-    return `<div class="stats-row mono">
-      <span class="tier ${def.tier}" title="typical length">${def.tier} · ${window}</span>
-      <span title="team size">👥 ${def.teamSize}</span>
-      <span title="hand work units">✋ ${workUnits}</span>
-      <span title="machine hours">🖨 ${printHours.toFixed(0)}h</span>
-      <span title="bill of materials">📦 ${money(def.bomCost)} · ${def.leadDays}d</span>
-      ${def.payout ? `<span title="payout" class="good">${money(def.payout)}</span>` : `<span class="muted">you keep it</span>`}
-    </div>`;
+    return `
+      <span class="ui-badge" title="team size">${icon('users')}${def.teamSize}</span>
+      <span class="ui-badge" title="hand work">${icon('effort')}${workUnits}</span>
+      <span class="ui-badge" title="machine time">${icon('printer')}${printHours ? `${printHours}h` : 'none'}</span>
+      <span class="ui-badge" title="bill of materials and lead time">
+        ${icon('package')}${def.bomCost ? `${money(def.bomCost)} · ${def.leadDays}d` : 'none'}
+      </span>
+      ${
+        def.payout
+          ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)" title="payout">${icon('coins')}${money(def.payout)}</span>`
+          : `<span class="ui-badge" title="you keep it">${icon('coins')}you keep it</span>`
+      }`;
   }
 
-  // --- you ------------------------------------------------------------------
+  private defStats(def: ProjectDef): string {
+    return `<div class="ui-row__meta" style="margin:0 0 10px">${tierBadge(def.tier)}${this.statBadges(def)}</div>`;
+  }
+
+  // --- you ---  // --- you ------------------------------------------------------------------
 
   private renderYou(state: GameState) {
     const p: PlayerSnapshot | null = state.runtime.player;
@@ -934,8 +1009,9 @@ export class UI {
             ${topCategories(data?.passions ?? {})
               .map(({ category, score }) => {
                 const profile = profileOf(category);
-                return `<span class="chip cat tiny-cat" style="--cat:${profile.accent}"
-                  title="${profile.label}: ${pct(score)} passion match">${profile.icon} ${pct(score)}</span>`;
+                return `<span class="ui-badge ui-badge--tone" style="--tone:${profile.accent}"
+                  title="${profile.label}: ${pct(score)} passion match">
+                  ${icon(CATEGORY_ICON[category])}${pct(score)}</span>`;
               })
               .join('')}
             ${(data?.traits ?? []).map((t) => `<span class="trait" title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`).join('')}

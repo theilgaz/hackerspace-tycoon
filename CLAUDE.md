@@ -121,6 +121,10 @@ opens a four-step wizard:
 
 Offers skip step 2; there are never many of them.
 
+**The wizard is built from the design-system primitives (§11), not bespoke markup.** The first
+version used ten saturated left borders, emoji at mixed sizes and cards of different heights —
+which is what "assembled rather than designed" looks like.
+
 **The wizard is a fixed box — 680×660, never content-sized.** A dialog that resizes between
 steps is unpleasant to use and makes the Back button move under the cursor. The body scrolls; the
 header, footer and the Pitch button stay put. The crew step would otherwise be mostly empty, so
@@ -381,6 +385,24 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   only where silhouette demands it. Readability over fidelity — a machine's state (idle / running /
   failed / needs calibration) must be legible at a glance from the iso camera.
 - **UI:** HTML/CSS overlay panels. The 3D scene is observational.
+- **Design system (`styles.css` + `src/ui/icons.ts`)** — shadcn-shaped, and not optional:
+  - **Tokens first.** `--background / --card / --muted / --muted-foreground / --border /
+    --primary / --destructive / --radius` and friends live in `:root`. **Never write a raw hex
+    at a call site.** A genre's accent colour is the one exception and it arrives as an inline
+    `--tone` / `--cat` custom property.
+  - **Primitives before markup.** `.ui-btn` (primary / outline / ghost, sm / lg / block),
+    `.ui-badge` (outline / accent / tone), `.ui-card`, `.ui-option`, `.ui-row`, `.ui-toggle`,
+    `.ui-label`, `.ui-title`, `.ui-desc`, `.ui-sep`, `.icon-chip`. Compose these rather than
+    styling a new element; two panels written weeks apart should still look like one product.
+  - **Surfaces are neutral, colour is rare.** Genre colour appears on a 32px icon chip and a
+    badge tint — never as a fat coloured border or a saturated background.
+  - **Line icons, never emoji.** `icon(name)` returns a 24×24 lucide-style SVG on
+    `currentColor`. Emoji render at whatever size and weight the platform feels like, which is
+    precisely why a set of them never looks designed. Check any new glyph at 11px — the first
+    hand icon was an unreadable smudge at badge size and had to go.
+  - **Uniform rows and cards.** Fixed icon-chip size, a two-line clamp on descriptions, counts
+    as inline badges on the title row. Cards that vary in height are the single loudest sign
+    that a screen was assembled rather than designed.
 - **Time:** 1 sim-hour = 2.5 real seconds at 1×. A day = 60 s at 1×. Speeds: pause / 1× / 2× / 4×.
   Machine jobs advance on sim time regardless of member attendance.
 - **Architecture rule (inherited from `etliekmek-tycoon`, keep it):**
@@ -509,6 +531,11 @@ Two further findings, both now fixed and worth not re-introducing:
   `Machine.starved` blocks job *start*; running out mid-job still fails the print, as it should.
 
 ## 14. Development Priority
+
+**Phase 1.11 — Design system — BUILT.**
+A shadcn-shaped token layer and component primitives (§11), a lucide-style line-icon set, and the
+Jobs wizard rebuilt on top of both. Genre colour is now a tint on an icon chip rather than ten
+competing borders.
 
 **Phase 1.10 — The Jobs menu, and no cap on projects — BUILT.**
 Concurrent projects are unlimited; people are the constraint, one project each. The backlog moved
