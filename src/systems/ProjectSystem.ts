@@ -100,6 +100,31 @@ export function remainingWork(project: ProjectData): number {
   return Math.max(0, stageRequirement(project) - project.progress[project.stage]);
 }
 
+/**
+ * One number for the whole build, so a card can show a single bar instead of eight rows.
+ * Fabrication is weighted by machine hours rather than work units, because that is what it
+ * actually costs; Test resolves instantly and carries no weight.
+ */
+export function projectProgress(project: ProjectData): { ratio: number; done: number; total: number } {
+  let total = 0;
+  let done = 0;
+  for (const key of STAGE_ORDER) {
+    if (key === 'test') continue;
+    if (key === 'fabrication') {
+      const hours = project.parts.reduce((sum, part) => sum + part.hours, 0);
+      total += hours;
+      done += project.parts
+        .filter((part) => part.status === 'done')
+        .reduce((sum, part) => sum + part.hours, 0);
+      continue;
+    }
+    const need = project.required[key];
+    total += need;
+    done += Math.min(need, project.progress[key]);
+  }
+  return { ratio: total > 0 ? done / total : 0, done, total };
+}
+
 export function partsOutstanding(project: ProjectData): PartData[] {
   return project.parts.filter((p) => p.status !== 'done');
 }

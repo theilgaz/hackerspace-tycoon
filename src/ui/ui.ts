@@ -21,7 +21,6 @@ import {
   FILAMENT,
   MACHINE,
   ROSTER,
-  STAGES,
   STAGE_MAP,
   STAGE_ORDER,
   TIME,
@@ -32,6 +31,7 @@ import {
 } from '@/utils/constants';
 import { clock, dayName, hours, money, pct } from '@/utils/format';
 import { CATEGORY_ICON, icon } from './icons';
+import { projectProgress } from '@/systems/ProjectSystem';
 import { SHELVE } from '@/utils/constants';
 
 export interface UIHandlers {
@@ -707,30 +707,36 @@ export class UI {
     const stageName = stageLabel(project.category, project.stage);
     const nowHours = this.handlers.totalHours();
 
-    const pipeline = STAGES.map((stage) => {
-      const index = STAGE_ORDER.indexOf(stage.key);
-      const isActive = stage.key === project.stage;
-      const label = stageLabel(project.category, stage.key);
+    // One bar for the whole build, and the pipeline as a single line of stage names —
+    // eight stacked rows per project made three projects unreadable.
+    const overall = projectProgress(project);
+    const strip = STAGE_ORDER.map((key) => {
+      const label = stageLabel(project.category, key).toLowerCase();
+      const index = STAGE_ORDER.indexOf(key);
+      const isNow = key === project.stage;
       const resolved =
-        stage.key === 'fabrication'
+        key === 'fabrication'
           ? project.parts.length > 0 && project.parts.every((p) => p.status === 'done')
-          : stage.key === 'test'
+          : key === 'test'
             ? project.testAttempts > 0
-            : project.progress[stage.key] > 0;
+            : project.progress[key] > 0;
       const done = index < currentIndex && resolved;
-      let value = '';
-      if (isActive && project.required[stage.key] > 0) {
-        value = `${Math.floor(project.progress[stage.key])}/${project.required[stage.key]}`;
-      } else if (isActive && stage.key === 'fabrication') {
-        value = `${project.parts.filter((p) => p.status === 'done').length}/${project.parts.length}`;
-      } else if (done) {
-        value = '✓';
-      }
-      const bounty = project.bounties.includes(stage.key) ? ' 🍕' : '';
-      return `<div class="stage ${isActive ? 'active' : ''} ${done ? 'done' : ''}">
-        <i class="dot"></i><span class="name">${label}${bounty}</span><span class="val mono">${value}</span>
-      </div>`;
-    }).join('');
+      return `<span class="pipe-stage ${isNow ? 'now' : done ? 'done' : ''}">${label}</span>`;
+    }).join('<span class="pipe-dot">·</span>');
+
+    // What the current stage is waiting on, in one line.
+    const waitingParts = project.stage === 'assembly' && partsWait(project, nowHours) > 0;
+    let statusLine: string;
+    if (project.stage === 'fabrication') {
+      const madeParts = project.parts.filter((p) => p.status === 'done').length;
+      statusLine = `${madeParts}/${project.parts.length} parts`;
+    } else if (waitingParts) {
+      statusLine = `waiting on parts`;
+    } else if (project.required[project.stage] > 0) {
+      statusLine = `${Math.floor(project.progress[project.stage])}/${project.required[project.stage]}`;
+    } else {
+      statusLine = 'resolving';
+    }
 
     const playerOn = player?.project === project.id;
     const team = project.team
@@ -839,11 +845,11 @@ export class UI {
       : '';
 
     return `<div class="project">
-      <div class="row between" style="margin-bottom:6px">
-        <b style="font-size:13.5px">${esc(project.name)}</b>
-        <span class="mono muted" style="font-size:11px">Q ${pct(project.quality)}</span>
+      <div class="row between" style="gap:8px;margin-bottom:6px">
+        <span class="ui-title" style="flex:1;min-width:0">${esc(project.name)}</span>
+        <span class="mono" style="font-size:10.5px;color:var(--subtle-foreground)">Q ${pct(project.quality)}</span>
       </div>
-      <div class="row wrap" style="gap:5px;margin-bottom:7px">
+      <div class="row wrap" style="gap:5px;margin-bottom:8px">
         ${categoryChip(project.category)}
         ${(() => {
           const def = CATALOG_MAP[project.defId];
@@ -860,29 +866,39 @@ export class UI {
             : ''
         }
       </div>
-      ${pipeline}
-      <p class="blurb">${stageDef.blurb}</p>
+
+      <div class="proj-progress">
+        <div class="bar"><i style="width:${(overall.ratio * 100).toFixed(1)}%"></i></div>
+        <span class="mono proj-pct">${Math.round(overall.ratio * 100)}%</span>
+      </div>
+      <div class="pipe">${strip}</div>
+      <div class="proj-now">
+        <span class="caret">›</span>
+        <span class="proj-now__stage">${stageName}</span>
+        <span class="mono proj-now__val">${statusLine}</span>
+      </div>
+
       ${sourcing}
       ${teamBlock}
       <div class="verbs">
         ${workButton}
-        <button class="tiny" data-action="repitch" data-id="${project.id}"
+        <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="repitch" data-id="${project.id}"
           ${afford('repitch') && project.required[project.stage] > 0 ? '' : 'disabled'}>
           Re-pitch ${VERB_HOURS.repitch}h
         </button>
-        <button class="tiny" data-action="bounty" data-id="${project.id}"
+        <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="bounty" data-id="${project.id}"
           ${canBounty && state.cash >= bountyCost && afford('bounty') ? '' : 'disabled'}>
           Bounty ${money(bountyCost)}
         </button>
-        ${project.stage === 'simulation' ? `<button class="tiny" data-action="skip-sim" data-id="${project.id}">Skip sim</button>` : ''}
+        ${project.stage === 'simulation' ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="skip-sim" data-id="${project.id}">Skip sim</button>` : ''}
       </div>
       ${
         project.idleDays >= SHELVE.warnAfterIdleDays
-          ? `<p class="defect">⚠ Nobody has touched this for ${project.idleDays} days — shelved in
+          ? `<p class="defect">${icon('clock')} Untouched for ${project.idleDays} days — shelved in
              ${SHELVE.afterIdleDays - project.idleDays}.</p>`
           : ''
       }
-      ${project.defects.length ? `<p class="defect">⚠ ${esc(project.defects[project.defects.length - 1])}</p>` : ''}
+      ${project.defects.length ? `<p class="defect">${esc(project.defects[project.defects.length - 1])}</p>` : ''}
       ${parts}
     </div>`;
   }

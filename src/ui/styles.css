@@ -923,3 +923,47 @@ button.step:hover i {
   background: color-mix(in srgb, var(--primary) 22%, transparent);
 }
 button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* --- compact project card ------------------------------------------------ */
+
+.proj-progress { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.proj-progress .bar { height: 6px; background: var(--muted); }
+.proj-progress .bar > i { background: var(--primary); }
+.proj-pct { font-size: 10.5px; color: var(--muted-foreground); width: 30px; text-align: right; }
+
+/* The pipeline as one line of stage names rather than eight stacked rows. */
+.pipe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+  font-family: var(--font);
+  font-size: 10px;
+  line-height: 1.7;
+  margin-bottom: 7px;
+}
+.pipe-stage { color: #39404d; transition: color 0.2s ease; }
+.pipe-stage.done { color: color-mix(in srgb, var(--success) 62%, var(--subtle-foreground)); }
+.pipe-stage.now {
+  color: var(--primary);
+  font-weight: 600;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+.pipe-dot { color: #2a303a; }
+
+.proj-now {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11.5px;
+  padding: 5px 8px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  border: 1px solid var(--border);
+}
+.proj-now .caret { color: var(--primary); font-family: var(--font); }
+.proj-now__stage { flex: 1; color: var(--foreground); }
+.proj-now__val { font-size: 10.5px; color: var(--muted-foreground); }
+.project .defect { display: flex; align-items: center; gap: 5px; }
+.project .defect .ui-icon { width: 12px; height: 12px; flex: none; }
