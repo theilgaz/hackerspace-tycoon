@@ -276,6 +276,13 @@ Winning pays reputation. Two tuning notes worth keeping:
   to be winning Deepest Pockets simply handed it to the next one along, four times in a row.
   Work out every rival's day-90 balance from `startCash + 90 × cashPerDay + projects ×
   cashPerProject` and set the whole distribution at once.
+- **The leaderboard is a table, not cards.** Cards with wrapping badges give you nothing to
+  read down a column, and comparison is the entire purpose of that panel. It is a sortable
+  table with tabular figures: one row per space, the four award-deciding columns marked with
+  a ◆, and the current leader of every column picked out — so "who beats me to Deepest
+  Pockets" is answerable at a glance. **Use a table whenever the job is comparison; use cards
+  only when each item is read on its own.**
+
 - **Reset every field between harness runs.** `era-pace` left `ceremony` set from the previous
   seed, so runs 2 onward captured the leftover ceremony on day 1 and reported a leaderboard of
   starting values. Three rounds of "tuning" were done against that before the `[captured day N]`
