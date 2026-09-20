@@ -42,6 +42,14 @@ The simulation imports neither `three` nor the DOM, so a whole playthrough repla
 in milliseconds. That is what makes the balance testable — and it has already caught a
 fabrication soft-lock and a bug where volunteers spent 80% of every visit walking.
 
+Name the place, pick a badge, open the doors. You start with one other person — Safa, who keeps
+office hours while you are there at any time of night — and everybody else has to be hired out of
+the People panel as your reputation brings them to the door.
+
+Five other hackerspaces are getting on with it in the background, and every 90 days there is an
+awards night: most projects, biggest crew, deepest pockets, and space of the year. All four are
+judged on the year just gone, so a quiet year costs you even if you are ahead overall.
+
 Start as many projects at once as you like — there's no cap. The limit is people: somebody can
 only be on one project at a time, and writing a pitch costs two hours of your day. Start more than
 the space can carry and the untouched ones end up on the shelf, along with the money you spent on
@@ -63,7 +71,7 @@ nothing to print, and never touches the machine queue. It also pays several time
 pays while earning a fraction of the reputation. **Software pays the bills; hardware builds the
 name.**
 
-**Current state:** Phase 1.11. One garage, six people to start, nine more who show up as your
+**Current state:** Phase 1.12. One garage, six people to start, nine more who show up as your
 reputation grows, one printer — and you. Thirty projects from a desk cable tidy to a
 3D-printed motorcycle, arriving through a backlog of catalog picks, member proposals, sponsor
 offers and Reddit trends. You're a maker too, with about seven hours a day shared between building

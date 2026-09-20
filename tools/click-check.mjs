@@ -149,8 +149,19 @@ const check = async (name, fn) => {
 
 console.log('\n  Clicking the real UI while the sim runs\n');
 
-// Walk the Jobs wizard the way a player does: open it, pick a genre, a size, a project,
-// then pitch.
+// The start screen gates everything: name the place and open the doors first.
+await check('start screen opens the game', async () => {
+  const hasStart = await evaluate(`document.querySelectorAll('#start .start-card').length === 1`);
+  await evaluate(`document.querySelector('#space-name').value = 'Test Alanı'`);
+  await click('[data-action="logo"][data-value="2"]');
+  await evaluate(`document.querySelector('#space-name').value = 'Test Alanı'`);
+  await click('[data-action="begin"]');
+  const started = await evaluate(`__store.getState().started`);
+  const named = await evaluate(`__store.getState().identity?.name`);
+  return hasStart && started === true && named === 'Test Alanı';
+});
+
+// Walk the Jobs wizard the way a player does: open it, pick a genre, a project, then pitch.
 await click('[data-action="jobs-open"]');
 await click('#modal [data-action="jobs-category"]:not([disabled])');
 await click('#modal [data-action="jobs-project"]:not([disabled])');
@@ -279,6 +290,15 @@ await check('People opens and hiring works', async () => {
         }
       }
       return __store.getState().applicants.length;
+    })()
+  `);
+  // This check is about the panel wiring, not the economy: make sure the hire is
+  // affordable so a spent day cannot make it flaky.
+  await evaluate(`
+    (() => {
+      __game.sim.player.hoursLeft = 6;
+      __store.getState().earn(20000);
+      __game.sim.publish();
     })()
   `);
   await click('[data-action="people-open"]');

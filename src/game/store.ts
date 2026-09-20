@@ -1,5 +1,6 @@
 import { createStore } from 'zustand/vanilla';
-import type { BacklogEntry, LogEntry, MachineType, RuntimeSnapshot } from './types';
+import type { BacklogEntry, Identity, LogEntry, MachineType, RuntimeSnapshot } from './types';
+import type { Ceremony } from '@/systems/RivalSystem';
 import { START_CASH, eraDef } from '@/utils/constants';
 import { uid } from '@/utils/format';
 
@@ -10,6 +11,12 @@ const MAX_LOG = 140;
  * `runtime` snapshots at 5 Hz. The UI reads this store and nothing else (CLAUDE.md §11).
  */
 export interface GameState {
+  /** Null until the player has named and badged the place. */
+  identity: Identity | null;
+  started: boolean;
+  /** Set when an awards night resolves; cleared when the player dismisses it. */
+  ceremony: Ceremony | null;
+  ceremonies: Ceremony[];
   /** Day 1, 2, 3 ... */
   day: number;
   /** Hour within the day, 0-24. */
@@ -30,6 +37,8 @@ export interface GameState {
   runtime: RuntimeSnapshot;
   log: LogEntry[];
 
+  begin: (identity: Identity) => void;
+  setCeremony: (ceremony: Ceremony | null) => void;
   setSpeed: (speed: number) => void;
   togglePause: () => void;
   setPaused: (paused: boolean) => void;
@@ -46,6 +55,7 @@ export interface GameState {
   closeApplicant: (id: string) => void;
   ownMachine: (type: MachineType) => void;
   recordShipped: (hype: number) => void;
+  recordReputation: (amount: number) => void;
 }
 
 export const emptyRuntime = (): RuntimeSnapshot => ({
@@ -53,9 +63,15 @@ export const emptyRuntime = (): RuntimeSnapshot => ({
   machines: [],
   projects: [],
   player: null,
+  rivals: [],
+  season: { year: 1, dayOfYear: 0, length: 1 },
 });
 
 export const store = createStore<GameState>((set, get) => ({
+  identity: null,
+  started: false,
+  ceremony: null,
+  ceremonies: [],
   day: 1,
   simTime: 9,
   speed: 1,
@@ -70,6 +86,13 @@ export const store = createStore<GameState>((set, get) => ({
   runtime: emptyRuntime(),
   log: [],
 
+  begin: (identity) => set({ identity, started: true, paused: false, speed: 1 }),
+  setCeremony: (ceremony) =>
+    set((s) => ({
+      ceremony,
+      ceremonies: ceremony ? [...s.ceremonies, ceremony] : s.ceremonies,
+      paused: ceremony ? true : s.paused,
+    })),
   setSpeed: (speed) => set({ speed, paused: false }),
   togglePause: () => set((s) => ({ paused: !s.paused })),
   setPaused: (paused) => set({ paused }),
@@ -105,6 +128,13 @@ export const store = createStore<GameState>((set, get) => ({
   closeApplicant: (id) => set((s) => ({ applicants: s.applicants.filter((a) => a !== id) })),
   ownMachine: (type) =>
     set((s) => (s.ownedMachines.includes(type) ? s : { ownedMachines: [...s.ownedMachines, type] })),
+
+  recordReputation: (amount) =>
+    set((s) => {
+      const reputation = s.reputation + amount;
+      const era = reputation >= eraDef(s.era).repToAdvance ? Math.min(3, s.era + 1) : s.era;
+      return { reputation, era };
+    }),
 
   recordShipped: (hype) =>
     set((s) => {

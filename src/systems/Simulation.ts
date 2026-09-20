@@ -2,6 +2,8 @@ import { store } from '@/game/store';
 import type {
   BacklogEntry,
   MemberData,
+  RivalState,
+  ScoreRow,
   MachineSnapshot,
   MachineType,
   ProjectData,
@@ -42,6 +44,8 @@ import {
   eraDef,
 } from '@/utils/constants';
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
+import { RIVAL_MAP, YEAR_DAYS } from '@/utils/rivals';
+import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
 import { clock, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
@@ -85,6 +89,10 @@ export class Simulation {
   private snapshotTimer = 0;
   private seeded = new Set<string>();
   private requeueTimers = new Map<string, number>();
+  /** The other spaces in town, and where we are in the awards year (§11). */
+  rivals: RivalState[] = createRivals();
+  private yearStart = { day: 1, projects: 0, reputation: 0 };
+  private rivalYearStart = new Map<string, { projects: number; reputation: number }>();
 
   constructor() {
     resetStations();
@@ -95,6 +103,9 @@ export class Simulation {
     this.members = ROSTER.map((data) => new MemberEntity({ ...data }, DOOR));
     this.player = new PlayerEntity(DOOR);
     this.player.arrive(DOOR);
+    for (const rival of this.rivals) {
+      this.rivalYearStart.set(rival.id, { projects: 0, reputation: 0 });
+    }
     this.planDay();
     this.player.startDay();
     this.refreshBacklog();
@@ -148,6 +159,8 @@ export class Simulation {
       this.time -= TIME.hoursPerDay;
       this.day += 1;
       this.endOfDay();
+      tickRivals(this.rivals);
+      this.checkAwards();
       this.openApplicants();
       this.planDay();
       this.player.startDay();
@@ -934,6 +947,75 @@ export class Simulation {
     return entity;
   }
 
+  /** Where the current awards year has got to. */
+  get season(): { year: number; dayOfYear: number; length: number } {
+    const elapsed = this.day - this.yearStart.day;
+    return {
+      year: Math.floor((this.day - 1) / YEAR_DAYS) + 1,
+      dayOfYear: Math.min(YEAR_DAYS, elapsed),
+      length: YEAR_DAYS,
+    };
+  }
+
+  /** Everybody on one leaderboard, the player included. */
+  scoreboard(): ScoreRow[] {
+    const state = store.getState();
+    const rows: ScoreRow[] = this.rivals.map((rival) => {
+      const def = RIVAL_MAP[rival.id];
+      const since = this.rivalYearStart.get(rival.id) ?? { projects: 0, reputation: 0 };
+      return {
+        id: rival.id,
+        name: def.name,
+        icon: def.icon,
+        colour: def.colour,
+        projects: rival.projects,
+        projectsThisYear: rival.projects - since.projects,
+        members: rival.members,
+        cash: rival.cash,
+        reputation: rival.reputation,
+        reputationThisYear: rival.reputation - since.reputation,
+        isPlayer: false,
+      };
+    });
+    rows.push({
+      id: 'player',
+      name: state.identity?.name ?? 'Your space',
+      icon: state.identity?.icon ?? 'wrench',
+      colour: state.identity?.colour ?? '#5ecfc0',
+      projects: state.shippedCount,
+      projectsThisYear: state.shippedCount - this.yearStart.projects,
+      members: this.members.length + 1, // you count
+      cash: state.cash,
+      reputation: state.reputation,
+      reputationThisYear: state.reputation - this.yearStart.reputation,
+      isPlayer: true,
+    });
+    return rows.sort((a, b) => b.reputation - a.reputation);
+  }
+
+  /** The awards night, once a year. */
+  private checkAwards() {
+    if (this.day - this.yearStart.day < YEAR_DAYS) return;
+    const ceremony = runCeremony(this.season.year - 1, this.scoreboard());
+    if (ceremony.reputationGained > 0) {
+      store.getState().recordReputation(ceremony.reputationGained);
+    }
+    store.getState().setCeremony(ceremony);
+    const won = ceremony.awards.filter((a) => a.playerWon).length;
+    this.log(
+      won
+        ? `Awards night: you took ${won} of ${ceremony.awards.length}.`
+        : `Awards night: nothing for us this year.`,
+      won ? 'good' : 'warn',
+    );
+
+    const state = store.getState();
+    this.yearStart = { day: this.day, projects: state.shippedCount, reputation: state.reputation };
+    for (const rival of this.rivals) {
+      this.rivalYearStart.set(rival.id, { projects: rival.projects, reputation: rival.reputation });
+    }
+  }
+
   /** Reputation is what makes people consider the place at all (§5). */
   private openApplicants() {
     const { reputation, applicants } = store.getState();
@@ -1245,6 +1327,8 @@ export class Simulation {
       }),
       machines,
       projects: this.projects.map((p) => structuredClone(p)),
+      rivals: this.rivals.map((r) => ({ ...r })),
+      season: this.season,
       player: (() => {
         const snap = this.player.playerSnapshot();
         const project = this.player.project ? this.project(this.player.project) : null;

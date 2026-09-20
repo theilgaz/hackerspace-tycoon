@@ -3,6 +3,7 @@ import { SpaceView } from '@/render/SpaceView';
 import { Simulation } from '@/systems/Simulation';
 import { UI } from '@/ui/ui';
 import { store } from './store';
+import { LOGOS } from '@/utils/rivals';
 import '@/ui/styles.css';
 
 /** Orchestrator: owns the clock, the sim, the scene and the UI, and wires them together. */
@@ -53,6 +54,13 @@ export class Game {
       buyFilament: () => act(() => sim.buyFilament()),
       hire: (memberId) => act(() => sim.hire(memberId)),
       hireCost: (memberId) => sim.hireCost(memberId),
+      begin: (name, logo) => {
+        const badge = LOGOS[logo] ?? LOGOS[0];
+        store.getState().begin({ name, icon: badge.icon, colour: badge.colour });
+        sim.publish();
+      },
+      dismissCeremony: () => store.getState().setCeremony(null),
+      scoreboard: () => sim.scoreboard(),
       allocation: () => sim.allocation,
       totalHours: () => sim.totalHours,
     });
@@ -83,7 +91,7 @@ export class Game {
     this.last = now;
 
     const state = store.getState();
-    if (!state.paused) this.sim.tick(dt, state.speed);
+    if (state.started && !state.paused) this.sim.tick(dt, state.speed);
 
     this.view.update(state.runtime, dt);
     this.renderLabels();

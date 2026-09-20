@@ -225,6 +225,41 @@ This is what makes the catalog's electronics projects play differently from its 
 a cyberdeck is print-light and spends three weeks waiting on an order, while a drone is
 print-heavy and arrives in twelve days. The bottleneck moves.
 
+## 3c. Starting, and the other spaces (§11)
+
+**The run starts with a name and a badge.** A start screen asks what the place is called and
+which of eight badges it wears; nothing ticks until the doors open. The name and badge follow
+you into the top bar and onto the leaderboard.
+
+**Five other hackerspaces are simulated** in `src/systems/RivalSystem.ts`, defined in
+`src/utils/rivals.ts`. They are not running the real pipeline — they are a pace-setter — but
+their shapes differ on purpose, so the leaderboard is not one ladder:
+
+| Space | Shape |
+|---|---|
+| Bit Alanı | Client work. Rich, barely known. |
+| Demirhane | One enormous build a season. Famous, slow, skint. |
+| Lehimhane | Boards and badges every Thursday. Relentlessly steady. |
+| Açık Atölye | The whole neighbourhood. Huge crew, no money. |
+| Prototip Ofisi | Ships constantly. Nobody can name one of them. |
+
+Their pace **compounds with their reputation**, as the player's does. Without that they grow
+linearly while the player's roster snowballs, and by day 200 the table is a formality.
+
+**A year is 90 days, and it ends with an awards night.** Four categories, judged on the year
+just gone rather than all time, so a bad year costs you even when you are ahead overall:
+
+- **Most Projects** · **Biggest Crew** · **Deepest Pockets** · **Space of the Year** (reputation
+  earned that year, worth the most).
+
+Winning pays reputation. Two tuning notes worth keeping:
+
+- **Every category must be winnable.** Açık Atölye's crew is capped at 15 because a complete
+  roster is you plus fourteen — so Biggest Crew is reachable, but only if you have hired
+  everybody. It was capped at 40 first, which made one of the four awards decoration.
+- `npm run era-pace` prints the final standings. An engaged player should finish first without
+  finishing at four times the field; a bad run should finish last, and does.
+
 ## 4b. Genres (`src/utils/categories.ts`)
 
 Projects have a **category**, the way games have genres — and here the genre is mechanical as
@@ -545,6 +580,11 @@ Two further findings, both now fixed and worth not re-introducing:
 
 ## 14. Development Priority
 
+**Phase 1.12 — The scene: identity, rivals and awards — BUILT.**
+A start screen that names and badges the space (§3c), five simulated rival hackerspaces whose
+pace compounds like yours, a season timeline in the top bar, a Ranking panel, and a yearly awards
+night across four categories. `npm run era-pace` now reports the final standings too.
+
 **Phase 1.11 — Design system — BUILT.**
 A shadcn-shaped token layer and component primitives (§11), a lucide-style line-icon set, and the
 Jobs wizard rebuilt on top of both. Genre colour is now a tint on an icon chip rather than ten
@@ -613,8 +653,9 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     elapsed days per stage. Use it whenever a stage feels the wrong length.
   - `npm run project-times` — best-case length of every catalog entry against its declared
     tier. Run it after any change to `catalog.ts`; `TOO LONG` is a failure, not an opinion.
-  - `npm run era-pace` — what day each era arrives for a committed player. Run it after
-    changing throughput, team sizes or the catalog.
+  - `npm run era-pace` — what day each era arrives for a committed player, plus the final
+    standings against the five rival spaces. Run it after changing throughput, team sizes,
+    the catalog, or anything in `rivals.ts`.
   - `npm run click-check` — needs `npm run dev` running. Drives the real UI with real mouse
     press/release pairs while the sim runs, and counts DOM rebuilds. Run it after touching
     anything in `src/ui/`.

@@ -291,6 +291,45 @@ export interface RuntimeSnapshot {
   machines: MachineSnapshot[];
   projects: ProjectData[];
   player: PlayerSnapshot | null;
+  rivals: RivalState[];
+  /** Where we are in the run-up to the next awards night. */
+  season: { year: number; dayOfYear: number; length: number };
+}
+
+// ---------------------------------------------------------------------------
+// The scene: other spaces, and the yearly awards (CLAUDE.md §11)
+// ---------------------------------------------------------------------------
+
+export interface RivalState {
+  id: string;
+  projects: number;
+  members: number;
+  cash: number;
+  reputation: number;
+  /** Fraction of their current build that is done. */
+  progress: number;
+}
+
+/** One line of the leaderboard — the player and every rival share this shape. */
+export interface ScoreRow {
+  id: string;
+  name: string;
+  icon: string;
+  colour: string;
+  projects: number;
+  projectsThisYear: number;
+  members: number;
+  cash: number;
+  reputation: number;
+  reputationThisYear: number;
+  isPlayer: boolean;
+}
+
+/** What the player named and badged their space. */
+export interface Identity {
+  name: string;
+  icon: string;
+  colour: string;
 }
 
 export interface LogEntry {

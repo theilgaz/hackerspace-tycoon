@@ -7,6 +7,7 @@ import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 import { partsPending } from '@/systems/ProjectSystem';
 
 const rows: string[] = [];
+const standings: string[] = [];
 for (let seed = 1; seed <= 4; seed += 1) {
   rng.reseed(seed);
   store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, backlog: [], applicants: [], runtime: emptyRuntime() });
@@ -45,6 +46,16 @@ for (let seed = 1; seed <= 4; seed += 1) {
       if (t) sim.workOn(t.id);
     }
   }
+  // Where does an engaged player actually sit at the first awards night?
+  const board = sim.scoreboard();
+  const me = board.findIndex((r) => r.isPlayer) + 1;
+  standings.push(
+    `  seed ${seed}: you placed ${me}/${board.length} — ` +
+      board
+        .map((r) => `${r.isPlayer ? '*' : ''}${r.name} ${r.reputation}r/${r.projects}p/${r.members}m`)
+        .join('  ·  '),
+  );
+
   const stuck = sim.projects.map((p) => {
     const why =
       p.stage === 'assembly' && partsPending(p, sim.totalHours)
@@ -63,4 +74,5 @@ for (let seed = 1; seed <= 4; seed += 1) {
       `           open: ${stuck.join(', ') || 'none'}`,
   );
 }
-console.log('\n  ERA PACING (220 days, engaged player)\n' + rows.join('\n') + '\n');
+console.log('\n  ERA PACING (220 days, engaged player)\n' + rows.join('\n'));
+console.log('\n  STANDINGS AT THE END\n' + standings.join('\n') + '\n');

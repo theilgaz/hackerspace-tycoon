@@ -2,6 +2,7 @@ import type { GameState } from '@/game/store';
 import type {
   BacklogEntry,
   ProjectCategory,
+  ScoreRow,
   MemberSnapshot,
   MachineSnapshot,
   PlayerSnapshot,
@@ -30,7 +31,8 @@ import {
   eraDef,
 } from '@/utils/constants';
 import { clock, dayName, hours, money, pct } from '@/utils/format';
-import { CATEGORY_ICON, icon } from './icons';
+import { CATEGORY_ICON, icon, type IconName } from './icons';
+import { LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import { projectProgress } from '@/systems/ProjectSystem';
 import { SHELVE } from '@/utils/constants';
 
@@ -56,6 +58,9 @@ export interface UIHandlers {
   buyFilament(): void;
   hire(memberId: string): void;
   hireCost(memberId: string): number;
+  begin(name: string, logo: number): void;
+  dismissCeremony(): void;
+  scoreboard(): ScoreRow[];
   allocation(): { used: number; total: number };
   totalHours(): number;
 }
@@ -150,7 +155,9 @@ export class UI {
   private htmlCache = new Map<string, string>();
 
   /** Which build-menu panel is open, if any. */
-  private openModal: 'jobs' | 'people' | null = null;
+  private openModal: 'jobs' | 'people' | 'ranking' | null = null;
+  /** Start screen state; the sim is not running yet so nothing clobbers it. */
+  private start = { name: '', logo: 0 };
 
   /** The Jobs wizard: pick a genre, choose the build, crew it up. */
   private jobs: {
@@ -175,6 +182,7 @@ export class UI {
   private topbar!: HTMLElement;
   private bottombar!: HTMLElement;
   private modal!: HTMLElement;
+  private startEl!: HTMLElement;
   private left!: HTMLElement;
   private you!: HTMLElement;
   private members!: HTMLElement;
@@ -200,10 +208,12 @@ export class UI {
       <div class="panel" id="log"><h2>Log</h2><div class="body"></div></div>
       <div id="bottombar"></div>
       <div id="modal"></div>
+      <div id="start"></div>
     `;
     this.topbar = this.root.querySelector('#topbar')!;
     this.bottombar = this.root.querySelector('#bottombar')!;
     this.modal = this.root.querySelector('#modal')!;
+    this.startEl = this.root.querySelector('#start')!;
     this.left = this.root.querySelector('#left .body')!;
     this.you = this.root.querySelector('#you .body')!;
     this.members = this.root.querySelector('#members .body')!;
@@ -232,6 +242,31 @@ export class UI {
           this.jobs = { open: true, step: 'category', source: null, size: 'any', defId: null, offerId: null };
           this.rerender();
           break;
+        case 'ranking-open':
+          this.openModal = 'ranking';
+          this.rerender();
+          break;
+        case 'ceremony-close':
+          h.dismissCeremony();
+          this.rerender();
+          break;
+        case 'logo':
+          this.start.name = this.nameField();
+          this.start.logo = Number(value);
+          this.rerender();
+          break;
+        case 'shuffle-name': {
+          const pool = NAME_SUGGESTIONS.filter((n) => n !== this.nameField());
+          this.start.name = pool[Math.floor(Math.random() * pool.length)] ?? NAME_SUGGESTIONS[0];
+          this.rerender();
+          break;
+        }
+        case 'begin': {
+          const name = this.nameField().trim();
+          if (!name) break;
+          h.begin(name, this.start.logo);
+          break;
+        }
         case 'people-open':
           this.openModal = 'people';
           this.rerender();
@@ -345,8 +380,19 @@ export class UI {
     if (this.lastState) this.render(this.lastState);
   }
 
+  /** The live value of the name box, so a re-render never eats what was typed. */
+  private nameField(): string {
+    const input = this.root.querySelector<HTMLInputElement>('#space-name');
+    return input ? input.value : this.start.name;
+  }
+
   render(state: GameState) {
     this.lastState = state;
+    if (!state.started) {
+      this.renderStart();
+      return;
+    }
+    this.setHTML(this.startEl, 'start', '');
     this.renderTopbar(state);
     this.renderProjects(state);
     this.renderYou(state);
@@ -357,6 +403,57 @@ export class UI {
     this.renderModal(state);
   }
 
+  // --- start screen ---------------------------------------------------------
+
+  private renderStart() {
+    const name = this.start.name;
+    this.setHTML(
+      this.startEl,
+      'start',
+      `<div class="start-backdrop">
+        <div class="start-card">
+          <div class="start-brand">
+            <span class="icon-chip start-badge" style="--tone:${LOGOS[this.start.logo].colour}">
+              ${icon(LOGOS[this.start.logo].icon, 'ui-icon')}
+            </span>
+            <div>
+              <div class="ui-label">A new hackerspace</div>
+              <h1>${esc(name) || 'Name it'}</h1>
+            </div>
+          </div>
+          <p class="ui-desc" style="margin:0 0 16px">
+            Two of you, one printer, and a landlord. Everything else you will have to talk
+            people into.
+          </p>
+
+          <div class="ui-label" style="margin-bottom:6px">What is it called?</div>
+          <div class="row" style="gap:6px;margin-bottom:16px">
+            <input id="space-name" class="ui-input" maxlength="28" placeholder="Lehim ve Kahve"
+              value="${esc(name)}" />
+            <button class="ui-btn ui-btn--outline" data-action="shuffle-name" title="Suggest one">
+              ${icon('flame')}
+            </button>
+          </div>
+
+          <div class="ui-label" style="margin-bottom:6px">Pick a badge</div>
+          <div class="logo-grid">
+            ${LOGOS.map(
+              (logo, index) => `<button class="logo-pick ${index === this.start.logo ? 'on' : ''}"
+                style="--tone:${logo.colour}" data-action="logo" data-value="${index}">
+                ${icon(logo.icon, 'ui-icon ui-icon--lg')}
+              </button>`,
+            ).join('')}
+          </div>
+
+          <button class="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" style="margin-top:18px"
+            data-action="begin">Open the doors</button>
+        </div>
+      </div>`,
+    );
+    const input = this.root.querySelector<HTMLInputElement>('#space-name');
+    if (input && document.activeElement !== input) input.value = name;
+  }
+
   // --- top bar --------------------------------------------------------------
 
   private renderTopbar(state: GameState) {
@@ -365,8 +462,17 @@ export class UI {
       return `<button data-action="speed" data-value="${value}" class="tiny ${active ? 'active' : ''}">${label}</button>`;
     };
     const allocation = this.handlers.allocation();
-    const era = eraDef(state.era);
+    const season = state.runtime.season;
+    const seasonPct = (season.dayOfYear / season.length) * 100;
     this.setHTML(this.topbar, 'topbar', `
+      <div class="row" style="gap:8px">
+        <span class="icon-chip" style="--tone:${state.identity?.colour ?? 'var(--primary)'};width:28px;height:28px">
+          ${icon((state.identity?.icon ?? 'wrench') as IconName)}
+        </span>
+        <div class="stat"><b style="font-size:12.5px">${esc(state.identity?.name ?? 'Your space')}</b>
+          <span>${eraDef(state.era).name}</span></div>
+      </div>
+      <div class="sep"></div>
       <div class="stat">
         <b class="clock"></b>
         <span class="day">${dayName(state.day)} · day ${state.day}</span>
@@ -384,10 +490,20 @@ export class UI {
       </div>
       <div class="stat"><b>${state.shippedCount}</b><span>shipped</span></div>
       <div class="stat" title="cumulative hype from everything you've shipped">
-        <b>${state.reputation}${Number.isFinite(era.repToAdvance) ? `<span class="muted" style="font-size:10px">/${era.repToAdvance}</span>` : ''}</b>
+        <b>${state.reputation}${
+          Number.isFinite(eraDef(state.era).repToAdvance)
+            ? `<span class="muted" style="font-size:10px">/${eraDef(state.era).repToAdvance}</span>`
+            : ''
+        }</b>
         <span>reputation</span>
       </div>
-      <div class="stat"><b>${era.name}</b><span>era ${state.era}</span></div>
+      <div class="sep"></div>
+      <button class="season" data-action="ranking-open"
+        title="Year ${season.year} · ${season.length - season.dayOfYear} days to the awards">
+        <span class="season-label">Year ${season.year}</span>
+        <span class="season-bar"><i style="width:${seasonPct.toFixed(1)}%"></i></span>
+        <span class="season-left">${season.length - season.dayOfYear}d</span>
+      </button>
     `);
     // Text-only update: leaves the speed buttons' DOM untouched.
     const clockEl = this.topbar.querySelector('.clock');
@@ -411,6 +527,11 @@ export class UI {
          <span class="bar-label">Jobs</span>
          ${offers ? `<i class="pip">${offers}</i>` : ''}
        </button>
+       <button class="bar-item ${this.openModal === 'ranking' ? 'active' : ''}" data-action="ranking-open"
+         title="How the other spaces are doing">
+         ${icon('flame', 'ui-icon bar-icon')}
+         <span class="bar-label">Ranking</span>
+       </button>
        <button class="bar-item ${this.openModal === 'people' ? 'active' : ''}" data-action="people-open"
          title="Who is here, and who you could take on">
          ${icon('users', 'ui-icon bar-icon')}
@@ -422,12 +543,104 @@ export class UI {
 
   // --- the Jobs wizard ------------------------------------------------------
 
+  /** The awards night takes the screen until it is dismissed. */
+  private renderCeremony(state: GameState): boolean {
+    const ceremony = state.ceremony;
+    if (!ceremony) return false;
+    const won = ceremony.awards.filter((a) => a.playerWon).length;
+    this.setHTML(
+      this.modal,
+      'modal',
+      `<div class="modal-backdrop">
+        <div class="modal ceremony" data-action="noop">
+          <header>
+            <div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>Awards night · year ${ceremony.year}</b></div>
+          </header>
+          <div class="modal-body">
+            <p class="ui-desc" style="margin:0 0 14px">
+              ${
+                won
+                  ? `You took <b>${won}</b> of ${ceremony.awards.length}${ceremony.reputationGained ? `, and ${ceremony.reputationGained} reputation with them` : ''}.`
+                  : `Nothing for us this year. Somebody else had a better one.`
+              }
+            </p>
+            ${ceremony.awards
+              .map(
+                (award) => `<div class="ui-row ${award.playerWon ? 'award-won' : ''}" style="cursor:default">
+                  <span class="icon-chip" style="--tone:${award.playerWon ? 'var(--primary)' : 'var(--muted-foreground)'}">
+                    ${icon(award.playerWon ? 'check' : 'users', 'ui-icon ui-icon--lg')}
+                  </span>
+                  <span class="ui-row__main">
+                    <span class="row between" style="gap:8px">
+                      <span class="ui-title">${award.category}</span>
+                      <span class="ui-badge ${award.playerWon ? 'ui-badge--accent' : ''}">${esc(award.winnerName)}</span>
+                    </span>
+                    <p class="ui-desc" style="margin:3px 0 0">${award.blurb} — ${award.value}</p>
+                  </span>
+                </div>`,
+              )
+              .join('')}
+          </div>
+          <footer>
+            <button class="ui-btn ui-btn--primary ui-btn--block" data-action="ceremony-close">
+              Back to work
+            </button>
+          </footer>
+        </div>
+      </div>`,
+    );
+    return true;
+  }
+
+  // --- ranking --------------------------------------------------------------
+
+  private rankingBody(state: GameState): { head: string; content: string; foot: string } {
+    const rows = this.handlers.scoreboard();
+    const season = state.runtime.season;
+    const daysLeft = season.length - season.dayOfYear;
+    const content = rows
+      .map((row, index) => {
+        const blurb = row.isPlayer ? 'Your space' : RIVAL_MAP[row.id]?.blurb ?? '';
+        return `<div class="ui-row ${row.isPlayer ? 'award-won' : ''}" style="cursor:default">
+          <span class="rank-no">${index + 1}</span>
+          <span class="icon-chip" style="--tone:${row.colour}">${icon(row.icon as IconName, 'ui-icon ui-icon--lg')}</span>
+          <span class="ui-row__main">
+            <span class="row between" style="gap:8px">
+              <span class="ui-title">${esc(row.name)}</span>
+              <span class="ui-badge ${row.isPlayer ? 'ui-badge--accent' : ''}">${row.reputation} rep</span>
+            </span>
+            <p class="ui-desc" style="margin:3px 0 0">${esc(blurb)}</p>
+            <span class="ui-row__meta">
+              <span class="ui-badge" title="shipped this year">${icon('check')}${row.projectsThisYear} this year</span>
+              <span class="ui-badge" title="all time">${icon('package')}${row.projects} total</span>
+              <span class="ui-badge">${icon('users')}${row.members}</span>
+              <span class="ui-badge">${icon('coins')}${money(row.cash)}</span>
+            </span>
+          </span>
+        </div>`;
+      })
+      .join('');
+    return {
+      head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>The other spaces</b></div>`,
+      content: `<div class="ui-label" style="margin-bottom:9px">Year ${season.year} · ${daysLeft} days to the awards</div>${content}`,
+      foot: `<span class="ui-desc" style="font-size:10.5px">
+        Awards are judged on the year just gone, so a bad year costs you even if you are ahead overall.
+      </span>`,
+    };
+  }
+
   private renderModal(state: GameState) {
+    if (this.renderCeremony(state)) return;
     if (this.openModal === null) {
       this.setHTML(this.modal, 'modal', '');
       return;
     }
-    const body = this.openModal === 'people' ? this.peopleBody(state) : this.jobsBody(state);
+    const body =
+      this.openModal === 'people'
+        ? this.peopleBody(state)
+        : this.openModal === 'ranking'
+          ? this.rankingBody(state)
+          : this.jobsBody(state);
     this.setHTML(
       this.modal,
       'modal',
