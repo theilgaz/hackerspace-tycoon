@@ -17,6 +17,8 @@ const STATION_ROLE: Partial<Record<MachineType, string>> = {
   reflow: 'SMD assembly',
 };
 import { LOGOS } from '@/utils/rivals';
+import { clearSave, readSave, writeSave, SAVE_VERSION, type SaveFile } from '@/systems/SaveGame';
+import { eraDef } from '@/utils/constants';
 import '@/ui/styles.css';
 
 /** Orchestrator: owns the clock, the sim, the scene and the UI, and wires them together. */
@@ -77,6 +79,12 @@ export class Game {
         sim.publish();
       },
       dismissCeremony: () => store.getState().setCeremony(null),
+      continueRun: () => this.loadRun(),
+      discardSave: () => {
+        clearSave();
+        this.ui.render(store.getState());
+      },
+      savedRun: () => readSave()?.summary ?? null,
       dismissBill: () => store.getState().setBill(null),
       letGo: (memberId) => act(() => sim.letGo(memberId)),
       previewBill: () => sim.previewBill(),
@@ -97,8 +105,47 @@ export class Game {
       this.view.setHovered(null);
     });
 
+    // Autosave every day, and once more on the way out of the tab.
+    window.addEventListener('beforeunload', () => this.saveRun());
+
     this.bindKeys();
     requestAnimationFrame(this.loop);
+  }
+
+  /** Write the run to localStorage. Cheap enough to do once a day. */
+  private saveRun() {
+    const state = store.getState();
+    if (!state.started) return;
+    if (state.gameOver) {
+      // A finished run is not something to come back to.
+      clearSave();
+      return;
+    }
+    const file: SaveFile = {
+      version: SAVE_VERSION,
+      savedAt: Date.now(),
+      store: state.snapshot(),
+      sim: this.sim.serialise(),
+      summary: {
+        name: state.identity?.name ?? 'Your space',
+        icon: state.identity?.icon ?? 'wrench',
+        colour: state.identity?.colour ?? '#5ecfc0',
+        day: state.day,
+        shipped: state.shippedCount,
+        reputation: state.reputation,
+        cash: state.cash,
+        era: eraDef(state.era).name,
+      },
+    };
+    writeSave(file);
+  }
+
+  private loadRun() {
+    const file = readSave();
+    if (!file) return;
+    store.getState().hydrate(file.store);
+    this.sim.restore(file.sim);
+    this.ui.render(store.getState());
   }
 
   private bindKeys() {
@@ -119,7 +166,13 @@ export class Game {
     this.last = now;
 
     const state = store.getState();
-    if (state.started && !state.paused && !state.gameOver) this.sim.tick(dt, state.speed);
+    if (state.started && !state.paused && !state.gameOver) {
+      this.sim.tick(dt, state.speed);
+      if (this.sim.dayRolled) {
+        this.sim.dayRolled = false;
+        this.saveRun();
+      }
+    }
 
     this.view.update(state.runtime, dt);
     const over = this.scene.pick(this.pointer.x, this.pointer.y, this.view.pickables);

@@ -19,6 +19,7 @@ import {
   IDLE_TILES,
   STATIONS,
   installStation,
+  installedStations,
   resetStations,
   stationOfType,
 } from '@/machines/layout';
@@ -52,6 +53,7 @@ import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
 import { RIVAL_MAP, YEAR_DAYS } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
+import type { SaveFile } from './SaveGame';
 import { ECONOMY, membershipFor, rentFor, type Bill, type BillLine } from '@/utils/economy';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
 import { clock, money, uid } from '@/utils/format';
@@ -95,11 +97,14 @@ export class Simulation {
   private plans = new Map<string, DayPlan>();
   private snapshotTimer = 0;
   private seeded = new Set<string>();
+  /** Day plans are recomputed on load rather than saved. */
   private requeueTimers = new Map<string, number>();
   /** The other spaces in town, and where we are in the awards year (§11). */
   rivals: RivalState[] = createRivals();
   private yearStart = { day: 1, projects: 0, reputation: 0 };
   private rivalYearStart = new Map<string, { projects: number; reputation: number }>();
+  /** Bumped every day so the host can autosave without polling. */
+  dayRolled = false;
   /** Machine-hours run since the last bill, for the utilities line. */
   private machineHoursThisMonth = 0;
   /** What the work actually brought in since the last bill — payouts and sponsor money. */
@@ -175,6 +180,7 @@ export class Simulation {
       this.time -= TIME.hoursPerDay;
       this.day += 1;
       this.endOfDay();
+      this.dayRolled = true;
       tickRivals(this.rivals, this.rivalPressure());
       this.runBilling();
       this.checkAwards();
@@ -920,6 +926,121 @@ export class Simulation {
     store.getState().ownMachine(type);
     this.applyPerks();
     this.log(`${def.label} is up and running. New things are possible.`, 'good');
+  }
+
+  // -------------------------------------------------------------------------
+  // Saving and restoring (CLAUDE.md §11a)
+  // -------------------------------------------------------------------------
+
+  /** Everything the sim owns that a save needs. Entities hand over runtime state only —
+   *  skills and passions come back from the roster data by id. */
+  serialise(): SaveFile['sim'] {
+    return {
+      day: this.day,
+      time: this.time,
+      yearStart: { ...this.yearStart },
+      rivalYearStart: [...this.rivalYearStart],
+      machineHoursThisMonth: this.machineHoursThisMonth,
+      incomeThisMonth: this.incomeThisMonth,
+      seeded: [...this.seeded],
+      requeueTimers: [...this.requeueTimers],
+      rivals: this.rivals.map((r) => ({ ...r })),
+      projects: this.projects.map((p) => structuredClone(p)),
+      installedStations: installedStations(),
+      members: this.members.map((m) => ({
+        id: m.id,
+        employment: m.employment,
+        shift: m.shift,
+        team: m.team,
+        interest: m.interest,
+        energy: m.data.energy,
+        mood: m.data.mood,
+        ghostFactor: m.ghostFactor,
+        present: m.present,
+        tile: { ...m.tile },
+        cooldowns: m.serialiseCooldowns(),
+      })),
+      player: {
+        hoursToday: this.player.hoursToday,
+        hoursLeft: this.player.hoursLeft,
+        energy: this.player.data.energy,
+        project: this.player.project,
+        calibrating: this.player.calibrating,
+        present: this.player.present,
+        tile: { ...this.player.tile },
+      },
+      machines: this.machines.map((machine) => ({
+        id: machine.id,
+        type: machine.type,
+        calibration: machine.calibration,
+        consumable: machine.consumable,
+        current: machine.current ? { ...machine.current } : null,
+        queue: machine.queue.map((job) => ({ ...job })),
+      })),
+    };
+  }
+
+  /** Put a saved run back together. Called on a fresh Simulation, before the first tick. */
+  restore(data: SaveFile['sim']) {
+    this.day = data.day;
+    this.time = data.time;
+    this.yearStart = { ...data.yearStart };
+    this.rivalYearStart = new Map(data.rivalYearStart);
+    this.machineHoursThisMonth = data.machineHoursThisMonth;
+    this.incomeThisMonth = data.incomeThisMonth;
+    this.seeded = new Set(data.seeded);
+    this.requeueTimers = new Map(data.requeueTimers);
+    this.rivals = data.rivals;
+    this.projects = data.projects;
+
+    // Tool-built machines live in a module-level list, so put them back before anything
+    // tries to look one up.
+    for (const station of data.installedStations) {
+      const def = installStation(station.type, station.id);
+      if (def && FAB_MACHINES.includes(station.type)) {
+        this.machines.push(new Machine(def, station.type === 'fdm' ? FILAMENT.spoolGrams : 0));
+      }
+    }
+    this.applyPerks();
+
+    const everyone = [...ROSTER, ...APPLICANTS];
+    this.members = [];
+    for (const saved of data.members) {
+      const source = everyone.find((person) => person.id === saved.id);
+      if (!source) continue;
+      const member = this.joinMember(source);
+      member.employment = saved.employment;
+      member.shift = saved.shift;
+      member.team = saved.team;
+      member.interest = saved.interest;
+      member.data.energy = saved.energy;
+      member.data.mood = saved.mood;
+      member.ghostFactor = saved.ghostFactor;
+      member.restoreCooldowns(saved.cooldowns);
+      if (saved.present) member.arrive(saved.tile);
+    }
+
+    const player = data.player;
+    this.player.hoursToday = player.hoursToday;
+    this.player.hoursLeft = player.hoursLeft;
+    this.player.data.energy = player.energy;
+    this.player.project = player.project;
+    this.player.calibrating = player.calibrating;
+    if (player.present) this.player.arrive(player.tile);
+
+    for (const saved of data.machines) {
+      const machine = this.machines.find((m) => m.id === saved.id);
+      if (!machine) continue;
+      machine.calibration = saved.calibration;
+      machine.consumable = saved.consumable;
+      machine.current = saved.current;
+      machine.queue = saved.queue;
+    }
+
+    // Day plans are cheap to recompute and cannot drift if they are never saved.
+    this.planDay();
+    store.getState().setClock(this.day, this.time);
+    this.publish();
   }
 
   // -------------------------------------------------------------------------

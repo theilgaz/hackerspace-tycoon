@@ -104,6 +104,15 @@ export class MemberEntity {
     this.cooldowns.clear();
   }
 
+  /** For the save file; the map is private so it cannot drift out of step. */
+  serialiseCooldowns(): [string, number][] {
+    return [...this.cooldowns];
+  }
+
+  restoreCooldowns(entries: [string, number][]) {
+    this.cooldowns = new Map(entries);
+  }
+
   walkTo(target: Tile) {
     if (sameTile(this.tile, target) && this.path.length === 0) return;
     this.path = findPath(this.tile, target, GRID.width, GRID.height, isBlocked);

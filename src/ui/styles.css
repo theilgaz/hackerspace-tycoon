@@ -1354,3 +1354,10 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   letter-spacing: 0.06em;
   color: var(--subtle-foreground);
 }
+
+/* --- resuming a run ------------------------------------------------------ */
+
+.start-backdrop { align-content: center; gap: 12px; }
+.start-card.resume { padding: 20px 26px; }
+.start-card.resume h1 { font-size: 18px; }
+.start-card.resume .ui-row__meta { margin-top: 0; }

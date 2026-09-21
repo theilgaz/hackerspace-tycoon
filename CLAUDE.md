@@ -594,6 +594,15 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   sim-time data (member positions, machine job progress, project stage work) lives in the
   **Simulation**. The sim writes a `runtime` snapshot to the store at 5 Hz; **UI only ever reads the
   store.** Never let a panel reach into the Simulation directly.
+- **Saving (`src/systems/SaveGame.ts`)** — one `localStorage` slot, autosaved on every day
+  rollover and again on `beforeunload`. The store hands over a `snapshot()` of its own fields
+  (never `runtime`, which the sim rebuilds on the next publish); the Simulation hands over
+  runtime state only, and entities are rebuilt from the roster data by id so skills and
+  passions are never duplicated into the file. Two things are easy to forget and both break a
+  load: **stations installed by tool projects** live in a module-level list and have to be put
+  back before anything looks one up, and **day plans** are recomputed rather than saved so they
+  cannot drift. Bump `SAVE_VERSION` on any shape change — an old file is discarded rather than
+  half-loaded, because a save that loads into a broken game is worse than no save.
 - **Sim purity:** the Simulation must not import `three` and must not touch the DOM. It should be
   runnable headless — this is what makes balance testable.
 - **Debugging:** `window.__store.getState()` in the console.

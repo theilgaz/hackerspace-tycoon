@@ -66,6 +66,12 @@ export function installStation(type: MachineType, id: string): StationDef | null
   return def;
 }
 
+/** Machines added by tool projects, so a save can put them back. */
+export function installedStations(): { id: string; type: MachineType }[] {
+  const starting = new Set(STARTING_STATIONS.map((s) => s.id));
+  return STATIONS.filter((s) => !starting.has(s.id)).map((s) => ({ id: s.id, type: s.type }));
+}
+
 /** Test hooks need the space back at its starting state between headless runs. */
 export function resetStations() {
   STATIONS.length = 0;

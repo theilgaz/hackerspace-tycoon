@@ -67,6 +67,18 @@ export interface UIHandlers {
   begin(name: string, logo: number, difficulty: DifficultyKey): void;
   dismissCeremony(): void;
   dismissBill(): void;
+  continueRun(): void;
+  discardSave(): void;
+  savedRun(): {
+    name: string;
+    icon: string;
+    colour: string;
+    day: number;
+    shipped: number;
+    reputation: number;
+    cash: number;
+    era: string;
+  } | null;
   letGo(memberId: string): void;
   previewBill(): { income: number; costs: number; net: number; dueInDays: number };
   scoreboard(): ScoreRow[];
@@ -337,6 +349,12 @@ export class UI {
           this.start.difficulty = value as DifficultyKey;
           this.rerender();
           break;
+        case 'continue':
+          h.continueRun();
+          break;
+        case 'discard-save':
+          h.discardSave();
+          break;
         case 'shuffle-name': {
           const pool = NAME_SUGGESTIONS.filter((n) => n !== this.nameField());
           this.start.name = pool[Math.floor(Math.random() * pool.length)] ?? NAME_SUGGESTIONS[0];
@@ -525,10 +543,42 @@ export class UI {
   private renderStart() {
     const name = this.start.name;
     const badge = LOGOS[this.start.logo];
+    const saved = this.handlers.savedRun();
     this.setHTML(
       this.startEl,
       'start',
       `<div class="start-backdrop">
+        ${
+          saved
+            ? `<div class="start-card resume">
+                <header class="start-brand">
+                  <span class="icon-chip start-badge" style="--tone:${saved.colour}">
+                    ${icon(saved.icon as IconName, 'ui-icon')}
+                  </span>
+                  <div>
+                    <div class="ui-label">Where you left it</div>
+                    <h1>${esc(saved.name)}</h1>
+                  </div>
+                </header>
+                <div class="ui-row__meta" style="margin:0 0 14px">
+                  <span class="ui-badge">${icon('clock')}day ${saved.day}</span>
+                  <span class="ui-badge">${icon('check')}${saved.shipped} shipped</span>
+                  <span class="ui-badge">${icon('flame')}${saved.reputation} rep</span>
+                  <span class="ui-badge">${icon('coins')}${money(saved.cash)}</span>
+                  <span class="ui-badge">${esc(saved.era)}</span>
+                </div>
+                <div class="row" style="gap:8px">
+                  <button class="ui-btn ui-btn--primary ui-btn--lg" style="flex:1" data-action="continue">
+                    Carry on
+                  </button>
+                  <button class="ui-btn ui-btn--ghost ui-btn--lg" data-action="discard-save"
+                    title="Throw the saved run away and start fresh">
+                    ${icon('x')}Discard
+                  </button>
+                </div>
+              </div>`
+            : ''
+        }
         <div class="start-card">
           <header class="start-brand">
             <span class="icon-chip start-badge" style="--tone:${badge.colour}">

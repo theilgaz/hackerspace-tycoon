@@ -60,6 +60,9 @@ export interface GameState {
   setCeremony: (ceremony: Ceremony | null) => void;
   setBill: (bill: Bill | null) => void;
   endRun: (reason: string, day: number) => void;
+  /** Everything worth saving, minus the functions and the rebuildable runtime snapshot. */
+  snapshot: () => Record<string, unknown>;
+  hydrate: (data: Record<string, unknown>) => void;
   setSpeed: (speed: number) => void;
   togglePause: () => void;
   setPaused: (paused: boolean) => void;
@@ -136,6 +139,22 @@ export const store = createStore<GameState>((set, get) => ({
       paused: bill ? true : s.paused,
     })),
   endRun: (reason, day) => set({ gameOver: { reason, day }, paused: true }),
+  snapshot: () => {
+    const {
+      identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
+      day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
+      backlog, log,
+    } = get();
+    // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
+    return {
+      identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
+      day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
+      backlog, log,
+    };
+  },
+
+  hydrate: (data) => set({ ...(data as Partial<GameState>), paused: true, speed: 1 }),
+
   setSpeed: (speed) => set({ speed, paused: false }),
   togglePause: () => set((s) => ({ paused: !s.paused })),
   setPaused: (paused) => set({ paused }),

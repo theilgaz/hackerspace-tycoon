@@ -316,6 +316,40 @@ await check('People opens and hiring works', async () => {
   return hireable > 0 && after === before + 1;
 });
 
+await check('a run survives a reload', async () => {
+  // Roll a day so the autosave fires, then reload and carry on.
+  await evaluate(`
+    (() => {
+      const sim = window.__game.sim;
+      const day = sim.day;
+      while (sim.day === day) sim.tick(0.05, 4);
+      __store.setState({ paused: false });
+    })()
+  `);
+  await sleep(500);
+  const before = await evaluate(`JSON.stringify({
+    day: __store.getState().day,
+    cash: __store.getState().cash,
+    members: __game.sim.members.map((m) => m.id + ':' + m.employment).sort(),
+    projects: __game.sim.projects.map((p) => p.defId + ':' + p.stage).sort(),
+  })`);
+  const saved = await evaluate(`(localStorage.getItem('hackerspace-tycoon-save-v1') || '').length > 0`);
+  await send('Page.reload', { ignoreCache: true });
+  await sleep(2500);
+  const offered = await evaluate(`document.querySelectorAll('#start .start-card.resume').length === 1`);
+  await click('[data-action="continue"]');
+  const after = await evaluate(`JSON.stringify({
+    day: __store.getState().day,
+    cash: __store.getState().cash,
+    members: __game.sim.members.map((m) => m.id + ':' + m.employment).sort(),
+    projects: __game.sim.projects.map((p) => p.defId + ':' + p.stage).sort(),
+  })`);
+  if (!(saved && offered && before === after)) {
+    console.log(`      saved=${saved} offered=${offered}\n      before ${before}\n      after  ${after}`);
+  }
+  return saved && offered && before === after;
+});
+
 await check('unchanged panels keep their DOM (build menu and top bar)', async () => {
   await evaluate(`window.__store.getState().setSpeed(4)`);
   const churn = await evaluate(`
