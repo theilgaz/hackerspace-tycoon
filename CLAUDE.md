@@ -200,8 +200,8 @@ The counterweight is the hour budget, and **it is the only number you have**:
   gave a bar that sat nearly full at half ten at night with one usable hour in it.
 - **Energy used to be a second resource pointed at the same thing**: you spent hours, which
   drained energy, which shrank tomorrow's hours. Two bars to answer one question, and the
-  burnout threshold had been tuned so low that it almost never fired. It is gone. The bar in
-  the You panel *is* the day, and the hours are in its tooltip for anyone sizing up a job.
+  burnout threshold had been tuned so low that it almost never fired. It is gone. The bar
+  under the clock *is* the day, and the hours are in its tooltip for anyone sizing up a job.
 - **Every management verb spends the same pool**: a bounty 1h, ordering parts 1h, expediting 1h,
   re-pitching 1h, going out for filament 0.5h. Pitching is free — waiting on your own hours to
   *start* something was pure friction, and the money it commits is the real cost.
@@ -1008,9 +1008,17 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   missing something.
 - **The right column folds.** Two panels share it, so either can be collapsed to give the
   other the room — the log starts folded at two lines, because that is enough to notice
-  something happened, and the roster is what you actually read. **You** moved out of that
-  column to the bottom-left corner and keeps to the two numbers that change every minute:
-  hours left and energy. It is glanced at, not read.
+  something happened, and the roster is what you actually read.
+- **"You" is three pixels under the clock.** It was a panel in the right column, then a
+  panel in the bottom-left corner, and both were a box, a heading and a stack of rows spent
+  on one number. Your day is now a slim bar tucked under the clock — which is where it
+  belongs, because it *is* a clock: what is left of today. No hours figure, no shift start
+  and end; the tooltip carries the hours and what you are on for anyone sizing up a job.
+  **The panel was the wrong unit.** A readout that changes every minute and is never acted
+  on directly wants to sit inside the thing it qualifies, not beside it.
+  One trap worth the line: the clock panel is a flex *row*, so a bar dropped into it with
+  `flex: none` and no width rendered at zero pixels and simply was not there. It takes a
+  wrapped row of its own.
 - **The build menu is the spine of the UI.** Jobs, Projects, Ranking, Machines, People. A panel
   belongs here rather than in a permanent sidebar whenever you only touch it a few times a day.
   The clock sits alone in the top-left because it is the one thing glanced at constantly and it

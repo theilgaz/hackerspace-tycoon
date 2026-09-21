@@ -5,7 +5,6 @@ import type {
   ScoreRow,
   MemberSnapshot,
   MachineSnapshot,
-  PlayerSnapshot,
   ProjectData,
   ProjectDef,
   Employment,
@@ -317,7 +316,6 @@ export class UI {
   private modal!: HTMLElement;
   private startEl!: HTMLElement;
   private left!: HTMLElement;
-  private you!: HTMLElement;
   private members!: HTMLElement;
   private log!: HTMLElement;
 
@@ -343,7 +341,7 @@ export class UI {
           <div class="body"></div>
         </div>
       </div>
-      <div class="panel" id="you"><div class="body"></div></div>
+
       <div id="bottombar"></div>
       <div id="modal"></div>
       <div id="start"></div>
@@ -354,7 +352,6 @@ export class UI {
     this.modal = this.root.querySelector('#modal')!;
     this.startEl = this.root.querySelector('#start')!;
     this.left = this.root.querySelector('#left .body')!;
-    this.you = this.root.querySelector('#you .body')!;
     this.members = this.root.querySelector('#members .body')!;
     this.log = this.root.querySelector('#log .body')!;
   }
@@ -720,7 +717,6 @@ export class UI {
     this.renderProjects(state);
     this.root.querySelector('#log')?.classList.toggle('folded', this.folded.log);
     this.root.querySelector('#members')?.classList.toggle('folded', this.folded.members);
-    this.renderYou(state);
     this.renderMembers(state);
     this.renderLog(state);
     this.renderBottomBar(state);
@@ -958,7 +954,8 @@ export class UI {
        <div class="speeds">
          ${speedButton(0, '❙❙')}
          ${TIME.speeds.map((s) => speedButton(s, `${s}×`)).join('')}
-       </div>`,
+       </div>
+       ${this.dayBar(state)}`,
     );
     const clockEl = this.clockPanel.querySelector('.clock');
     if (clockEl) clockEl.textContent = clock(state.simTime);
@@ -2555,16 +2552,17 @@ export class UI {
 
   // --- you ---  // --- you ------------------------------------------------------------------
 
-  private renderYou(state: GameState) {
-    const p: PlayerSnapshot | null = state.runtime.player;
-    if (!p) {
-      this.you.innerHTML = '';
-      return;
-    }
-    const task = p.project ? state.runtime.projects.find((x) => x.id === p.project) : null;
-    // What you can still get done today is the *lesser* of what is left in you and what is
-    // left of the day. Drawing only the first meant a bar that sat almost full at half ten
-    // at night, when there was one usable hour in it.
+  /**
+   * Your day, as one line under the clock. It used to be a panel in its own corner with a
+   * heading, two bars and a task line — to say something you glance at. What is left is the
+   * only thing worth glancing at: how much of today you can still get anything done in.
+   *
+   * It draws the *lesser* of what is left in you and what is left of the day, because an
+   * idle player at half ten at night has a full tank and one usable hour.
+   */
+  private dayBar(state: GameState): string {
+    const p = state.runtime.player;
+    if (!p) return '';
     const open = state.simTime >= PLAYER.startHour && state.simTime < PLAYER.endHour;
     const untilClose = open
       ? PLAYER.endHour - state.simTime
@@ -2572,30 +2570,13 @@ export class UI {
         ? p.hoursToday
         : 0;
     const usable = Math.max(0, Math.min(p.hoursLeft, untilClose));
-    const left = usable / Math.max(1, p.hoursToday);
-    const dayTone = left <= 0.08 ? 'bad' : left <= 0.2 ? 'warn' : 'good';
-    // One bar, because there is one resource. The hours are in the tooltip for anyone
-    // deciding whether a two-hour job still fits; the panel itself is a glance, not a sum.
-    return void this.setHTML(this.you, 'you', `
-      <div class="row between" style="margin-bottom:6px">
-        <span class="mono" style="font-size:13px">${usable.toFixed(1)}h left</span>
-        <span class="muted" style="font-size:10.5px">
-          ${p.present ? `until ${clock(PLAYER.endHour)}` : 'gone home'}
-        </span>
-      </div>
-      <div title="${p.hoursLeft.toFixed(1)}h of work left in you, ${untilClose.toFixed(1)}h of the
-        day left — you are on the floor ${clock(PLAYER.startHour)} to ${clock(PLAYER.endHour)}">
-        ${bar(usable, p.hoursToday, dayTone)}
-      </div>
-      ${
-        task
-          ? `<button class="you-task" data-action="bench-open" data-id="${task.id}"
-               title="Show ${esc(task.name)} on the bench">
-               ${esc(task.name)}${p.stage ? ` · ${stageLabel(task.category, p.stage).toLowerCase()}` : ''}
-             </button>`
-          : `<div class="note" style="margin:7px 0 0 0">${esc(p.note || 'idle')}</div>`
-      }
-    `);
+    const share = usable / Math.max(1, p.hoursToday);
+    const tone = share <= 0.08 ? 'bad' : share <= 0.2 ? 'warn' : 'good';
+    const task = p.project ? state.runtime.projects.find((x) => x.id === p.project) : null;
+    return `<div class="daybar bar ${tone}"
+      title="${usable.toFixed(1)}h of your day left${task ? ` · on ${esc(task.name)}` : ''}">
+      <i style="width:${(share * 100).toFixed(1)}%"></i>
+    </div>`;
   }
 
   // --- members --------------------------------------------------------------
