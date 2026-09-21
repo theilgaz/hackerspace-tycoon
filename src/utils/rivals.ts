@@ -111,7 +111,7 @@ export const RIVALS: RivalDef[] = [
     startMembers: 5,
     maxMembers: 11,
     startCash: 11000,
-    shipPace: 0.275,
+    shipPace: 0.38,
     repPerProject: 54,
     cashPerProject: 800,
     cashPerDay: 150,

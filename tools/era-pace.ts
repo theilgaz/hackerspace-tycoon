@@ -85,11 +85,12 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     for (const id of [...store.getState().applicants]) {
       // Take the biggest contract that is comfortably affordable.
       const full = sim.canHireFullTime(id);
-      // Only take somebody on if the month still clears afterwards, with room to spare.
-      const afterHire = (wage: number) => sim.previewBill().net - wage > ECONOMY.rent[0];
-      if (full && spendable() >= sim.hireCost(id, 'full-time') * 3 && afterHire(ECONOMY.wage['full-time'])) {
+      // Nobody is paid and every member pays dues, so taking somebody on *improves* the
+      // month from here on. All that is left to ask is whether the induction fee is
+      // affordable today — hence no wage check, which is the point of the volunteer model.
+      if (full && spendable() >= sim.hireCost(id, 'full-time')) {
         sim.hire(id, 'full-time');
-      } else if (spendable() >= sim.hireCost(id, 'part-time') * 3 && afterHire(ECONOMY.wage['part-time'])) {
+      } else if (spendable() >= sim.hireCost(id, 'part-time')) {
         sim.hire(id, 'part-time');
       }
     }
@@ -125,7 +126,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   const sum = (pick: (b: (typeof bills)[number]) => number) =>
     bills.length ? Math.round(bills.reduce((n, b) => n + pick(b), 0) / bills.length) : 0;
   const work = sum((b) => b.income.find((l) => l.label === 'Work shipped')?.amount ?? 0);
-  const dues = sum((b) => b.income.find((l) => l.label === 'Membership dues')?.amount ?? 0);
+  const dues = sum((b) => b.income.filter((l) => l.label.endsWith('dues')).reduce((n, l) => n + l.amount, 0));
   const costs = sum((b) => -b.costs.reduce((n, l) => n + l.amount, 0));
   outcomes.push(
     `  seed ${seed}: ${over ? `EVICTED day ${over.day}` : `survived ${sim.day}d`}`.padEnd(34) +

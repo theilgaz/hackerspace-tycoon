@@ -1126,27 +1126,28 @@ export class Simulation {
   previewBill(): { income: number; costs: number; net: number; dueInDays: number } {
     // Preview is cash movement only — project money is banked as it arrives.
     const state = store.getState();
-    const wages = this.members.reduce((sum, m) => sum + ECONOMY.wage[m.employment], 0);
     const rent = rentFor(state.era);
     const utilities = Math.round(this.machineHoursThisMonth * ECONOMY.utilityPerMachineHour);
-    const dues = this.membership * ECONOMY.duesPerMember;
+    const dues = this.members.length * ECONOMY.crewDues + this.membership * ECONOMY.duesPerMember;
     return {
       income: dues,
-      costs: wages + rent + utilities,
-      net: dues - wages - rent - utilities,
+      costs: rent + utilities,
+      net: dues - rent - utilities,
       dueInDays: ECONOMY.billEvery - ((this.day - 1) % ECONOMY.billEvery),
     };
   }
 
   /**
-   * The monthly bill. Rent and wages do not care whether you shipped anything, which is
-   * the point: a quiet month still costs you a month.
+   * The monthly bill. The rent does not care whether you shipped anything, which is the
+   * point: a quiet month still costs you a month.
    */
   private runBilling() {
     if ((this.day - 1) % ECONOMY.billEvery !== 0 || this.day === 1) return;
     const state = store.getState();
 
-    const dues = this.membership * ECONOMY.duesPerMember;
+    const crewDues = this.members.length * ECONOMY.crewDues;
+    const communityDues = this.membership * ECONOMY.duesPerMember;
+    const dues = crewDues + communityDues;
     // Project money is already banked; it is on the statement so the month reads as a real
     // profit and loss rather than "dues against rent", which always looks like a disaster.
     const income: BillLine[] = [
@@ -1156,24 +1157,21 @@ export class Simulation {
         amount: Math.round(this.incomeThisMonth),
       },
       {
-        label: 'Membership dues',
-        detail: `${this.membership} members · ${ECONOMY.duesPerMember} each`,
-        amount: dues,
+        label: 'Crew dues',
+        detail: `${this.members.length} on the books · ${ECONOMY.crewDues} each`,
+        amount: crewDues,
+      },
+      {
+        label: 'Community dues',
+        detail: `${this.membership} using the space · ${ECONOMY.duesPerMember} each`,
+        amount: communityDues,
       },
     ];
 
-    const full = this.members.filter((m) => m.employment === 'full-time').length;
-    const part = this.members.length - full;
-    const wages = full * ECONOMY.wage['full-time'] + part * ECONOMY.wage['part-time'];
     const rent = rentFor(state.era);
     const utilities = Math.round(this.machineHoursThisMonth * ECONOMY.utilityPerMachineHour);
     const costs: BillLine[] = [
       { label: 'Rent', detail: eraDef(state.era).name, amount: -rent },
-      {
-        label: 'Wages',
-        detail: `${full} full-time · ${part} part-time`,
-        amount: -wages,
-      },
       {
         label: 'Power and consumables',
         detail: `${Math.round(this.machineHoursThisMonth)} machine-hours`,
@@ -1182,8 +1180,8 @@ export class Simulation {
     ];
 
     // The statement's bottom line is the true month; only dues and costs move cash now.
-    const total = Math.round(this.incomeThisMonth) + dues - rent - wages - utilities;
-    const cashDelta = dues - rent - wages - utilities;
+    const total = Math.round(this.incomeThisMonth) + dues - rent - utilities;
+    const cashDelta = dues - rent - utilities;
     const balanceBefore = state.cash;
     const shortfall = Math.max(0, -(balanceBefore + cashDelta));
     const balanceAfter = Math.max(0, balanceBefore + cashDelta);
@@ -1349,7 +1347,7 @@ export class Simulation {
     }
   }
 
-  /** End somebody's contract. The only way to cut the wage bill in a hurry. */
+  /** Ask somebody to leave. It costs you their dues, so this is a last resort now. */
   letGo(id: string) {
     const member = this.member(id);
     if (!member) return;

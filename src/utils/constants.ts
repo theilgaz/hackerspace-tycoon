@@ -543,8 +543,14 @@ export const RECRUIT = {
   matchFloor: 0.25,
   /** A matching write-up gets them past this fraction of their reputation bar. */
   shipGateRelief: 0.5,
-  /** Induction, a key, a shelf, a tool briefing: scales with the contracted hours. */
-  hireCostPerWeeklyHour: 22,
+  /**
+   * Induction, a key, a shelf, a tool briefing: scales with the contracted hours. Since
+   * nobody is paid and every member pays dues, this one-off is the *only* thing standing
+   * between you and the whole roster — so it is priced as an investment, not a formality:
+   * about four months of that person's dues. It is what stops the space filling up by day
+   * sixty, and it is the number to reach for if roster growth ever needs slowing again.
+   */
+  hireCostPerWeeklyHour: 190,
   /** Your own time, showing them round and doing the paperwork. */
   hireHours: 1,
 };

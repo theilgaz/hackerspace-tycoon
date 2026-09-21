@@ -49,6 +49,9 @@ while (sim.day <= DAYS) {
   for (const p of sim.projects) stageHours[p.stage] = (stageHours[p.stage] ?? 0) + H;
 
   const state = store.getState();
+  // Keep the next bill covered before spending on anything — the same rule era-pace plays by.
+  // This was called but never defined, so the harness has been throwing on its first order.
+  const spendable = () => state.cash - Math.max(0, -sim.previewBill().net);
   // Only start something there are actually free hands for.
     if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
     const offer = state.backlog[0];

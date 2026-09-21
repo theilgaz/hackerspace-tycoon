@@ -1,26 +1,27 @@
-import type { Employment } from '@/game/types';
-
 /**
  * The books (CLAUDE.md §7). Income is lumpy — projects ship when they ship — and the costs
  * are steady, which is the whole tension: a quiet month still costs you a month.
  *
- * Two kinds of people, deliberately: **staff** are the ones you hire on contracts and pay
- * wages to, and **the membership** is the public who pay dues to use the place. Dues scale
- * with reputation, so a name you have made actually pays for itself.
+ * **Nobody is paid.** This is a volunteer space, so the people on your books are members
+ * rather than staff, and they pay *you* — a flat monthly subscription each. Two kinds of
+ * member, deliberately: the **crew** are the named people who turn up and build things, and
+ * the **community** is the wider public who pay a smaller amount to use the place and whose
+ * number follows your reputation. The crew is capped by the roster; the community is not,
+ * which is what keeps a long run's income growing.
  */
 export const ECONOMY = {
   /** Days between bills. Three to an awards year. */
   billEvery: 30,
 
   /** Monthly rent by era. The lease you sign gets heavier as the space does. */
-  rent: [1500, 4500, 10000],
+  rent: [3000, 11000, 40000],
 
-  /** Monthly wage per contract. */
   /**
-   * Sized so that a shop of five is comfortable and a full roster of fifteen is a real
-   * strain: growth is what the wage bill is supposed to make you think about, not survival.
+   * What each of the crew pays a month, flat — the same whether they are in five days a week
+   * or two. A subscription is not rent on someone's time, and charging a part-timer less for
+   * being available less is backwards.
    */
-  wage: { 'full-time': 1000, 'part-time': 500 } as Record<Employment, number>,
+  crewDues: 2000,
 
   /** Power and consumables, per sim-hour a machine actually ran. */
   utilityPerMachineHour: 15,
@@ -42,7 +43,7 @@ export function rentFor(era: number): number {
   return ECONOMY.rent[Math.min(ECONOMY.rent.length, Math.max(1, era)) - 1];
 }
 
-/** How many of the public are paying to use the place. */
+/** How many of the wider public are paying to use the place. */
 export function membershipFor(reputation: number): number {
   return Math.min(ECONOMY.maxMembership, Math.floor(reputation / ECONOMY.reputationPerMember));
 }

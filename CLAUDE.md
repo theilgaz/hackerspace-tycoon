@@ -321,14 +321,14 @@ Winning pays reputation. Two tuning notes worth keeping:
   everybody. It was capped at 40 first, which made one of the four awards decoration.
 - `npm run era-pace [seeds]` prints the first awards night, the day each era arrives, and the
   final standings. Targets: an engaged player takes **one or two of four** on the first night
-  (currently 15 of 32 across eight runs), finishes **first overall** by day 220 without
-  finishing at twice the field (currently 1.50×, ranging 1.33-1.65), and no single rival wins
-  two categories every time.
+  (currently 14 of 32 across eight runs), finishes **first overall** by day 220 without
+  finishing at twice the field (currently 1.38×, ranging 1.21-1.64), and no single rival wins
+  two categories every time. Twelve seeds also finish with **no evictions** — the autoplayer
+  is competent, so a death there means the economy is unfair rather than hard.
 - **A category nobody else can win is as dead as one you cannot.** Space of the Year goes to
-  the player in eight runs out of eight, and Biggest Crew does too once the roster fills, since
-  it caps at you plus fifteen against Dallas's fifteen. The *count* is on target and year one
-  is a real contest on the other two, but those two categories are currently decoration.
-  Unresolved, and it predates the twelve-hour day rather than being caused by it.
+  the player in eight runs out of eight. Most Projects, Biggest Crew and Deepest Pockets are
+  genuine contests on the first night (the player takes 3, 3 and 0 of eight), so it is the one
+  remaining lock — and it predates the twelve-hour day rather than being caused by it.
 - **Tune the awards from computed values, not by nudging.** Lowering whichever space happened
   to be winning Deepest Pockets simply handed it to the next one along, four times in a row.
   Work out every rival's day-90 balance from `startCash + 90 × cashPerDay + projects ×
@@ -378,10 +378,38 @@ Winning pays reputation. Two tuning notes worth keeping:
   days. Both read as the economy being brutal. **When one seed is half the others, suspect the
   autoplayer before the balance** — and trace the day-by-day state rather than tuning.
 
-- **Over-hiring is what the wage bill is for.** Six of six harness runs were evicted while the
-  autoplayer hired whenever it could afford the induction fee. Teaching it to hire only when the
-  month still clears afterwards took survival to six of six with a full roster of fifteen — the
-  economy was fair, the player was not. Check which it is before softening a cost.
+- **Over-hiring was what the wage bill was for — now the induction fee is.** Wages are gone
+  and every member pays ₺2,000 a month instead, which inverts the decision: taking somebody on
+  is permanently profitable, so the roster filled by day sixty and the player took 24 of 32
+  awards with cash over ₺200,000. Three things put it back, in descending order of how much
+  they mattered: the **induction fee** from ₺880 to ₺7,600 (roughly four months of that
+  person's dues), **rent** re-sized against dues rather than against cash, and Garaj's pace
+  raised so the prolific space stays the prolific one. **When a cost is removed, find what it
+  was really limiting** — it was never survival, it was the speed the roster filled.
+
+- **Rent has to be payable by the roster you will actually have when the lease lands.** Era
+  advance is automatic — it fires on reputation — so the player cannot choose to stay small a
+  while longer. Pricing Era 2's rent at ₺18,000 against dues evicted a run on day 61 that had
+  reached Era 2 on day 30 with two people: punished for doing well, with no move available.
+  ₺11,000 leaves it a real squeeze and zero runs in twelve die of it. Until §8's "you choose
+  when to sign the next lease" is actually built, **every rent step must clear on the crew
+  that era arrives with, not the crew it is meant to hold.**
+
+- **Scaling the whole field is not a substitute for the right lever, and compounding makes it
+  brutal.** Pushing every rival's pace and reputation together looked like the obvious answer
+  to a player who had got stronger twice. It is not: ×1.06 left the player first in every seed,
+  ×1.12 dropped them to first in two of eight, and ×1.5 buried them in last place with rivals
+  at 82,000 reputation — while *still* handing them Most Projects seven nights out of eight.
+  The first awards night barely moved, because the problem was day-90 throughput and rival
+  compounding only bites afterwards. Diagnose which half of the run is wrong before reaching
+  for a multiplier.
+
+- **A reporting script is a harness too.** The sweep above read the first reputation in each
+  standings line as the player's. The standings are sorted by rank, so the moment the player
+  stopped winning, the script started reporting a rival's score as theirs — three rows of
+  "final 1.08×, first in 8 of 8" that actually meant *last of twelve*. It looked plausible
+  enough to nearly act on. Parse by the `*` marker, and distrust a metric that does not move
+  when the input does.
 
 - **Reset every field between harness runs.** `era-pace` left `ceremony` set from the previous
   seed, so runs 2 onward captured the leftover ceremony on day 1 and reported a leaderboard of
@@ -512,7 +540,8 @@ Income is patchwork by design; there is no salary and no reliable single source.
 | Grants | Application with a lead time; needs documentation quality |
 
 Fixed costs: **rent** (monthly, by era), utilities (scales with machine runtime), consumables,
-machine maintenance. Note there are no wages — that is the volunteer model's one gift to the player.
+machine maintenance. There are no wages — people pay *you* (§7a), which is the volunteer
+model's one gift to the player and the reason rent has to be the thing with teeth.
 
 ## 7a. The books — BUILT (`src/utils/economy.ts`)
 
@@ -522,28 +551,46 @@ rather than a demand:
 | Income | |
 |---|---|
 | Work shipped | payouts and sponsor money, already banked as it arrived |
-| Membership dues | the public paying to use the place |
+| Crew dues | **₺2,000 a month from every person on your books** |
+| Community dues | the wider public paying to use the place, scaling with reputation |
 
 | Costs | |
 |---|---|
 | Rent | monthly, by era |
-| Wages | per contract, full-time or part-time |
 | Power and consumables | metered on machine-hours actually run |
+
+**Nobody is paid.** The people on your books are members, not staff, and a flat ₺2,000 a
+month each is the space's backbone — which is how a real hackerspace is funded and what §1's
+volunteer model always implied. Wages existed briefly and contradicted it.
+
+**Flat, regardless of contract.** A part-timer pays the same as a full-timer, because a
+subscription is not rent on somebody's time. The contract choice stays live anyway, from the
+other side: full-time buys twice the hours for the same dues, while the **induction fee scales
+with contracted hours**, so a part-timer is half the price to admit. Those two pull against
+each other, which is the decision.
 
 **Show the shipped work on the statement even though it is already banked.** Without it the
 month reads as "dues against rent" and looks like a disaster every single time, which is both
 wrong and demoralising. Only dues minus costs moves cash at the bill; the bottom line is the
 true month.
 
-**Dues are meant to carry the rent.** That makes the loop **ship → reputation → membership →
-the rent looks after itself**, and it is why the first two months are thin: no name yet, so
-nobody is paying to be there. It also turned out to fix something else — see §13.
+**Dues are meant to carry the rent** — so rent is sized against them rather than against
+cash in hand: at Era 3 a full roster plus a full community brings in roughly ₺55,000 against
+₺40,000 of rent, which leaves the space paying for itself and project money as the actual
+profit. That makes the loop **ship → reputation → membership → the rent looks after itself**,
+and it is why the first two months are thin: no name yet, and two people paying dues.
+
+**The induction fee is now the only brake on the roster.** With wages gone, admitting somebody
+is permanently profitable, so nothing stops you taking the whole town on but the one-off cost
+of doing it — about four months of their dues. Get this wrong and the space is full by day
+sixty and wins every award; see §13.
 
 Miss a bill and you get a warning; miss two in a row and you are evicted and the run is over,
 with a post-mortem of what you shipped, who was on the books and the one people remember.
 
-**Letting somebody go** is the lever that answers a bill you cannot pay, and it is in the
-People panel next to the contract they are on.
+**Asking somebody to leave** used to be the lever that answered a bill you could not pay.
+It now makes the bill *worse* — you lose their dues — so it is a way to free a seat, not a way
+to save money. The button stays, its meaning is inverted, and the People panel says so.
 
 ## 8. Eras (progression)
 
@@ -561,7 +608,7 @@ then 6000) — the sum of the hype of everything shipped.
 Reputation rather than a project count, because three weekend builds otherwise unlocked Era 2 by
 day six; ambition should advance you and volume should barely move the needle. The thresholds
 were rescaled when the slot cap came off — throughput roughly quadrupled. `npm run era-pace`
-measures it: Era 2 lands around day 33-59 and Era 3 around day 87-121. The space itself grows in Phase 4, and the real milestones — member count,
+measures it: Era 2 lands around day 30-53 and Era 3 around day 102-118. The space itself grows in Phase 4, and the real milestones — member count,
 break-even, front page — arrive with Phases 3 and 5.
 
 ## 9. Failure (selected: real, hard failure)

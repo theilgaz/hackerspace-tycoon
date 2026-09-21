@@ -723,7 +723,7 @@ export class UI {
       ${(() => {
         const next = this.handlers.previewBill();
         const tone = next.net < 0 && state.cash + next.net < 0 ? 'bad' : next.net < 0 ? 'warn' : 'good';
-        return `<div class="stat" title="Rent, wages and power against membership dues">
+        return `<div class="stat" title="Rent and power against everybody's dues">
           <b class="cash cash--${tone}">${next.net < 0 ? '−' : '+'}${money(Math.abs(next.net))}</b>
           <span>bill in ${next.dueInDays}d</span>
         </div>`;
@@ -1132,8 +1132,8 @@ export class UI {
               : `<span class="ui-badge">away</span>`
           }
           <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="let-go" data-id="${m.id}"
-            title="End the contract — ${money(ECONOMY.wage[m.employment])} a month off the wage bill">
-            Let go
+            title="Ask them to leave — costs you ${money(ECONOMY.crewDues)} a month in dues">
+            Ask to leave
           </button>
         </span>`;
         return person(m.id, m.name, status, project ? `On ${esc(project.name)}` : 'Unallocated');
@@ -1182,7 +1182,7 @@ export class UI {
       `,
       foot: next
         ? `<span class="ui-desc" style="font-size:10.5px">
-             Wages ${money(members.reduce((sum, m) => sum + ECONOMY.wage[m.employment], 0))} a month ·
+             Dues ${money(members.length * ECONOMY.crewDues)} a month ·
              next along: <b>${next.name}</b> at ${next.repRequired} reputation — you have ${state.reputation}.
            </span>`
         : `<span class="ui-desc" style="font-size:10.5px">Everybody in town knows about you now.</span>`,
