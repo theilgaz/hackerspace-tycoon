@@ -896,6 +896,13 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   open was several screens of scrolling. It now opens **one** build and folds the rest to a
   line each: name, bar, current stage, and what is blocking it. The open one is whichever you
   are working on, so the panel is already showing the thing you came to do something about.
+- **On the bench, dimming is the hierarchy.** A folded build that is ticking over sits at
+  62% opacity; one that is waiting on you does not. The stage counter (`cad 21/24`) is detail
+  and lives on the open card only — a folded row answers "does this need me", not "how far
+  through the stage is it".
+- **A button that has finished its job should say so, not grey out.** "Queue pending" sat
+  there disabled once every part had printed. It now reads `Queue 3`, `on the printer`, or
+  `all printed`, which is the same information without the dead end.
 - **The Projects panel is triage, not an inventory.** The question it answers is "what needs
   me now?", so a row that is blocked says *why* in the row itself — about to be shelved, parts
   not ordered, order in transit, prints outstanding, nobody on it — and **the progress bar

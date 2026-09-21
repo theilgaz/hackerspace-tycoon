@@ -2117,10 +2117,11 @@ export class UI {
     const blockedAssembly = project.stage === 'assembly' && waiting > 0;
     let workButton = '';
     if (playerOn) {
-      workButton = `<button class="tiny" data-action="stop-work">Stop working</button>`;
+      workButton = `<button class="ui-btn ui-btn--sm" data-action="stop-work">Stop working</button>`;
     } else if (handStage && !blockedAssembly && project.required[project.stage] > 0) {
-      workButton = `<button class="tiny primary" data-action="work" data-id="${project.id}">
-        Work on ${stageName}
+      workButton = `<button class="ui-btn ui-btn--primary ui-btn--sm" data-action="work"
+        data-id="${project.id}" title="Put your own hours on ${stageName}">
+        Work on this
       </button>`;
     }
 
@@ -2133,8 +2134,15 @@ export class UI {
       ? `<div class="parts">
           <div class="row between" style="margin-bottom:6px">
             <span class="section">Parts</span>
-            <button class="tiny" data-action="queue-all" data-id="${project.id}"
-              ${project.parts.some((p) => p.status === 'pending') ? '' : 'disabled'}>Queue pending</button>
+            ${(() => {
+              const pending = project.parts.filter((x) => x.status === 'pending').length;
+              const printing = project.parts.some((x) => x.status === 'queued');
+              if (pending) {
+                return `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="queue-all"
+                  data-id="${project.id}">Queue ${pending}</button>`;
+              }
+              return `<span class="ui-badge">${printing ? 'on the printer' : 'all printed'}</span>`;
+            })()}
           </div>
           ${project.parts
             .map(
@@ -2172,7 +2180,7 @@ export class UI {
       </span>
       <span class="proj-line">
         <span class="proj-line__stage">${stageName}</span>
-        <span class="proj-line__val">${statusLine}</span>
+        ${expanded ? `<span class="proj-line__val">${statusLine}</span>` : ''}
         ${
           stop
             ? `<span class="proj-line__stop ${stop.tone}">${esc(stop.text)}</span>`
@@ -2187,7 +2195,9 @@ export class UI {
       </span>
     </button>`;
 
-    if (!expanded) return `<div class="project project--folded">${header}</div>`;
+    if (!expanded) {
+      return `<div class="project project--folded ${stop ? 'project--needs' : ''}">${header}</div>`;
+    }
 
     return `<div class="project">
       ${header}
