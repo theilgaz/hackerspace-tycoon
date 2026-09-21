@@ -58,7 +58,7 @@ import {
   weeklyHoursFor,
 } from '@/utils/constants';
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
-import { SPACE_SUBJECT } from '@/game/types';
+import { ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
 import { RIVAL_MAP } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
@@ -219,6 +219,7 @@ export class Simulation {
       this.refreshBacklog();
     }
 
+    this.runRoles();
     this.tickMembers(dt);
     this.tickPlayer(dt);
     this.tickRequeue(dt);
@@ -1041,6 +1042,7 @@ export class Simulation {
         id: m.id,
         employment: m.employment,
         shift: m.shift,
+        role: m.role,
         team: m.team,
         interest: m.interest,
         energy: m.data.energy,
@@ -1099,6 +1101,7 @@ export class Simulation {
       const member = this.joinMember(source);
       member.employment = saved.employment;
       member.shift = saved.shift;
+      member.role = saved.role ?? null;
       member.team = saved.team;
       member.interest = saved.interest;
       member.data.energy = saved.energy;
@@ -1617,6 +1620,77 @@ export class Simulation {
     );
     this.publish();
     return true;
+  }
+
+  /** Give somebody a standing job, or take it away. One role each, one holder each. */
+  setRole(memberId: string, role: Role | null) {
+    const member = this.member(memberId);
+    if (!member) return;
+    if (role) {
+      for (const other of this.members) if (other.role === role) other.role = null;
+    }
+    member.role = role;
+    this.log(
+      role
+        ? `${member.name} is looking after ${ROLE_LABEL[role].toLowerCase()} now.`
+        : `${member.name} has handed the job back.`,
+      'info',
+    );
+    this.publish();
+  }
+
+  /**
+   * Roles act at their holder's **next availability**, which is the whole idea: the chore
+   * gets done because a person who is in the building does it, not because a rule fired.
+   * Somebody who is away, or deep in a build, is not watching the filament.
+   */
+  private runRoles() {
+    for (const member of this.members) {
+      if (!member.role || !member.present) continue;
+      if (member.activity === 'walking') continue;
+      switch (member.role) {
+        case 'printer': {
+          const dry = this.machines.find(
+            (m) => m.consumableMax > 0 && m.consumable < FILAMENT.lowWarning,
+          );
+          if (dry && store.getState().spend(this.refillCost(dry.id))) {
+            dry.refill(dry.consumableMax);
+            this.log(`${member.name} loaded the ${dry.label} back up.`, 'good');
+          }
+          break;
+        }
+        case 'quartermaster': {
+          const unordered = this.projects.find((p) => !p.partsOrdered && p.bomCost > 0);
+          if (unordered && this.placeOrder(unordered)) {
+            this.log(`${member.name} got the ${unordered.name} parts on order.`, 'good');
+          }
+          break;
+        }
+        case 'manager': {
+          // Only when there are hands going spare — the point is to stop people idling,
+          // not to pile up projects nobody can touch.
+          const idle = this.members.filter((m) => !m.team && m.id !== member.id).length;
+          if (!idle) break;
+          const state = store.getState();
+          const offer = state.backlog[0];
+          const def = offer
+            ? CATALOG_MAP[offer.defId]
+            : catalogForEra(state.era).find(
+                (d) => canBuild(d, state.ownedMachines) && !this.projects.some((p) => p.defId === d.id),
+              );
+          if (!def || state.cash - def.bomCost < -ECONOMY.overdraftLimit) break;
+          const crew = this.members
+            .filter((m) => !m.team)
+            .sort((a, b) => b.passionMatch(def.tags) - a.passionMatch(def.tags))
+            .slice(0, def.teamSize)
+            .map((m) => m.id);
+          if (this.pitch(def.id, offer?.id, crew)) {
+            this.log(`${member.name} started ${def.name} — there were hands going spare.`, 'good');
+          }
+          break;
+        }
+      }
+    }
   }
 
   /** Ask somebody to leave. It costs you their dues, so this is a last resort now. */

@@ -351,6 +351,13 @@ just gone rather than all time, so a bad year costs you even when you are ahead 
 - **Most Projects** · **Biggest Crew** · **Deepest Pockets** · **Space of the Year** (reputation
   earned that year, worth the most).
 
+**The ceremony is a stage, and the wins go on a shelf.** Awards night is the only screen in
+the run that exists purely to be enjoyed, so it is drawn as one: curtains, a lit floor, and a
+trophy per category with the winner under it — yours picked out in gold, everybody else's in
+the dark beside them. The **Trophy room** is a second view on the Ranking panel, year by year,
+newest first, and it keeps the losses too. A trophy room with only wins in it is a brag; with
+the whole night in it, "we came second to Dallas three years running" is part of the story.
+
 Winning pays reputation. Two tuning notes worth keeping:
 
 - **Every category must be winnable.** Açık Atölye's crew is capped at 15 because a complete
@@ -573,6 +580,22 @@ queue moves. Three details, each of which was a bug waiting to happen:
 "word is out — waiting on reputation" when the clock is full and nobody qualifies. A pace the
 player cannot see reads as the applicant list being broken — §13's rule about invisible gates.
 
+### Standing jobs (`Role`)
+
+Three jobs a member can hold on top of their build work, one holder each:
+
+| | What they watch |
+|---|---|
+| **Project Manager** | Starts something new when there are hands going spare |
+| **Printer Keeper** | Loads the printers back up before they run dry |
+| **Quartermaster** | Gets bills of materials on order so assembly is never waiting |
+
+**A role acts at its holder's next availability, not as a background rule.** Somebody who is
+away, or walking across the room, is not watching the filament — which is the whole point:
+the chore gets done because a person who is in the building does it. It is also the answer to
+the question the game asks from Era 2 onward, which is what fifteen people are *for* if you
+are still the one buying spools.
+
 ### Rating people against a genre
 
 `categoryAffinity()` scores a member against a whole genre rather than a single tag, and this is
@@ -584,7 +607,13 @@ unweighted max made every machinist read as a roboticist purely because Robotics
 
 ### The catalog (`src/utils/catalog.ts`)
 
-Thirty projects across ten genres, gated by era and by what the space owns:
+**Fifty-two projects** across ten genres, gated by era and by what the space owns. The second
+half of the list is the one that matters most: `REPEAT` punishes rebuilding the same design,
+but a punishment only works if there is somewhere else to go. These are the jobs that turn up
+because somebody heard you can make things — a marina wanting chart plotting, a council with
+a car park, a hospital with a queue, a district that would like forty accelerometers and a
+map. They are also what makes an **Offer** worth reading, because the surprising ones live
+there: drone grocery delivery, a prosthetic hand, a 1979 pinball cabinet in a bag of parts.
 
 - **software** — Space Website, Tool Booking System, Basic CMS, Member Portal & Door Access,
   B2B Portal, Social Media System
@@ -878,6 +907,11 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   screen, after the leaderboard (§3c). You read *down* the payout column to see what paid, and
   the footer totals what the space has earned and made its name on. Wrapping badges (`Q 60%`,
   `2 tests`) could not be compared between two rows at all.
+- **The right column folds.** Two panels share it, so either can be collapsed to give the
+  other the room — the log starts folded at two lines, because that is enough to notice
+  something happened, and the roster is what you actually read. **You** moved out of that
+  column to the bottom-left corner and keeps to the two numbers that change every minute:
+  hours left and energy. It is glanced at, not read.
 - **The build menu is the spine of the UI.** Jobs, Projects, Ranking, Machines, People. A panel
   belongs here rather than in a permanent sidebar whenever you only touch it a few times a day.
   The clock sits alone in the top-left because it is the one thing glanced at constantly and it

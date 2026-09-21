@@ -275,13 +275,44 @@ export const LOGOS: { icon: IconName; colour: string }[] = [
   { icon: 'flame', colour: '#e0a83c' },
 ];
 
+/**
+ * Names the shuffle button offers. Half Turkish, half English, all of them the kind of name a
+ * real space ends up with: a pun on the tools, an in-joke about unfinished work, or a nod to
+ * the neighbourhood. Every entry must fit the 28-character name box.
+ */
 export const NAME_SUGGESTIONS = [
+  // Turkish
   'Lehim ve Kahve',
   'Garaj 34',
   'Yarım Kalan Projeler Derneği',
   'Katman Sıfır',
   'Voltaj',
   'Talaş',
+  'Kısa Devre Kulübü',
+  'Bit Pazarı',
+  'Çay, Kod ve Lehim',
+  'Tornavida Cemiyeti',
+  'Kıvılcım Atölyesi',
+  'Sıfır Bir',
+  'Mahalle Laboratuvarı',
+  'Hack Hamamı',
+  'Direnç Noktası',
+  // English
+  'Magic Smoke Co.',
+  'Kernel Panic Room',
+  'The Rubber Duck Society',
+  'Undefined Behaviour',
+  'Loose Wires Collective',
+  'Works On My Bench',
+  '404 Space Not Found',
+  'Flux & Friends',
+  'The Blinking LED',
+  'Two Screws Short',
+  'Null Pointer Lounge',
+  'Sudo Make Me a Sandwich',
+  'Half-Built Things',
+  'Pull Request Pub',
+  'Hello World Works',
 ];
 
 /** One in-game year. Long enough to matter, short enough to see a few ceremonies. */

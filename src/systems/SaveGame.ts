@@ -3,6 +3,7 @@ import type {
   MachineType,
   ProjectData,
   RivalState,
+  Role,
   Shift,
   Tag,
 } from '@/game/types';
@@ -13,6 +14,7 @@ export interface MemberSave {
   id: string;
   employment: Employment;
   shift: Shift | null;
+  role: Role | null;
   team: string | null;
   interest: number;
   energy: number;
@@ -130,6 +132,12 @@ function migrate(file: SaveFile): SaveFile {
   }
   for (const record of (store.shipped as { spent?: number }[] | undefined) ?? []) {
     if (typeof record.spent !== 'number') record.spent = 0;
+  }
+  // v5 — standing jobs. Nobody held one before, so nobody holds one now.
+  for (const member of sim.members ?? []) {
+    if ((member as { role?: unknown }).role === undefined) {
+      (member as { role: null }).role = null;
+    }
   }
 
   file.version = SAVE_VERSION;

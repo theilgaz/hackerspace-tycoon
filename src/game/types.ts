@@ -70,9 +70,30 @@ export interface Assignment {
 }
 
 /** What the sim knows about a member right now; mirrored to the store for the UI. */
+/**
+ * A standing job somebody holds on top of their build work (§3b). Roles exist to take the
+ * chores off the player: the whole point of having fifteen people is that you should not
+ * still be the one buying filament. A role is acted on at the holder's **next availability**
+ * — it is a person doing it, not a background rule, so it waits until they are in.
+ */
+export type Role = 'manager' | 'printer' | 'quartermaster';
+
+export const ROLE_LABEL: Record<Role, string> = {
+  manager: 'Project Manager',
+  printer: 'Printer Keeper',
+  quartermaster: 'Quartermaster',
+};
+
+export const ROLE_BLURB: Record<Role, string> = {
+  manager: 'Starts something new when there are hands going spare.',
+  printer: 'Loads the printers back up before they run dry.',
+  quartermaster: 'Gets the parts on order so assembly is never waiting.',
+};
+
 export interface MemberSnapshot {
   id: string;
   name: string;
+  role: Role | null;
   present: boolean;
   activity: MemberActivity;
   /** Project they are on the team of, if any. One project at a time. */

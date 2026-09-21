@@ -42,6 +42,10 @@ const PATHS: Record<string, string> = {
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  trophy:
+    '<path d="M7 4h10v5a5 5 0 0 1-10 0z"/>' +
+    '<path d="M7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3"/>' +
+    '<path d="M10 14h4v3h-4zM8 20h8"/><path d="M12 17v3"/>',
   /* A plain arrow survives 11px where a stylised upvote chevron turns to mush. */
   arrowUp: '<path d="M12 20V5"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',

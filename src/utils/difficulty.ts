@@ -13,6 +13,11 @@ export interface DifficultyDef {
   key: DifficultyKey;
   label: string;
   blurb: string;
+  /**
+   * The line under the name on the start screen: the opening scene, not the terms. The
+   * blurb on the card already states the numbers, so this should not repeat them.
+   */
+  intro: string;
   /** Bars lit on the pressure meter, out of three. The setting's one visual. */
   pressure: number;
   /** Accent for the meter and the badge tint — the §11 inline `--tone` exception. */
@@ -44,6 +49,7 @@ export const DIFFICULTIES: DifficultyDef[] = [
     key: 'easy',
     label: 'Easy',
     blurb: 'A crew of ten already, and a queue at the door. Room to make mistakes.',
+    intro: 'A full room, one printer, and a landlord. People already know the door; your job is giving them something to build.',
     pressure: 1,
     accent: '#7ac74f',
     rivalPace: 0.95,
@@ -57,6 +63,7 @@ export const DIFFICULTIES: DifficultyDef[] = [
     key: 'normal',
     label: 'Normal',
     blurb: 'Four of you, and somebody new about once a month. Win an award and you earned it.',
+    intro: 'A handful of regulars, one printer, and a landlord. Everything else you will have to talk people into.',
     pressure: 2,
     accent: '#f0b429',
     rivalPace: 1.0,
@@ -70,6 +77,7 @@ export const DIFFICULTIES: DifficultyDef[] = [
     key: 'hard',
     label: 'Hard',
     blurb: 'Two of you in a garage. People trickle in. Thin margins from day one.',
+    intro: 'Two of you, one printer, and a landlord who wants rent on the first. Every new face is one you earned.',
     pressure: 3,
     accent: '#e2725b',
     rivalPace: 1.0,

@@ -275,6 +275,39 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 #members { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 #members .body { overflow-y: auto; }
 
+/* Two panels share one column, so either can be folded to give the other the room. The
+   log starts folded: two lines is enough to notice something happened, and the roster is
+   what you actually read. */
+#right h2[data-action] { cursor: pointer; user-select: none; display: flex; align-items: center; }
+#right h2[data-action]:hover { color: var(--foreground); }
+#right h2 .fold {
+  margin-left: auto;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: 0.6;
+  transition: transform 120ms ease;
+}
+#right .panel.folded h2 .fold { transform: rotate(-90deg); }
+#log { flex: 0 1 auto; }
+#log.folded .body { max-height: 58px; overflow: hidden; }
+#log:not(.folded) { flex: 1 1 auto; max-height: none; }
+#members.folded { flex: 0 0 auto; }
+#members.folded .body { display: none; }
+
+/* You sits in the bottom-left corner — it is glanced at, not read, so it keeps to the two
+   numbers that change every minute. */
+#you {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: 232px;
+  top: auto;
+  right: auto;
+}
+
 
 /* --- tabs ---------------------------------------------------------------- */
 
@@ -1001,25 +1034,67 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .start-backdrop {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  background: radial-gradient(ellipse at 50% 35%, #131923 0%, var(--background) 70%);
+  display: flex;
+  overflow-y: auto;
+  padding: 24px 20px;
+  background:
+    radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--primary) 7%, transparent) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 35%, #131923 0%, var(--background) 70%);
   z-index: 40;
 }
+/* A faint workbench grid behind the cards — the room before anything is in it. */
+.start-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.35;
+  mask-image: radial-gradient(ellipse at 50% 40%, black 0%, transparent 65%);
+}
+/* margin:auto rather than place-items:center — a centred grid clips the top of anything
+   taller than the window, where auto margins fall back to scrolling. */
+.start-stack,
+.start-backdrop > .start-card { margin: auto; }
+.start-backdrop > .start-card { position: relative; width: min(620px, 100%); }
+.start-stack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(620px, 100%);
+}
+
+.start-wordmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.start-wordmark .ui-icon { width: 15px; height: 15px; color: var(--primary); }
+
 .start-card {
-  width: min(620px, calc(100vw - 40px));
-  max-height: calc(100vh - 40px);
-  overflow-y: auto;
-  padding: 26px;
+  width: 100%;
+  padding: 24px 26px;
   background: var(--popover);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: 0 40px 90px rgba(0, 0, 0, 0.7);
 }
-.start-brand { display: flex; align-items: center; gap: 13px; }
-.start-brand__text { min-width: 0; }
-.start-badge { width: 46px; height: 46px; border-radius: var(--radius); }
-.start-badge .ui-icon { width: 24px; height: 24px; }
+.start-brand { display: flex; align-items: center; gap: 14px; }
+.start-brand__text { flex: 1; min-width: 0; }
+.start-badge { width: 52px; height: 52px; border-radius: var(--radius); transition: color 0.15s ease; }
+.start-badge .ui-icon { width: 26px; height: 26px; }
 .start-card h1 {
   margin: 2px 0 0;
   font-size: 21px;
@@ -1028,14 +1103,69 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* An unnamed space is a prompt, not a name — it must not read as one. */
-.start-card h1.is-empty { color: var(--subtle-foreground); font-weight: 500; }
-.start-intro { margin: 13px 0 0; }
+
+/* The name is the title. One field that looks like a heading until you touch it — no
+   second copy of the same words above it. */
+.start-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  border-bottom: 1px solid var(--border-strong);
+  transition: border-color 0.13s ease;
+}
+.start-name:focus-within { border-color: var(--ring); }
+.start-name__input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0 6px;
+  font-family: inherit;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+.start-name__input::placeholder { color: var(--subtle-foreground); font-weight: 500; }
+.start-name__shuffle { height: 28px; padding: 0 8px; font-size: 11.5px; }
+
+.start-intro { margin: 14px 0 0; }
 /* One rhythm for every block, rather than a margin invented per call site. */
-.start-section { margin-top: 18px; }
-.start-section > .ui-label { display: block; margin-bottom: 7px; }
-.start-note { margin: 9px 0 0; font-size: 11px; color: var(--subtle-foreground); }
-.start-card #start-go { margin-top: 20px; }
+.start-section { margin-top: 20px; }
+.start-section > .ui-label { display: block; margin-bottom: 8px; }
+.start-note { margin: 10px 0 0; font-size: 11px; color: var(--subtle-foreground); }
+.start-card #start-go { margin-top: 22px; }
+.start-kbd {
+  margin-left: 4px;
+  padding: 1px 5px;
+  font-family: var(--font);
+  font-size: 9.5px;
+  font-weight: 500;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--primary-foreground) 12%, transparent);
+  color: color-mix(in srgb, var(--primary-foreground) 75%, transparent);
+}
+.start-foot { margin: 10px 0 0; font-size: 11px; text-align: center; color: var(--subtle-foreground); }
+
+/* The folded new-game form: one quiet row under a saved run. */
+.start-new {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 16px 20px;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background-color 0.13s ease, border-color 0.13s ease;
+}
+.start-new:hover { background: var(--card-hover); border-color: var(--border-strong); }
+.start-new:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.start-new__text { display: flex; flex-direction: column; gap: 2px; }
+.start-new .ui-desc { font-size: 11px; }
 
 .ui-input {
   flex: 1;
@@ -1284,8 +1414,35 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
    clamped so every card is the same box, and each one states its terms:
    the opening cash, which is the only thing difficulty changes for you. */
 
-.diff-pick { gap: 8px; }
-.diff-pick .ui-option__desc { min-height: 48px; }
+.diff-pick { gap: 9px; }
+.diff-pick .ui-option__desc { min-height: 48px; color: var(--muted-foreground); }
+.diff-pick:not(.on) .ui-option__desc { color: var(--subtle-foreground); }
+
+/* The terms: three ruled rows, label left and figure right, identical on every card. */
+.diff-terms { width: 100%; margin: 0; border-top: 1px solid var(--border); padding-top: 4px; }
+.diff-terms > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+.diff-terms dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--subtle-foreground);
+}
+.diff-terms dt .ui-icon { width: 12px; height: 12px; }
+.diff-terms dd {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+.diff-pick.on .diff-terms { border-top-color: color-mix(in srgb, var(--tone) 25%, var(--border)); }
+.diff-pick.on .diff-terms dd { color: var(--foreground); }
 .diff-pick .ui-option__head { gap: 8px; }
 .diff-pick .ui-title { flex: 1; min-width: 0; }
 .diff-pick.on {
@@ -1313,6 +1470,8 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 @media (max-width: 560px) {
   .logo-grid { grid-template-columns: repeat(4, 1fr); }
   .start-card .ui-grid--3 { grid-template-columns: 1fr; }
+  .start-card { padding: 20px; }
+  .start-name__shuffle span { display: none; }
   .diff-pick .ui-option__desc { min-height: 0; }
 }
 
@@ -1368,7 +1527,128 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 
 /* --- resuming a run ------------------------------------------------------ */
 
-.start-backdrop { align-content: center; gap: 12px; }
 .start-card.resume { padding: 20px 26px; }
-.start-card.resume h1 { font-size: 18px; }
-.start-card.resume .ui-row__meta { margin-top: 0; }
+.start-card.resume h1 { font-size: 19px; }
+.start-card.resume .start-badge { width: 46px; height: 46px; }
+.start-card.resume .start-badge .ui-icon { width: 23px; height: 23px; }
+.start-era { flex: none; align-self: flex-start; }
+
+/* Four figures on one baseline, the same shape as the game-over tally. */
+.resume-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 16px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.resume-stats > div { padding: 9px 12px; min-width: 0; }
+.resume-stats > div + div { border-left: 1px solid var(--border); }
+.resume-stats b {
+  display: block;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.resume-stats span {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--subtle-foreground);
+}
+
+@media (max-width: 560px) {
+  .resume-stats { grid-template-columns: repeat(2, 1fr); }
+  .resume-stats > div:nth-child(3) { border-left: none; }
+  .resume-stats > div:nth-child(n + 3) { border-top: 1px solid var(--border); }
+}
+
+.start-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 6px 0 12px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 40%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
+}
+.start-confirm > span { flex: 1; font-size: 12px; color: var(--foreground); }
+.ui-btn--danger { background: var(--destructive); color: var(--background); font-weight: 600; }
+.ui-btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--destructive) 88%, white); }
+
+/* --- Awards night (§3c) ---------------------------------------------------
+   The ceremony is the only screen in the run that exists purely to be enjoyed, so it is
+   a stage: curtains, a lit floor, and one trophy per category with the winner underneath.
+   Ours are picked out; everybody else's are in the dark with them. */
+.stage {
+  position: relative;
+  padding: 26px 30px 18px;
+  border-radius: 12px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--warning) 16%, transparent), transparent 60%),
+    linear-gradient(180deg, #1a1016 0%, #120c11 100%);
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
+}
+.stage-curtain {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 54px;
+  background: repeating-linear-gradient(90deg, #6d1f24 0 9px, #8c2a30 9px 18px);
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.6);
+}
+.stage-curtain--left { left: 0; border-right: 1px solid #4d1418; }
+.stage-curtain--right { right: 0; border-left: 1px solid #4d1418; }
+.stage-floor {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 0 46px;
+  padding-top: 6px;
+}
+.trophy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 6px 10px;
+  border-radius: 10px;
+  text-align: center;
+  background: color-mix(in srgb, #000 35%, transparent);
+  border: 1px solid transparent;
+}
+.trophy-cup {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  color: var(--subtle-foreground);
+  background: color-mix(in srgb, #000 40%, transparent);
+}
+.trophy-cup .ui-icon { width: 24px; height: 24px; }
+.trophy-award { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-foreground); }
+.trophy-winner { font-size: 12.5px; font-weight: 600; color: var(--foreground); }
+.trophy-value { font-family: var(--font); font-size: 10.5px; color: var(--subtle-foreground); }
+/* The ones you won are lit; that is the whole point of standing there. */
+.trophy--ours { border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
+.trophy--ours .trophy-cup {
+  color: #f4c95d;
+  background: color-mix(in srgb, var(--warning) 22%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--warning) 30%, transparent);
+}
+.trophy--ours .trophy-winner { color: #f4c95d; }
+
+/* The trophy room: every year you have had, oldest at the bottom. */
+.trophy-year { margin-bottom: 14px; }
+.trophy-year > .ui-label { margin-bottom: 7px; }
+.trophy-shelf { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.trophy-shelf .trophy { padding: 9px 5px 8px; background: var(--card); }
+.trophy-shelf .trophy-cup { width: 32px; height: 32px; }
+.trophy-shelf .trophy-cup .ui-icon { width: 18px; height: 18px; }

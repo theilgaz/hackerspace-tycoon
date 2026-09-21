@@ -12,7 +12,7 @@ import type {
   ClaimKey,
   ShippedRecord,
 } from '@/game/types';
-import { SPACE_SUBJECT } from '@/game/types';
+import { ROLE_BLURB, ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
 import { CATALOG_MAP, catalogForEra, canBuild, missingMachines } from '@/utils/catalog';
 import {
   CATEGORY_ORDER,
@@ -71,6 +71,7 @@ export interface UIHandlers {
   buyablePrinters(): PrinterModel[];
   hire(memberId: string, employment: Employment): void;
   post(projectId: string, subreddit: string, claim: ClaimKey): void;
+  setRole(memberId: string, role: Role | null): void;
   /** What a post about the space itself is judged on — the same one the sim will use. */
   spaceSubject(): Subject;
   hireCost(memberId: string, employment: Employment): number;
@@ -206,6 +207,12 @@ export class UI {
   /** Which group of projects is on screen. Falls through when the chosen one is empty. */
   private projectsTab: 'all' | 'on' | 'done' = 'all';
 
+  /** Standings, or the shelf of everything you have won. */
+  private rankTab: 'table' | 'trophies' = 'table';
+
+  /** Right-column panels the player has folded away. The log starts small on purpose. */
+  private folded: { log: boolean; members: boolean } = { log: true, members: false };
+
   /** Which slice of the roster is on screen. */
   private peopleTab: 'all' | 'free' | 'on' | 'open' = 'all';
 
@@ -218,12 +225,33 @@ export class UI {
   private start = {
     // Pre-named and pre-badged: an empty form with a dead CTA is a worse first frame
     // than a suggestion you can shuffle or type straight over (the field is selected).
-    name: NAME_SUGGESTIONS[Math.floor(Math.random() * NAME_SUGGESTIONS.length)] ?? '',
+    name: '',
     logo: Math.floor(Math.random() * LOGOS.length),
     difficulty: 'normal' as DifficultyKey,
+    /** With a saved run on the table, the new-game form waits folded until asked for. */
+    newOpen: false,
+    /** Discarding a run is the one irreversible press on this screen, so it asks twice. */
+    confirmDiscard: false,
   };
+  /**
+   * Suggestions still to be dealt. A shuffled deck rather than a fresh roll each press, so
+   * the whole pool comes round before anything repeats.
+   */
+  private nameDeck: string[] = [];
   /** The name box is focused once, not on every re-render of the start screen. */
   private startFocused = false;
+
+  private dealName(): string {
+    if (this.nameDeck.length === 0) {
+      const deck = NAME_SUGGESTIONS.filter((n) => n !== this.start.name);
+      for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+      }
+      this.nameDeck = deck;
+    }
+    return this.nameDeck.pop() ?? NAME_SUGGESTIONS[0];
+  }
   /** Which column the leaderboard is sorted by. */
   private rankSort: { key: RankKey; dir: 1 | -1 } = { key: 'reputation', dir: -1 };
 
@@ -279,10 +307,16 @@ export class UI {
       <div class="panel" id="topbar"></div>
       <div class="panel" id="left"><h2>On the bench</h2><div class="body"></div></div>
       <div id="right">
-        <div class="panel" id="log"><h2>Log</h2><div class="body"></div></div>
-        <div class="panel" id="you"><h2>You</h2><div class="body"></div></div>
-        <div class="panel" id="members"><h2>The People</h2><div class="body"></div></div>
+        <div class="panel" id="log">
+          <h2 data-action="panel-toggle" data-value="log">Log<i class="fold"></i></h2>
+          <div class="body"></div>
+        </div>
+        <div class="panel" id="members">
+          <h2 data-action="panel-toggle" data-value="members">The People<i class="fold"></i></h2>
+          <div class="body"></div>
+        </div>
       </div>
+      <div class="panel" id="you"><div class="body"></div></div>
       <div id="bottombar"></div>
       <div id="modal"></div>
       <div id="start"></div>
@@ -333,6 +367,10 @@ export class UI {
           this.jobs = { open: true, step: 'category', source: null, size: 'any', defId: null, offerId: null };
           this.rerender();
           break;
+        case 'rank-view':
+          this.rankTab = (value as 'table' | 'trophies') ?? 'table';
+          this.rerender();
+          break;
         case 'rank-sort': {
           const key = value as RankKey;
           this.rankSort =
@@ -350,6 +388,17 @@ export class UI {
           this.openModal = 'projects';
           this.rerender();
           break;
+        case 'set-role':
+          if (id) h.setRole(id, (value || null) as Role | null);
+          this.rerender();
+          break;
+        case 'panel-toggle': {
+          // Two panels compete for one column; folding one gives the other the room.
+          const key = value as 'log' | 'members';
+          if (key) this.folded[key] = !this.folded[key];
+          this.rerender();
+          break;
+        }
         case 'people-tab':
           this.peopleTab = (value as 'all' | 'free' | 'on' | 'open') ?? 'all';
           this.rerender();
@@ -387,13 +436,32 @@ export class UI {
         case 'continue':
           h.continueRun();
           break;
+        case 'discard-ask':
+          this.start.confirmDiscard = true;
+          this.rerender();
+          break;
+        case 'discard-keep':
+          this.start.confirmDiscard = false;
+          this.rerender();
+          break;
         case 'discard-save':
+          this.start.confirmDiscard = false;
           h.discardSave();
           break;
-        case 'shuffle-name': {
-          const pool = NAME_SUGGESTIONS.filter((n) => n !== this.nameField());
-          this.start.name = pool[Math.floor(Math.random() * pool.length)] ?? NAME_SUGGESTIONS[0];
+        case 'new-open':
+          this.start.newOpen = true;
+          this.startFocused = false; // the name box has just appeared — give it the caret
           this.rerender();
+          break;
+        case 'shuffle-name': {
+          // Swap the text in place rather than re-render: only the field changes, and a
+          // repaint of the whole card for one word reads as the screen jumping.
+          const input = this.root.querySelector<HTMLInputElement>('#space-name');
+          if (!input) break;
+          input.value = this.dealName();
+          this.onNameTyped(input);
+          input.focus();
+          input.select();
           break;
         }
         case 'begin': {
@@ -575,6 +643,8 @@ export class UI {
     this.setHTML(this.startEl, 'start', '');
     this.renderTopbar(state);
     this.renderProjects(state);
+    this.root.querySelector('#log')?.classList.toggle('folded', this.folded.log);
+    this.root.querySelector('#members')?.classList.toggle('folded', this.folded.members);
     this.renderYou(state);
     this.renderMembers(state);
     this.renderLog(state);
@@ -617,71 +687,46 @@ export class UI {
   // --- start screen ---------------------------------------------------------
 
   private renderStart() {
+    if (!this.start.name && !this.startFocused) this.start.name = this.dealName();
     const name = this.start.name;
     const badge = LOGOS[this.start.logo];
     const saved = this.handlers.savedRun();
+    const level = DIFFICULTIES.find((d) => d.key === this.start.difficulty) ?? DIFFICULTIES[1];
+    // A saved run is the likelier reason to be here, so it leads and the new form folds.
+    const formOpen = !saved || this.start.newOpen;
     this.setHTML(
       this.startEl,
       'start',
       `<div class="start-backdrop">
+        <div class="start-stack">
+        <div class="start-wordmark">
+          ${icon('wrench', 'ui-icon')}<span>Hackerspace Tycoon</span>
+        </div>
+        ${saved ? this.resumeCard(saved) : ''}
         ${
-          saved
-            ? `<div class="start-card resume">
-                <header class="start-brand">
-                  <span class="icon-chip start-badge" style="--tone:${saved.colour}">
-                    ${icon(saved.icon as IconName, 'ui-icon')}
-                  </span>
-                  <div>
-                    <div class="ui-label">Where you left it</div>
-                    <h1>${esc(saved.name)}</h1>
-                  </div>
-                </header>
-                <div class="ui-row__meta" style="margin:0 0 14px">
-                  <span class="ui-badge">${icon('clock')}day ${saved.day}</span>
-                  <span class="ui-badge">${icon('check')}${saved.shipped} shipped</span>
-                  <span class="ui-badge">${icon('flame')}${saved.reputation} rep</span>
-                  <span class="ui-badge">${icon('coins')}${money(saved.cash)}</span>
-                  <span class="ui-badge">${esc(saved.era)}</span>
-                </div>
-                <div class="row" style="gap:8px">
-                  <button class="ui-btn ui-btn--primary ui-btn--lg" style="flex:1" data-action="continue">
-                    Carry on
-                  </button>
-                  <button class="ui-btn ui-btn--ghost ui-btn--lg" data-action="discard-save"
-                    title="Throw the saved run away and start fresh">
-                    ${icon('x')}Discard
-                  </button>
-                </div>
-              </div>`
-            : ''
-        }
-        <div class="start-card">
+          formOpen
+            ? `<div class="start-card">
           <header class="start-brand">
             <span class="icon-chip start-badge" style="--tone:${badge.colour}">
               ${icon(badge.icon, 'ui-icon')}
             </span>
             <div class="start-brand__text">
-              <div class="ui-label">A new hackerspace</div>
-              <h1 id="start-title" class="${name ? '' : 'is-empty'}">${esc(name) || 'Name it'}</h1>
+              <label class="ui-label" for="space-name">Name your hackerspace</label>
+              <div class="start-name">
+                <input id="space-name" class="start-name__input" maxlength="28"
+                  placeholder="Name it" autocomplete="off" spellcheck="false"
+                  value="${esc(name)}" />
+                <button class="ui-btn ui-btn--ghost start-name__shuffle" data-action="shuffle-name"
+                  title="Suggest another name" aria-label="Suggest another name">
+                  ${icon('shuffle')}<span>Shuffle</span>
+                </button>
+              </div>
             </div>
           </header>
-          <p class="ui-desc start-intro">
-            Two of you, one printer, and a landlord. Everything else you will have to talk
-            people into.
-          </p>
+          <p class="ui-desc start-intro">${esc(level.intro)}</p>
 
           <section class="start-section">
-            <label class="ui-label" for="space-name">What is it called?</label>
-            <div class="row" style="gap:6px">
-              <input id="space-name" class="ui-input" maxlength="28" placeholder="Lehim ve Kahve"
-                autocomplete="off" spellcheck="false" value="${esc(name)}" />
-              <button class="ui-btn ui-btn--outline" data-action="shuffle-name"
-                title="Suggest one" aria-label="Suggest a name">${icon('shuffle')}</button>
-            </div>
-          </section>
-
-          <section class="start-section">
-            <div class="ui-label">Pick a badge</div>
+            <div class="ui-label">Badge</div>
             <div class="logo-grid" role="radiogroup" aria-label="Badge">
               ${LOGOS.map((logo, index) => {
                 const on = index === this.start.logo;
@@ -704,6 +749,8 @@ export class UI {
                 const meter = [1, 2, 3]
                   .map((step) => `<i class="${step <= level.pressure ? 'lit' : ''}"></i>`)
                   .join('');
+                // Terms as a ruled list, not a heap of pills: the same three rows in the
+                // same place on every card, so the eye compares across rather than hunts.
                 return `<button class="ui-option diff-pick ${on ? 'on' : ''}" role="radio"
                   aria-checked="${on}" style="--tone:${level.accent}"
                   data-action="difficulty" data-value="${level.key}">
@@ -713,15 +760,17 @@ export class UI {
                     ${on ? `<span class="diff-tick">${icon('check')}</span>` : ''}
                   </div>
                   <span class="ui-option__desc ui-clamp-3">${esc(level.blurb)}</span>
-                  <span class="ui-row__meta" style="margin:0">
-                    <span class="ui-badge ui-badge--tone" title="people on the books on day one">
-                      ${icon('users')}${level.startMembers} to start
-                    </span>
-                    <span class="ui-badge" title="how often somebody new gets in touch">
-                      ${icon('clock')}1 every ${level.recruitEvery}d
-                    </span>
-                    <span class="ui-badge" title="opening cash">${icon('coins')}${money(level.startCash)}</span>
-                  </span>
+                  <dl class="diff-terms">
+                    <div title="people on the books on day one">
+                      <dt>${icon('users')}Crew</dt><dd>${level.startMembers}</dd>
+                    </div>
+                    <div title="how often somebody new gets in touch">
+                      <dt>${icon('clock')}New face</dt><dd>${level.recruitEvery}d</dd>
+                    </div>
+                    <div title="opening cash">
+                      <dt>${icon('coins')}Cash</dt><dd>${money(level.startCash)}</dd>
+                    </div>
+                  </dl>
                 </button>`;
               }).join('')}
             </div>
@@ -732,7 +781,23 @@ export class UI {
           </section>
 
           <button id="start-go" class="ui-btn ui-btn--primary ui-btn--lg ui-btn--block"
-            data-action="begin" ${name.trim() ? '' : 'disabled'}>Open the doors</button>
+            data-action="begin" ${name.trim() ? '' : 'disabled'}>
+            Open the doors<kbd class="start-kbd">Enter</kbd>
+          </button>
+          ${
+            saved
+              ? `<p class="start-foot">Your saved run stays put until the first day of this one ends.</p>`
+              : ''
+          }
+        </div>`
+            : `<button class="start-card start-new" data-action="new-open">
+                <span class="icon-chip" style="--tone:var(--primary)">${icon('plus')}</span>
+                <span class="start-new__text">
+                  <span class="ui-title">Start a new hackerspace</span>
+                  <span class="ui-desc">New name, new badge, new landlord.</span>
+                </span>
+              </button>`
+        }
         </div>
       </div>`,
     );
@@ -748,19 +813,50 @@ export class UI {
     }
   }
 
+  private resumeCard(saved: NonNullable<ReturnType<UIHandlers['savedRun']>>): string {
+    const actions = this.start.confirmDiscard
+      ? `<div class="start-confirm" role="alert">
+          <span>Throw this run away for good?</span>
+          <button class="ui-btn ui-btn--ghost" data-action="discard-keep">Keep it</button>
+          <button class="ui-btn ui-btn--danger" data-action="discard-save">${icon('x')}Discard</button>
+        </div>`
+      : `<div class="row" style="gap:8px">
+          <button class="ui-btn ui-btn--primary ui-btn--lg" style="flex:1" data-action="continue">
+            Carry on
+          </button>
+          <button class="ui-btn ui-btn--ghost ui-btn--lg" data-action="discard-ask"
+            title="Throw the saved run away">
+            ${icon('x')}Discard
+          </button>
+        </div>`;
+    return `<div class="start-card resume">
+      <header class="start-brand">
+        <span class="icon-chip start-badge" style="--tone:${saved.colour}">
+          ${icon(saved.icon as IconName, 'ui-icon')}
+        </span>
+        <div class="start-brand__text">
+          <div class="ui-label">Where you left it</div>
+          <h1>${esc(saved.name)}</h1>
+        </div>
+        <span class="ui-badge start-era">${icon('building')}${esc(saved.era)}</span>
+      </header>
+      <div class="resume-stats">
+        <div><b>${saved.day}</b><span>day</span></div>
+        <div><b>${saved.shipped}</b><span>shipped</span></div>
+        <div><b>${saved.reputation}</b><span>reputation</span></div>
+        <div><b>${money(saved.cash)}</b><span>cash</span></div>
+      </div>
+      ${actions}
+    </div>`;
+  }
+
   /**
-   * Typing updates the title and the Open-the-doors button in place. Re-rendering on
-   * every keystroke would replace the input under the caret, so this touches only the
-   * two things that actually change.
+   * Typing updates the Open-the-doors button in place. Re-rendering on every keystroke
+   * would replace the input under the caret, so this touches only what actually changes.
    */
   private onNameTyped(input: HTMLInputElement) {
     this.start.name = input.value;
     const typed = input.value.trim();
-    const title = this.root.querySelector<HTMLElement>('#start-title');
-    if (title) {
-      title.textContent = input.value || 'Name it';
-      title.classList.toggle('is-empty', !input.value);
-    }
     const go = this.root.querySelector<HTMLButtonElement>('#start-go');
     if (go) go.disabled = !typed;
   }
@@ -903,34 +999,37 @@ export class UI {
       this.modal,
       'modal',
       `<div class="modal-backdrop">
-        <div class="modal ceremony" data-action="noop">
+        <div class="modal ceremony modal--fit" data-action="noop">
           <header>
             <div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>Awards night · October ${ceremony.year}</b></div>
           </header>
           <div class="modal-body">
-            <p class="ui-desc" style="margin:0 0 14px">
+            <!-- A stage rather than a list. It is one of four set pieces in the run and the
+                 only one that is purely a reward, so it gets curtains and a trophy table. -->
+            <div class="stage">
+              <div class="stage-curtain stage-curtain--left"></div>
+              <div class="stage-curtain stage-curtain--right"></div>
+              <div class="stage-floor">
+                ${ceremony.awards
+                  .map(
+                    (award) => `<div class="trophy ${award.playerWon ? 'trophy--ours' : ''}"
+                      title="${esc(award.blurb)} — ${esc(award.value)}">
+                      <span class="trophy-cup">${icon('trophy', 'ui-icon')}</span>
+                      <span class="trophy-award">${esc(award.category)}</span>
+                      <span class="trophy-winner">${esc(award.winnerName)}</span>
+                      <span class="trophy-value">${esc(award.value)}</span>
+                    </div>`,
+                  )
+                  .join('')}
+              </div>
+            </div>
+            <p class="ui-desc" style="margin:14px 0 0;text-align:center">
               ${
                 won
                   ? `You took <b>${won}</b> of ${ceremony.awards.length}${ceremony.reputationGained ? `, and ${ceremony.reputationGained} reputation with them` : ''}.`
                   : `Nothing for us this year. Somebody else had a better one.`
               }
             </p>
-            ${ceremony.awards
-              .map(
-                (award) => `<div class="ui-row ${award.playerWon ? 'award-won' : ''}" style="cursor:default">
-                  <span class="icon-chip" style="--tone:${award.playerWon ? 'var(--primary)' : 'var(--muted-foreground)'}">
-                    ${icon(award.playerWon ? 'check' : 'users', 'ui-icon ui-icon--lg')}
-                  </span>
-                  <span class="ui-row__main">
-                    <span class="row between" style="gap:8px">
-                      <span class="ui-title">${award.category}</span>
-                      <span class="ui-badge ${award.playerWon ? 'ui-badge--accent' : ''}">${esc(award.winnerName)}</span>
-                    </span>
-                    <p class="ui-desc" style="margin:3px 0 0">${award.blurb} — ${award.value}</p>
-                  </span>
-                </div>`,
-              )
-              .join('')}
           </div>
           <footer>
             <button class="ui-btn ui-btn--primary ui-btn--block" data-action="ceremony-close">
@@ -1062,15 +1161,64 @@ export class UI {
         <span class="ui-badge">${season.year}</span>
         <span class="ui-badge${daysLeft <= 10 ? ' ui-badge--accent' : ''}">${daysLeft}d to the awards</span>
       </div>`,
-      content: `<table class="rank-table">
-        <thead><tr><th></th><th class="space-head">Space</th>${head}</tr></thead>
-        <tbody>${body}</tbody>
-      </table>`,
+      content:
+        `<div class="ui-segmented" style="margin-bottom:11px">
+          <button data-action="rank-view" data-value="table"
+            aria-pressed="${this.rankTab === 'table'}">Standings</button>
+          <button data-action="rank-view" data-value="trophies"
+            aria-pressed="${this.rankTab === 'trophies'}" ${state.ceremonies.length ? '' : 'disabled'}>
+            Trophy room<span class="seg-count">${state.ceremonies.reduce(
+              (n, c) => n + c.awards.filter((a) => a.playerWon).length,
+              0,
+            )}</span>
+          </button>
+        </div>` +
+        (this.rankTab === 'trophies'
+          ? this.trophyRoom(state)
+          : `<table class="rank-table">
+              <thead><tr><th></th><th class="space-head">Space</th>${head}</tr></thead>
+              <tbody>${body}</tbody>
+            </table>`),
       foot: `<span class="ui-desc" style="font-size:10.5px">
         <b class="award-key">◆</b> decides an award, judged on the year just gone — so a quiet year
         costs you even while you are ahead overall.
       </span>`,
     };
+  }
+
+  /**
+   * The shelf. Every awards night you have sat through, newest first, with the ones you won
+   * lit and the rest in the dark beside them — because "we came second to Dallas three years
+   * running" is part of the story too, and a trophy room with only wins in it is a brag
+   * rather than a record.
+   */
+  private trophyRoom(state: GameState): string {
+    if (!state.ceremonies.length) {
+      return `<p class="ui-desc">No awards night yet. The first is in October.</p>`;
+    }
+    return [...state.ceremonies]
+      .reverse()
+      .map((ceremony) => {
+        const won = ceremony.awards.filter((a) => a.playerWon).length;
+        return `<div class="trophy-year">
+          <div class="ui-label">
+            October ${ceremony.year} · ${won ? `${won} of ${ceremony.awards.length}` : 'nothing'}
+          </div>
+          <div class="trophy-shelf">
+            ${ceremony.awards
+              .map(
+                (award) => `<div class="trophy ${award.playerWon ? 'trophy--ours' : ''}"
+                  title="${esc(award.blurb)} — ${esc(award.value)}">
+                  <span class="trophy-cup">${icon('trophy', 'ui-icon')}</span>
+                  <span class="trophy-award">${esc(award.category)}</span>
+                  <span class="trophy-winner">${esc(award.winnerName)}</span>
+                </div>`,
+              )
+              .join('')}
+          </div>
+        </div>`;
+      })
+      .join('');
   }
 
   /** The monthly books, as an event you have to look at. */
@@ -1349,6 +1497,19 @@ export class UI {
         </td>
         <td class="num">${m.employment === 'full-time' ? 'Full-time' : `Part-time · ${m.shift}s`}</td>
         <td class="num">${m.present ? 'in today' : 'away'}</td>
+        ${(() => {
+          // One button that cycles: none → the three jobs → none. A select is heavier than
+          // the decision deserves, and the roles are few enough to walk through.
+          const order: (Role | null)[] = [null, 'manager', 'printer', 'quartermaster'];
+          const next = order[(order.indexOf(m.role) + 1) % order.length];
+          return `<td class="num">
+            <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="set-role"
+              data-id="${m.id}" data-value="${next ?? ''}"
+              title="${m.role ? ROLE_BLURB[m.role] : 'No standing job — click to give them one'}">
+              ${m.role ? ROLE_LABEL[m.role] : '—'}
+            </button>
+          </td>`;
+        })()}
         ${skillCell(m.id)}
         ${traitCell(m.id)}
         <td class="num">
@@ -1377,6 +1538,7 @@ export class UI {
         <td class="note">interested</td>
         <td class="num">${canFull ? 'either' : 'part-time only'}</td>
         <td class="num">~${data.commitment}h/wk</td>
+        <td class="num">—</td>
         ${skillCell(id)}
         ${traitCell(id)}
         <td class="num">
@@ -1430,7 +1592,7 @@ export class UI {
           ? `<table class="rank-table">
               <thead><tr>
                 <th class="space-head">Person</th><th>Doing</th><th>Contract</th><th>Today</th>
-                <th>Good at</th><th>Trait</th><th></th>
+                <th>Standing job</th><th>Good at</th><th>Trait</th><th></th>
               </tr></thead>
               <tbody>${rows.join('')}</tbody>
             </table>`
@@ -2116,22 +2278,22 @@ export class UI {
     return void this.setHTML(this.you, 'you', `
       <div class="row between" style="margin-bottom:6px">
         <span class="mono" style="font-size:13px">${p.hoursLeft.toFixed(1)}h left</span>
-        <span class="muted" style="font-size:10.5px">of ${p.hoursToday.toFixed(1)}h today</span>
+        <span class="muted" style="font-size:10.5px">of ${p.hoursToday.toFixed(1)}h</span>
       </div>
       ${bar(p.hoursLeft, p.hoursToday, hoursTone)}
-      <div class="meters" style="margin:8px 0 0 0">
+      <div class="meters" style="margin:7px 0 0 0">
         <div class="meter"><label>energy</label>${bar(p.energy, 100, energyTone)}</div>
       </div>
-      ${p.burntOut ? `<p class="defect" style="margin-top:7px">⚠ You are running on fumes. Tomorrow will be shorter.</p>` : ''}
-      <div class="note" style="margin:7px 0 0 0">${
+      <div class="verbs" style="margin-top:7px">
+        ${p.project || p.activity === 'babysitting' ? `<button class="tiny" data-action="stop-work">Stop</button>` : ''}
+        <button class="tiny" data-action="calibrate">Calibrate</button>
+      </div>
+      <div class="note" style="margin:6px 0 0 0" title="${esc(p.note || 'idle')}">${
         task && p.stage
           ? `${esc(task.name)} · ${stageLabel(task.category, p.stage).toLowerCase()}`
           : esc(p.note || 'idle')
       }</div>
-      <div class="verbs" style="margin-top:7px">
-        ${p.project || p.activity === 'babysitting' ? `<button class="tiny" data-action="stop-work">Stop</button>` : ''}
-        <button class="tiny" data-action="calibrate">Calibrate printer</button>
-      </div>
+      ${p.burntOut ? `<p class="defect" style="margin-top:6px">⚠ Running on fumes — tomorrow will be shorter.</p>` : ''}
     `);
   }
 

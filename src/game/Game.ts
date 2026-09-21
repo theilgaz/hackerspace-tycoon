@@ -76,6 +76,7 @@ export class Game {
       hire: (memberId, employment) => act(() => sim.hire(memberId, employment)),
       post: (projectId, subreddit, claim) => act(() => sim.post(projectId, subreddit, claim)),
       spaceSubject: () => sim.spaceSubject(),
+      setRole: (memberId, role) => act(() => sim.setRole(memberId, role)),
       hireCost: (memberId, employment) => sim.hireCost(memberId, employment),
       canHireFullTime: (memberId) => sim.canHireFullTime(memberId),
       begin: (name, logo, difficulty) => {
