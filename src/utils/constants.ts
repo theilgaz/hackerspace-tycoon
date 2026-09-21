@@ -537,8 +537,12 @@ export const APPLICANTS: MemberData[] = [
  * an applicant into a member is a decision you make in the People menu, and it costs.
  */
 export const RECRUIT = {
-  /** Applicants drawn in by a shipped project, over and above the reputation gate. */
-  perShip: [1, 2] as [number, number],
+  /**
+   * How long a shipped project stays the thing people are talking about. Inside this window
+   * it decides *who* gets in touch next; it never changes how many do, which is the
+   * difficulty's job — otherwise a month of weekend builds outruns the setting entirely.
+   */
+  shipMemoryDays: 6,
   /** Passion match below this and the project does not tempt them at all. */
   matchFloor: 0.25,
   /** A matching write-up gets them past this fraction of their reputation bar. */

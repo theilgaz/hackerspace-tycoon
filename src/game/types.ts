@@ -311,6 +311,11 @@ export interface RuntimeSnapshot {
   rivals: RivalState[];
   /** Where we are in the run-up to the next awards night. */
   season: { year: number; dayOfYear: number; length: number };
+  /**
+   * Days until somebody new is likely to get in touch. Difficulty sets the pace (§3c), and a
+   * pace the player cannot see reads as the applicant list being broken — see §13.
+   */
+  recruitIn: number;
 }
 
 // ---------------------------------------------------------------------------

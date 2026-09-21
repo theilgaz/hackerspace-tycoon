@@ -89,6 +89,7 @@ export const emptyRuntime = (): RuntimeSnapshot => ({
   player: null,
   rivals: [],
   season: { year: 1, dayOfYear: 0, length: 1 },
+  recruitIn: 0,
 });
 
 export const store = createStore<GameState>((set, get) => ({

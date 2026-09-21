@@ -200,6 +200,27 @@ await check('the wizard keeps one size across every step', async () => {
   return unique.length === 1 && unique[0] !== 'none';
 });
 
+await check('the crew step arrives with the best people already picked', async () => {
+  await openWizard();
+  await click('#modal [data-action="jobs-category"]:not([disabled])');
+  await click('#modal [data-action="jobs-project"]:not([disabled])');
+  // The header states the count, and the toggles carry it — check both agree, so a
+  // suggestion that ticks buttons without reaching the pitch would still fail here.
+  const label = await evaluate(
+    `document.querySelector('#modal .ui-label')?.textContent.trim().match(/Crew (\\d+)\\/(\\d+)/)?.slice(1).join('/')`,
+  );
+  const pressed = await evaluate(
+    `document.querySelectorAll('#modal .ui-toggle[aria-pressed="true"]').length`,
+  );
+  const free = await evaluate(`__game.sim.members.filter((m) => !m.team).length`);
+  const [picked, size] = (label ?? '0/0').split('/').map(Number);
+  const want = Math.min(size, free);
+  if (!(pressed === want && picked === want && want > 0)) {
+    console.log(`      picked ${picked}, pressed ${pressed}, wanted ${want} (team ${size}, free ${free})`);
+  }
+  return pressed === want && picked === want && want > 0;
+});
+
 await check('breadcrumb jumps back to a completed step', async () => {
   await openWizard();
   await click('#modal [data-action="jobs-category"]:not([disabled])');
@@ -296,6 +317,11 @@ await check('People opens and hiring works', async () => {
       return __store.getState().applicants.length;
     })()
   `);
+  // The first person now gets in touch around the same day as the first bill, and the bill
+  // is modal — so clear it or People opens behind it and there is nothing to click.
+  if (await evaluate(`!!document.querySelector('[data-action="bill-close"]')`)) {
+    await click('[data-action="bill-close"]');
+  }
   // This check is about the panel wiring, not the economy: make sure the hire is
   // affordable so a spent day cannot make it flaky.
   await evaluate(`

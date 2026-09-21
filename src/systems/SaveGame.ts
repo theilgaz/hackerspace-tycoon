@@ -4,6 +4,7 @@ import type {
   ProjectData,
   RivalState,
   Shift,
+  Tag,
 } from '@/game/types';
 import type { Job } from '@/machines/Machine';
 import type { Tile } from '@/utils/grid';
@@ -47,7 +48,7 @@ export interface MachineSave {
  * than no save at all.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface SaveFile {
   version: number;
@@ -61,6 +62,8 @@ export interface SaveFile {
     rivalYearStart: [string, { projects: number; reputation: number }][];
     machineHoursThisMonth: number;
     incomeThisMonth: number;
+    recruitClock: number;
+    recentShip: { tags: Tag[]; name: string; day: number } | null;
     seeded: string[];
     requeueTimers: [string, number][];
     rivals: RivalState[];

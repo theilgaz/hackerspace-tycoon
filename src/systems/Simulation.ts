@@ -10,6 +10,7 @@ import type {
   ProjectData,
   ProjectDef,
   StageKey,
+  Tag,
 } from '@/game/types';
 import { MemberEntity } from '@/entities/MemberEntity';
 import { PlayerEntity } from '@/entities/PlayerEntity';
@@ -110,13 +111,26 @@ export class Simulation {
   /** What the work actually brought in since the last bill — payouts and sponsor money. */
   private incomeThisMonth = 0;
 
+  /** Days of word of mouth banked toward the next person getting in touch (§3c). */
+  private recruitClock = 0;
+
+  /** The last thing you shipped, while it is still what people are talking about. */
+  private recentShip: { tags: Tag[]; name: string; day: number } | null = null;
+
   constructor() {
     resetStations();
     for (const def of STATIONS) {
       if (!FAB_MACHINES.includes(def.type)) continue;
       this.machines.push(new Machine(def, def.type === 'fdm' ? FILAMENT.spoolGrams : 0));
     }
-    this.members = ROSTER.map((data) => {
+    // Day one's crew: the fixed roster, topped up from the front of the applicant ladder to
+    // whatever the difficulty says. Taking them in reputation order means an easy start is
+    // simply the people you would have recruited first anyway, not a different cast.
+    const wanted = DIFFICULTY_MAP[store.getState().difficulty].startMembers;
+    const extra = [...APPLICANTS]
+      .sort((a, b) => (a.repRequired ?? 0) - (b.repRequired ?? 0))
+      .slice(0, Math.max(0, wanted - ROSTER.length));
+    this.members = [...ROSTER, ...extra].map((data) => {
       const member = new MemberEntity({ ...data }, DOOR);
       member.employment = data.partTimeOnly ? 'part-time' : 'full-time';
       member.shift = member.employment === 'part-time' ? data.prefers ?? 'morning' : null;
@@ -184,7 +198,7 @@ export class Simulation {
       tickRivals(this.rivals, this.rivalPressure());
       this.runBilling();
       this.checkAwards();
-      this.openApplicants();
+      this.tickRecruiting();
       this.planDay();
       this.player.startDay();
       this.refreshBacklog();
@@ -942,6 +956,8 @@ export class Simulation {
       rivalYearStart: [...this.rivalYearStart],
       machineHoursThisMonth: this.machineHoursThisMonth,
       incomeThisMonth: this.incomeThisMonth,
+      recruitClock: this.recruitClock,
+      recentShip: this.recentShip ? { ...this.recentShip, tags: [...this.recentShip.tags] } : null,
       seeded: [...this.seeded],
       requeueTimers: [...this.requeueTimers],
       rivals: this.rivals.map((r) => ({ ...r })),
@@ -1019,6 +1035,9 @@ export class Simulation {
       member.restoreCooldowns(saved.cooldowns);
       if (saved.present) member.arrive(saved.tile);
     }
+
+    this.recruitClock = data.recruitClock;
+    this.recentShip = data.recentShip ? { ...data.recentShip, tags: [...data.recentShip.tags] } : null;
 
     const player = data.player;
     this.player.hoursToday = player.hoursToday;
@@ -1303,48 +1322,66 @@ export class Simulation {
     }
   }
 
-  /** Reputation is what makes people consider the place at all (§5). */
-  private openApplicants() {
-    const { reputation, applicants } = store.getState();
-    const known = new Set(this.members.map((m) => m.id));
-    for (const data of APPLICANTS) {
-      if (known.has(data.id) || applicants.includes(data.id)) continue;
-      if ((data.repRequired ?? 0) > reputation) continue;
-      store.getState().openApplicant(data.id);
-      this.log(`${data.name} has been asking about joining.`, 'good');
-    }
+  /**
+   * One clock governs how fast word gets around, and difficulty sets its speed (§3c).
+   * Reputation still decides *who* is interested; this decides how fast the queue moves.
+   *
+   * It caps at the threshold rather than banking days, so a quiet stretch cannot pay out
+   * three people at once — and if nobody qualifies yet the clock simply sits full, so the
+   * next person to clear their reputation bar arrives immediately rather than waiting twice.
+   */
+  private tickRecruiting() {
+    const every = DIFFICULTY_MAP[store.getState().difficulty].recruitEvery;
+    this.recruitClock = Math.min(this.recruitClock + 1, every);
+    if (this.recruitClock < every) return;
+    const next = this.nextApplicant();
+    if (!next) return;
+    this.recruitClock -= every;
+    store.getState().openApplicant(next.data.id);
+    this.log(
+      next.via
+        ? `${next.data.name} got in touch after seeing the ${next.via} write-up.`
+        : `${next.data.name} has been asking about joining.`,
+      'good',
+    );
   }
 
-  /** §5 — a shipped project pulls in people who care about that kind of thing. */
-  private recruit(project: ProjectData) {
+  /**
+   * Who turns up next. Normally the nearest name on the reputation ladder — but a project
+   * shipped in the last few days pulls its own enthusiast forward instead, and seeing the
+   * write-up gets them halfway past their reputation bar rather than all the way. That is
+   * what keeps shipping the thing that shapes your crew, without letting a prolific month
+   * outrun the difficulty's pace: it changes *who* arrives, never how many.
+   */
+  private nextApplicant(): { data: MemberData; via?: string } | null {
+    const { reputation, applicants } = store.getState();
     const known = new Set(this.members.map((m) => m.id));
-    const open = new Set(store.getState().applicants);
+    const open = new Set(applicants);
     const pool = APPLICANTS.filter((a) => !known.has(a.id) && !open.has(a.id));
-    if (!pool.length) return;
+    if (!pool.length) return null;
 
-    // Seeing the write-up gets you halfway past somebody's reputation bar, not all the way:
-    // otherwise the best person in town turns up on day five because of a lucky tag match.
-    const reputation = store.getState().reputation;
-    const tempted = pool
-      .map((data) => {
-        const match = Math.max(0, ...project.tags.map((tag) => data.passions[tag] ?? 0));
-        return { data, match };
-      })
-      .filter(
-        (entry) =>
-          entry.match >= RECRUIT.matchFloor &&
-          (entry.data.repRequired ?? 0) * RECRUIT.shipGateRelief <= reputation,
-      )
-      .sort((a, b) => b.match - a.match);
-    if (!tempted.length) return;
-
-    const [lo, hi] = RECRUIT.perShip;
-    const count = Math.min(rng.int(lo, hi), tempted.length);
-    for (let i = 0; i < count; i += 1) {
-      const { data } = tempted[i];
-      store.getState().openApplicant(data.id);
-      this.log(`${data.name} got in touch after seeing the ${project.name} write-up.`, 'good');
+    const ship = this.recentShip;
+    if (ship && this.day - ship.day <= RECRUIT.shipMemoryDays) {
+      const tempted = pool
+        .map((data) => ({ data, match: Math.max(0, ...ship.tags.map((tag) => data.passions[tag] ?? 0)) }))
+        .filter(
+          (entry) =>
+            entry.match >= RECRUIT.matchFloor &&
+            (entry.data.repRequired ?? 0) * RECRUIT.shipGateRelief <= reputation,
+        )
+        .sort((a, b) => b.match - a.match);
+      if (tempted.length) return { data: tempted[0].data, via: ship.name };
     }
+
+    const ready = pool
+      .filter((data) => (data.repRequired ?? 0) <= reputation)
+      .sort((a, b) => (a.repRequired ?? 0) - (b.repRequired ?? 0));
+    return ready.length ? { data: ready[0] } : null;
+  }
+
+  /** §5 — what you just shipped is what the next person through the door cared about. */
+  private recruit(project: ProjectData) {
+    this.recentShip = { tags: [...project.tags], name: project.name, day: this.day };
   }
 
   /** Ask somebody to leave. It costs you their dues, so this is a last resort now. */
@@ -1677,6 +1714,10 @@ export class Simulation {
       projects: this.projects.map((p) => structuredClone(p)),
       rivals: this.rivals.map((r) => ({ ...r })),
       season: this.season,
+      recruitIn: Math.max(
+        0,
+        DIFFICULTY_MAP[store.getState().difficulty].recruitEvery - this.recruitClock,
+      ),
       player: (() => {
         const snap = this.player.playerSnapshot();
         const project = this.player.project ? this.project(this.player.project) : null;

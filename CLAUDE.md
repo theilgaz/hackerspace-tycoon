@@ -168,11 +168,18 @@ names) and every part with its machine hours — or, for software, the line that
 touches the machine queue at all. `npm run click-check` asserts the box is identical on every
 step; without the fix it measures 529 → 326 → 238 → 474.
 
-**Crews are picked on the pitch screen.** Each backlog and catalog card carries a crew selector
-listing unallocated members ranked by passion match, capped at the project's team size. Pitching
-asks each of them — so a crew you picked can still turn up short, which is the volunteer model
-surviving contact with a convenience feature. Mid-project changes still happen on the project
-card.
+**Crews are picked on the pitch screen, and they arrive already picked.** Each backlog and
+catalog card carries a crew selector listing unallocated members ranked by passion match,
+capped at the project's team size. Choosing a project **ticks the best of them for you** — the
+crew step should open on the answer, not on an empty form, because ranking the list and then
+making the player re-derive the top of it is work the screen has already done.
+
+Two rules keep the suggestion from being a nuisance: anybody who has since been taken is
+dropped before it fills, and **a draft the player has touched is never suggested over again**
+(`draftTouched`), so stepping back and forth cannot undo a hand-picked crew. Pitching still
+asks each of them and they can still refuse — the suggestion decides who gets asked, never who
+says yes, which is the volunteer model surviving contact with a convenience feature.
+Mid-project changes still happen on the project card.
 
 ## 3a. You (the player character)
 
@@ -263,10 +270,34 @@ print-heavy and arrives in twelve days. The bottleneck moves.
 
 ## 3c. Starting, and the other spaces (§11)
 
-**Difficulty is chosen at the start, and only ever changes the competition** — rival pace,
-rival reputation, and how much cash you open with. Your own pipeline, hours and costs are
-identical at every setting, so intuition and advice carry across. On top of it the rivals gain
-a yearly ramp, so a long game keeps tightening instead of settling once you are ahead.
+**Difficulty is chosen at the start, and what it changes is your crew** — how many people are
+on the books on day one, how fast more get in touch, how hard the other spaces push, and how
+much cash you open with. The *rules* never change: a stage costs the same work, a print takes
+the same hours, a bill charges the same rent, so intuition and advice still carry across. On
+top of it the rivals gain a yearly ramp, so a long game keeps tightening instead of settling.
+
+| | Crew on day one | Somebody new | Rivals | Opening cash |
+|---|---|---|---|---|
+| **Easy** | 10 | every 10 days | x0.95 | 10,000 |
+| **Normal** | 4 | every 30 days | x1.00 | 7,000 |
+| **Hard** | 2 | every 40 days | x1.00 | 5,000 |
+
+**People are the honest difficulty knob**, because §13 established that hands in the building
+are the binding constraint. Measured over eight seeds each: easy ends with fifteen on the books
+and finishes at 2.3x the field, normal eleven and 1.4x, hard seven and 1.12x — winning six
+seeds in eight and never falling below third. That last line is the target shape for hard: you
+usually win, you sometimes do not, and you are never buried.
+
+**The rival multipliers flattened when the crew took over.** They used to run 0.7 / 1.0 / 1.3,
+which was tuned when every setting handed you the same fifteen people. Stacked on top of a crew
+handicap it made hard unwinnable — last place in every seed, three runs in eight evicted.
+Hard's own multiplier is now the same as normal's, and the setting is carried by the crew, the
+opening cash and the steeper yearly ramp. **Two handicaps on the same axis multiply; check the
+shape of a run, not just its headline number.**
+
+**A start-of-run headcount needs the ladder behind it.** The day-one crew is taken from the
+*top* of the applicant ladder in reputation order, so an easy start is simply the people you
+would have recruited first — not a different cast, and the remaining rungs still read in order.
 
 **The run starts with a name and a badge.** A start screen asks what the place is called and
 which of eight badges it wears; nothing ticks until the doors open. The name and badge follow
@@ -387,6 +418,12 @@ Winning pays reputation. Two tuning notes worth keeping:
   raised so the prolific space stays the prolific one. **When a cost is removed, find what it
   was really limiting** — it was never survival, it was the speed the roster filled.
 
+- **A metric that cannot move is a broken metric.** `era-pace` at three difficulties produced
+  identical output three runs running, because the sweep script rebuilt `difficulty.ts` from
+  its own defaults each time and the values under test were never written. The numbers were
+  plausible — they were last run's. Before trusting a sweep, change one input to something
+  absurd and check the output moves.
+
 - **Rent has to be payable by the roster you will actually have when the lease lands.** Era
   advance is automatic — it fires on reputation — so the player cannot choose to stay small a
   while longer. Pricing Era 2's rent at ₺18,000 against dues evicted a run on day 61 that had
@@ -447,6 +484,24 @@ Stage renaming is what makes a genre feel like itself: a software build runs
 `Spec → Architecture → Prototype → Build Pipeline → Implementation → QA → Bugfix → Launch`,
 at a desk, on the `software` skill. **Always resolve stages through `stageLabel` / `stageSkill` /
 `stageStation`,** never by reading `STAGE_MAP` or `STAGE_STATION` directly.
+
+### How fast people turn up (`Simulation.tickRecruiting`)
+
+One clock governs recruitment and **difficulty sets its speed** (§3c). Reputation still decides
+*who* is interested — the applicant ladder is unchanged — and the clock decides how fast the
+queue moves. Three details, each of which was a bug waiting to happen:
+
+- **It caps rather than banks.** A quiet stretch cannot pay out three people at once.
+- **A full clock waits.** If nobody has cleared their reputation bar yet the clock sits full, so
+  the next person to qualify arrives immediately instead of serving a second full wait.
+- **Shipping changes who, never how many.** A project shipped in the last few days pulls its own
+  enthusiast forward (past half their reputation bar, as before) instead of adding arrivals. The
+  old version opened one or two people per ship, which at ninety-odd ships a run would have
+  flattened the difficulty setting entirely.
+
+**Say the pace out loud.** The People panel prints "somebody gets in touch in N days", or
+"word is out — waiting on reputation" when the clock is full and nobody qualifies. A pace the
+player cannot see reads as the applicant list being broken — §13's rule about invisible gates.
 
 ### Rating people against a genre
 
@@ -877,9 +932,11 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     elapsed days per stage. Use it whenever a stage feels the wrong length.
   - `npm run project-times` — best-case length of every catalog entry against its declared
     tier. Run it after any change to `catalog.ts`; `TOO LONG` is a failure, not an opinion.
-  - `npm run era-pace` — what day each era arrives for a committed player, plus the final
-    standings against the five rival spaces. Run it after changing throughput, team sizes,
-    the catalog, or anything in `rivals.ts`.
+  - `npm run era-pace [seeds] [easy|normal|hard]` — what day each era arrives for a committed
+    player, plus the final standings against the rival spaces. Run it after changing
+    throughput, team sizes, the catalog, or anything in `rivals.ts` — **and run all three
+    difficulties**, since they now hand the player different crews and a change that suits one
+    can break another.
   - `npm run click-check` — needs `npm run dev` running. Drives the real UI with real mouse
     press/release pairs while the sim runs, and counts DOM rebuilds. Run it after touching
     anything in `src/ui/`.

@@ -2,10 +2,11 @@
 import { Simulation } from '@/systems/Simulation';
 import { store, emptyRuntime } from '@/game/store';
 import { rng } from '@/utils/rng';
-import { FILAMENT, START_CASH, VERB_HOURS } from '@/utils/constants';
+import { FILAMENT, VERB_HOURS } from '@/utils/constants';
 import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 import { partsPending } from '@/systems/ProjectSystem';
 import { ECONOMY } from '@/utils/economy';
+import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
 import { STAGE_STATION } from '@/machines/layout';
 
 const rows: string[] = [];
@@ -13,9 +14,12 @@ const standings: string[] = [];
 const firstNight: string[] = [];
 const outcomes: string[] = [];
 const SEEDS = Number(process.argv[2] ?? 4);
+// Difficulty now sets the crew you start with and how fast more arrive, so it has to be
+// measurable here rather than assumed to be 'normal'.
+const LEVEL = (process.argv[3] ?? 'normal') as DifficultyKey;
 for (let seed = 1; seed <= SEEDS; seed += 1) {
   rng.reseed(seed);
-  store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation: 0, ceremony: null, ceremonies: [], bill: null, bills: [], missedBills: 0, gameOver: null,
+  store.setState({ difficulty: LEVEL, cash: DIFFICULTY_MAP[LEVEL].startCash, log: [], era: 1, shippedCount: 0, reputation: 0, ceremony: null, ceremonies: [], bill: null, bills: [], missedBills: 0, gameOver: null,
     ceremony: null,
     ceremonies: [],
     bill: null,
@@ -152,7 +156,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       `           open: ${stuck.join(', ') || 'none'}`,
   );
 }
-console.log('\n  ERA PACING (220 days, engaged player)\n' + rows.join('\n'));
+console.log(`\n  ERA PACING (220 days, engaged player, ${LEVEL})\n` + rows.join('\n'));
 const wins = firstNight.reduce((n, line) => n + (line.match(/: US/g) ?? []).length, 0);
 console.log(
   `\n  FIRST AWARDS NIGHT (day 90) — you took ${wins} of ${firstNight.length * 4} across ${firstNight.length} runs\n` +

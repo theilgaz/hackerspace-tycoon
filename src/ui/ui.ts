@@ -190,6 +190,8 @@ export class UI {
   private readonly handlers: UIHandlers;
   /** Crews picked on the pitch screen but not yet pitched. Survives the re-render. */
   private draftTeams = new Map<string, Set<string>>();
+  /** Drafts the player has actually touched — those are never re-suggested over. */
+  private draftTouched = new Set<string>();
   private lastState: GameState | null = null;
   /** Last HTML written per section, so unchanged sections keep their DOM nodes. */
   private htmlCache = new Map<string, string>();
@@ -399,17 +401,21 @@ export class UI {
           this.jobs.size = value as SizeFilter;
           this.rerender();
           break;
-        case 'jobs-project':
+        case 'jobs-project': {
           this.jobs.defId = id ?? null;
           this.jobs.offerId = id2 || null;
           this.jobs.step = 'crew';
+          const chosen = id ? CATALOG_MAP[id] : null;
+          if (chosen && this.lastState) this.suggestCrew(chosen, this.lastState);
           this.rerender();
           break;
+        }
         case 'pitch': {
           if (!id) break;
           const draft = [...(this.draftTeams.get(id) ?? [])];
           h.pitch(id, id2 || undefined, draft);
           this.draftTeams.delete(id);
+          this.draftTouched.delete(id);
           this.openModal = null;
           this.rerender();
           break;
@@ -421,6 +427,8 @@ export class UI {
           if (set.has(id2)) set.delete(id2);
           else if (set.size < def.teamSize) set.add(id2);
           this.draftTeams.set(id, set);
+          // From here the crew is the player's, not a suggestion — stop overwriting it.
+          this.draftTouched.add(id);
           this.rerender();
           break;
         }
@@ -637,13 +645,21 @@ export class UI {
                     ${on ? `<span class="diff-tick">${icon('check')}</span>` : ''}
                   </div>
                   <span class="ui-option__desc ui-clamp-3">${esc(level.blurb)}</span>
-                  <span class="ui-badge ui-badge--tone">${money(level.startCash)} to start</span>
+                  <span class="ui-row__meta" style="margin:0">
+                    <span class="ui-badge ui-badge--tone" title="people on the books on day one">
+                      ${icon('users')}${level.startMembers} to start
+                    </span>
+                    <span class="ui-badge" title="how often somebody new gets in touch">
+                      ${icon('clock')}1 every ${level.recruitEvery}d
+                    </span>
+                    <span class="ui-badge" title="opening cash">${icon('coins')}${money(level.startCash)}</span>
+                  </span>
                 </button>`;
               }).join('')}
             </div>
             <p class="ui-desc start-note">
-              Difficulty only moves the other spaces. Your own hours, costs and pipeline are
-              the same at every setting.
+              Difficulty sets your crew and how fast it grows, plus how hard the other spaces
+              push. Your hours, costs and pipeline are the same at every setting.
             </p>
           </section>
 
@@ -1183,6 +1199,13 @@ export class UI {
       foot: next
         ? `<span class="ui-desc" style="font-size:10.5px">
              Dues ${money(members.length * ECONOMY.crewDues)} a month ·
+             ${
+               // A pace you cannot see reads as a broken list, so say both halves out loud:
+               // how long until word gets around, and who it has to reach.
+               state.runtime.recruitIn > 0
+                 ? `somebody gets in touch in <b>${state.runtime.recruitIn}d</b>`
+                 : `word is out — waiting on reputation`
+             } ·
              next along: <b>${next.name}</b> at ${next.repRequired} reputation — you have ${state.reputation}.
            </span>`
         : `<span class="ui-desc" style="font-size:10.5px">Everybody in town knows about you now.</span>`,
@@ -1679,13 +1702,35 @@ export class UI {
 
   // --- backlog --------------------------------------------------------------
 
-  /** Pick the crew before you commit — they are asked the moment you pitch (§3b). */
-  private draftPicker(def: ProjectDef, state: GameState): string {
-    const picked = this.draftTeams.get(def.id) ?? new Set<string>();
-    const free = state.runtime.members
+  /** Everybody free, best match for this kind of work first. The picker's order, and the suggestion's. */
+  private rankedFree(def: ProjectDef, state: GameState) {
+    return state.runtime.members
       .filter((m) => !m.team)
       .map((m) => ({ m, match: categoryAffinity(MEMBER_DATA[m.id]?.passions ?? {}, def.category) }))
       .sort((a, b) => b.match - a.match);
+  }
+
+  /**
+   * Arrive at the crew step with the obvious answer already ticked — the best matches for
+   * this genre, up to the team size. Anyone who has since been taken is dropped first, and a
+   * draft the player has edited by hand is left exactly as they left it.
+   */
+  private suggestCrew(def: ProjectDef, state: GameState) {
+    const free = new Set(state.runtime.members.filter((m) => !m.team).map((m) => m.id));
+    const draft = new Set([...(this.draftTeams.get(def.id) ?? [])].filter((id) => free.has(id)));
+    if (!this.draftTouched.has(def.id)) {
+      for (const { m } of this.rankedFree(def, state)) {
+        if (draft.size >= def.teamSize) break;
+        draft.add(m.id);
+      }
+    }
+    this.draftTeams.set(def.id, draft);
+  }
+
+  /** Pick the crew before you commit — they are asked the moment you pitch (§3b). */
+  private draftPicker(def: ProjectDef, state: GameState): string {
+    const picked = this.draftTeams.get(def.id) ?? new Set<string>();
+    const free = this.rankedFree(def, state);
 
     if (!free.length) {
       return `<div class="ui-card" style="padding:11px">
