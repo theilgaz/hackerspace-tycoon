@@ -1,5 +1,20 @@
 import * as THREE from 'three';
 
+import { GRID } from '@/machines/layout';
+
+/**
+ * How far back to stand so the whole floor is in shot. The room is drawn isometrically, so
+ * its on-screen size grows with `width + height` rather than with either alone.
+ */
+function fitFrustum(aspect: number): number {
+  // Calibrated off the garage: a 6x8 floor (span 7) frames correctly at 7.2, so the whole
+  // room fits at about span x 1.05. Narrow windows need more still, since the frustum is
+  // expressed vertically and the room is wider than it is tall on screen.
+  const span = (GRID.width + GRID.height) * 0.5;
+  const widen = aspect < 1.5 ? 1.5 / Math.max(aspect, 0.8) : 1;
+  return THREE.MathUtils.clamp(span * 1.05 * widen, 5, 26);
+}
+
 /** Orthographic isometric rig with pan/zoom. No character control (CLAUDE.md §11). */
 export class SceneManager {
   readonly scene = new THREE.Scene();
@@ -7,6 +22,8 @@ export class SceneManager {
   readonly renderer: THREE.WebGLRenderer;
 
   private frustum = 7.2;
+  /** Whether the player has zoomed themselves; after that the camera stops second-guessing. */
+  private zoomTouched = false;
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
   private target = new THREE.Vector3(0, 0, 0);
@@ -79,7 +96,8 @@ export class SceneManager {
       'wheel',
       (e) => {
         e.preventDefault();
-        this.frustum = THREE.MathUtils.clamp(this.frustum + e.deltaY * 0.012, 5, 22);
+        this.zoomTouched = true;
+        this.frustum = THREE.MathUtils.clamp(this.frustum + e.deltaY * 0.012, 5, 26);
         this.resize();
       },
       { passive: false },
@@ -95,6 +113,9 @@ export class SceneManager {
     const width = window.innerWidth;
     const height = window.innerHeight;
     const aspect = width / height;
+    // A bigger lease needs a wider shot. Only until the player touches the wheel, though —
+    // after that the framing is theirs and the camera stops having opinions about it.
+    if (!this.zoomTouched) this.frustum = fitFrustum(aspect);
     this.camera.left = -this.frustum * aspect;
     this.camera.right = this.frustum * aspect;
     this.camera.top = this.frustum;

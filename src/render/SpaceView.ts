@@ -76,8 +76,6 @@ export class SpaceView {
   private builtStations = new Set<string>();
   /** Which lease the room is currently painted as. */
   private era = 1;
-  private floorMats: THREE.MeshStandardMaterial[] = [];
-  private wallMat: THREE.MeshStandardMaterial | null = null;
   private stationNodes = new Map<string, THREE.Group>();
   private stationZones = new Map<string, THREE.Mesh>();
   private hovered: string | null = null;
@@ -99,7 +97,6 @@ export class SpaceView {
     const tone = ERA_TONE[this.era];
     const light = mat(tone.floorLight);
     const dark = mat(tone.floorDark);
-    this.floorMats = [light, dark];
     const geo = new THREE.BoxGeometry(TILE, 0.12, TILE);
     for (let y = 0; y < GRID.height; y += 1) {
       for (let x = 0; x < GRID.width; x += 1) {
@@ -113,7 +110,6 @@ export class SpaceView {
 
   private buildWalls() {
     const wallMat = mat(ERA_TONE[this.era].wall);
-    this.wallMat = wallMat;
     const h = 1.8;
     const back = new THREE.Mesh(new THREE.BoxGeometry(GRID.width * TILE + 0.3, h, 0.18), wallMat);
     back.position.copy(toWorld((GRID.width - 1) / 2, -0.6));
@@ -437,15 +433,25 @@ export class SpaceView {
     node.rotation.y = activity === 'working' ? Math.sin(this.elapsed * 2.5) * 0.18 : 0;
   }
 
-  /** Repaint the room when the lease changes; nothing else about the space moves. */
-  setEra(era: number) {
-    const next = Math.min(ERA_TONE.length, Math.max(1, era));
-    if (next === this.era) return;
+  /**
+   * A new lease is a new room: the floor is a different size and a different colour, and
+   * every bench has been carried to a new wall. Cheaper to throw the room away and build it
+   * again than to work out what moved — it happens twice in a run.
+   */
+  setEra(era: number): boolean {
+    const next = Math.min(ERA_TONE.length - 1, Math.max(1, era));
+    if (next === this.era) return false;
     this.era = next;
-    const tone = ERA_TONE[this.era];
-    this.floorMats[0]?.color.set(tone.floorLight);
-    this.floorMats[1]?.color.set(tone.floorDark);
-    this.wallMat?.color.set(tone.wall);
+
+    for (const child of [...this.group.children]) this.group.remove(child);
+    this.builtStations.clear();
+    this.stationNodes.clear();
+    this.stationZones.clear();
+    this.people.clear();
+    this.buildFloor();
+    this.buildWalls();
+    this.syncStations();
+    return true;
   }
 
   update(runtime: RuntimeSnapshot, dt: number) {

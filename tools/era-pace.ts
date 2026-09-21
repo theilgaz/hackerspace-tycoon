@@ -113,9 +113,16 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     }
     // An engaged player buys a printer once one is clearly affordable — the best they can
     // get, since a better printer is simply better and the floor space is the real limit.
-    const shop = sim.buyablePrinters();
-    const pick = [...shop].sort((a, b) => b.price - a.price).find((m) => spendable() >= m.price * 3);
-    if (pick) sim.buyPrinter(pick.id);
+    // Only when printing is actually the hold-up. People are the binding constraint (§13),
+    // so a player who buys a printer every time they can afford one is measuring their own
+    // bad habit rather than the machine — and that is exactly what happened when the
+    // warehouse opened up six more slots.
+    const waiting = sim.machines.reduce((n, m) => n + m.queue.length, 0);
+    if (waiting >= sim.machines.filter((m) => m.type === 'fdm').length * 2) {
+      const shop = sim.buyablePrinters().filter((m) => m.era <= store.getState().era);
+      const pick = [...shop].sort((a, b) => b.price - a.price).find((m) => spendable() >= m.price * 3);
+      if (pick) sim.buyPrinter(pick.id);
+    }
     // Take on anybody who is interested and affordable — the roster is the constraint.
     for (const id of [...store.getState().applicants]) {
       // Take the biggest contract that is comfortably affordable.

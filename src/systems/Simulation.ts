@@ -23,6 +23,7 @@ import {
   STATIONS,
   freeSlots,
   MACHINE_LABEL,
+  applyEraLayout,
   installStation,
   installedStations,
   removeStation,
@@ -133,6 +134,7 @@ export class Simulation {
 
   constructor() {
     resetStations();
+    applyEraLayout(store.getState().era);
     for (const def of STATIONS) {
       if (!FAB_MACHINES.includes(def.type)) continue;
       this.machines.push(this.makeMachine(def));
@@ -1022,6 +1024,8 @@ export class Simulation {
       return false;
     }
     store.setState({ era: next.era });
+    // The floor grows with the lease, and everything goes back against a wall.
+    applyEraLayout(next.era);
     this.log(
       `You signed for ${next.def.name}. ${money(next.def.moveCost)} to move, and the rent goes up.`,
       'good',
@@ -1160,8 +1164,10 @@ export class Simulation {
     this.rivals = data.rivals;
     this.projects = data.projects;
 
-    // Tool-built machines live in a module-level list, so put them back before anything
-    // tries to look one up.
+    // The floor is the lease's size, and tool-built machines live in a module-level list —
+    // both have to be back before anything tries to look a tile up.
+    resetStations();
+    applyEraLayout(store.getState().era);
     for (const station of data.installedStations) {
       const def = installStation(station.type, station.id, station.model, station.label);
       if (def && FAB_MACHINES.includes(station.type)) this.machines.push(this.makeMachine(def));
@@ -1302,6 +1308,15 @@ export class Simulation {
     for (const m of this.members) {
       this.plans.set(m.id, { attending: false, arriveAt: 0, leaveAt: 0 });
     }
+    // A shortlist from day one, so taking somebody on is a choice between people rather than
+    // a yes-or-no on whoever happened to call. The next names on the ladder, rep gate waived:
+    // the joining fee is what limits how many of them you can actually afford.
+    const shortlist = [...APPLICANTS]
+      .filter((a) => !this.members.some((m) => m.id === a.id))
+      .sort((a, b) => (a.repRequired ?? 0) - (b.repRequired ?? 0))
+      .slice(0, RECRUIT.shortlist)
+      .map((a) => a.id);
+    store.setState({ applicants: shortlist, passed: [] });
     this.planDay();
   }
 
@@ -1600,7 +1615,8 @@ export class Simulation {
     const { reputation, applicants } = store.getState();
     const known = new Set(this.members.map((m) => m.id));
     const open = new Set(applicants);
-    const pool = APPLICANTS.filter((a) => !known.has(a.id) && !open.has(a.id));
+    const passed = new Set(store.getState().passed);
+    const pool = APPLICANTS.filter((a) => !known.has(a.id) && !open.has(a.id) && !passed.has(a.id));
     if (!pool.length) return null;
 
     const ship = this.recentShip;
@@ -1791,6 +1807,15 @@ export class Simulation {
 
   canHireFullTime(id: string): boolean {
     return !APPLICANTS.find((a) => a.id === id)?.partTimeOnly;
+  }
+
+  /** Turn an applicant down. Free, and final: they do not come back round. */
+  passApplicant(id: string): boolean {
+    if (!store.getState().applicants.includes(id)) return false;
+    const data = APPLICANTS.find((a) => a.id === id);
+    store.getState().passApplicant(id);
+    this.log(`You told ${data?.name ?? 'them'} it is not the right time.`, 'info');
+    return true;
   }
 
   /** Turn an applicant into a member on a contract. The one place the roster grows. */

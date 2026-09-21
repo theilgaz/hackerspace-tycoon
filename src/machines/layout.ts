@@ -1,8 +1,22 @@
 import type { MachineType, StageKey } from '@/game/types';
 import type { Tile } from '@/utils/grid';
 
-/** Era 1 — the garage (CLAUDE.md §8). The space itself grows in Phase 4. */
+/**
+ * The floor, which **grows with the lease** (§8). Mutated in place by `applyEraLayout` so
+ * everything holding a reference — the renderer, pathfinding — follows without being told.
+ *
+ * The steps are deliberately modest. A bigger room is more walking, and §13 records a run
+ * where volunteers spent 80% of their visit walking and project lengths tripled; `npm run
+ * time-budget` is what keeps this honest.
+ */
 export const GRID = { width: 6, height: 8 };
+
+const ERA_SIZE = [
+  { width: 6, height: 8 },
+  { width: 6, height: 8 }, // the garage
+  { width: 9, height: 10 }, // Unit 4B
+  { width: 12, height: 12 }, // the warehouse
+];
 
 export interface StationDef {
   id: string;
@@ -48,21 +62,29 @@ const STARTING_STATIONS: StationDef[] = [
  * total, and the left wall has exactly enough room for the CNC, the reflow oven and the
  * dry box.
  */
-const PRINTER_SLOTS: { tile: Tile; stand: Tile }[] = [
-  { tile: { x: 4, y: 0 }, stand: { x: 4, y: 1 } },
-  { tile: { x: 2, y: 0 }, stand: { x: 2, y: 1 } },
-  { tile: { x: 5, y: 0 }, stand: { x: 5, y: 1 } },
-];
+// Both pools are derived from the current grid, so a bigger lease is simply more room for
+// kit rather than a set of fixed tiles that end up stranded in the middle of the floor.
+function printerSlots(): { tile: Tile; stand: Tile }[] {
+  // The back wall, working outward from the printer you start with.
+  // Spaced out rather than shoulder to shoulder: a warehouse holds more printers than a
+  // garage, but a wall of nine of them is neither a decision nor a room you want to look at.
+  return [4, 2, 5, 7, 9, 11]
+    .filter((x) => x < GRID.width)
+    .map((x) => ({ tile: { x, y: 0 }, stand: { x, y: 1 } }));
+}
 
-// Tools line the open right-hand side rather than squeezing in between the benches. Six
-// stations along one wall in consecutive rows read as a pile, and it left half the floor bare.
-const TOOL_SLOTS: { tile: Tile; stand: Tile }[] = [
-  { tile: { x: 5, y: 2 }, stand: { x: 4, y: 2 } },
-  { tile: { x: 5, y: 4 }, stand: { x: 4, y: 4 } },
-  { tile: { x: 5, y: 6 }, stand: { x: 4, y: 6 } },
-];
+// Tools line the open right-hand side rather than squeezing in between the benches: six
+// stations along one wall in consecutive rows read as a pile.
+function toolSlots(): { tile: Tile; stand: Tile }[] {
+  const x = GRID.width - 1;
+  const slots: { tile: Tile; stand: Tile }[] = [];
+  for (let y = 2; y <= GRID.height - 3; y += 2) {
+    slots.push({ tile: { x, y }, stand: { x: x - 1, y } });
+  }
+  return slots;
+}
 
-const slotsFor = (type: MachineType) => (type === 'fdm' ? PRINTER_SLOTS : TOOL_SLOTS);
+const slotsFor = (type: MachineType) => (type === 'fdm' ? printerSlots() : toolSlots());
 
 export const MACHINE_LABEL: Record<MachineType, string> = {
   fdm: 'FDM Printer',
@@ -165,7 +187,7 @@ export function stationOfType(type: MachineType): StationDef | undefined {
   return STATIONS.find((s) => s.type === type);
 }
 
-/** Front door — members appear and leave here. */
+/** Front door — members appear and leave here. It follows the far corner as the room grows. */
 export const DOOR: Tile = { x: 0, y: 7 };
 
 /** The aisle. People loiter here rather than inside somebody's workspace. */
@@ -175,6 +197,57 @@ export const IDLE_TILES: Tile[] = [
   { x: 2, y: 5 },
   { x: 4, y: 5 },
 ];
+
+/**
+ * Resize the floor for a lease and put everything back against a wall. Signing for a bigger
+ * unit means rearranging — a bench left on the tile it had in the garage would be standing in
+ * the middle of the warehouse. Station **ids and types are preserved**; only their tiles move.
+ */
+export function applyEraLayout(era: number) {
+  const size = ERA_SIZE[Math.min(ERA_SIZE.length - 1, Math.max(1, era))];
+  GRID.width = size.width;
+  GRID.height = size.height;
+  DOOR.x = 0;
+  DOOR.y = GRID.height - 1;
+
+  const mid = Math.floor(GRID.width / 2);
+  IDLE_TILES.length = 0;
+  IDLE_TILES.push(
+    { x: mid, y: 3 },
+    { x: mid + 1, y: 3 },
+    { x: mid, y: GRID.height - 4 },
+    { x: mid + 1, y: GRID.height - 4 },
+  );
+
+  // The five you start with are anchored to the two walls; the sofa follows the door.
+  const anchors: Record<string, { tile: Tile; stand: Tile }> = {
+    'cad-desk': { tile: { x: 1, y: 0 }, stand: { x: 1, y: 1 } },
+    'printer-1': { tile: { x: 3, y: 0 }, stand: { x: 3, y: 1 } },
+    bench: { tile: { x: 0, y: 2 }, stand: { x: 1, y: 2 } },
+    assembly: { tile: { x: 0, y: 4 }, stand: { x: 1, y: 4 } },
+    // Same rule as the starting arrangement above: out in the middle of the door end,
+    // facing up the room, with its user in front of it rather than behind.
+    lounge: {
+      tile: { x: Math.floor(GRID.width / 2), y: GRID.height - 2 },
+      stand: { x: Math.floor(GRID.width / 2), y: GRID.height - 3 },
+    },
+  };
+
+  const printers = printerSlots().filter((s) => s.tile.x !== 1 && s.tile.x !== 3);
+  const tools = toolSlots();
+  let nextPrinter = 0;
+  let nextTool = 0;
+  for (const station of STATIONS) {
+    const anchor = anchors[station.id];
+    const slot = anchor ?? (station.type === 'fdm' ? printers[nextPrinter++] : tools[nextTool++]);
+    if (!slot) continue; // no room at this size; it keeps the tile it had
+    station.tile = { ...slot.tile };
+    station.stand = { ...slot.stand };
+  }
+
+  BLOCKED.clear();
+  for (const station of STATIONS) BLOCKED.add(`${station.tile.x},${station.tile.y}`);
+}
 
 export function isBlocked(tile: Tile): boolean {
   return BLOCKED.has(`${tile.x},${tile.y}`);

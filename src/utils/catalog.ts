@@ -763,7 +763,7 @@ const CATALOG_DATA: Draft[] = [
     tier: 'large',
     teamSize: 4,
     blurb: 'Azimuth and elevation, driven from a TLE. It finds the ISS and everybody comes outside.',
-    work: { concept: 26, cad: 92, simulation: 58, assembly: 88, iterate: 40, release: 38 },
+    work: { concept: 31, cad: 109, simulation: 68, assembly: 104, iterate: 47, release: 45 },
     parts: [
       fdm('Az Gearbox', 9, 180),
       fdm('El Gearbox', 8, 165),

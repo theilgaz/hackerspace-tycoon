@@ -625,6 +625,8 @@ export const RECRUIT = {
   hireCostPerWeeklyHour: 190,
   /** Your own time, showing them round and doing the paperwork. */
   hireHours: 1,
+  /** Candidates waiting on day one, so the first hire is a pick rather than a yes or no. */
+  shortlist: 3,
 };
 
 /** A capable generalist — good enough to unblock anything, not good enough to do it all. */

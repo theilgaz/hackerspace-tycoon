@@ -363,6 +363,14 @@ await check('People opens and hiring works', async () => {
     })()
   `);
   await click('[data-action="people-open"]');
+  // Candidates live behind their own tab now, reached from the banner above the roster —
+  // the banner being there at all is half of what this checks.
+  const banner = await evaluate(`!!document.querySelector('#modal .candidate-banner [data-action="people-tab"]')`);
+  if (!banner) {
+    console.log('      no candidate banner');
+    return false;
+  }
+  await click('#modal .candidate-banner [data-action="people-tab"]');
   const before = await evaluate(`__game.sim.members.length`);
   const hireable = await evaluate(`document.querySelectorAll('#modal [data-action="hire"]:not([disabled])').length`);
   await click('#modal [data-action="hire"]:not([disabled])');
@@ -371,6 +379,28 @@ await check('People opens and hiring works', async () => {
     console.log(`      hireable=${hireable} roster ${before} -> ${after}`);
   }
   return hireable > 0 && after === before + 1;
+});
+
+await check('People: passing on a candidate removes them, and the roster fits without scrolling', async () => {
+  const open = await evaluate(`__store.getState().applicants.length`);
+  if (open && !(await evaluate(`!!document.querySelector('#modal .candidates')`))) {
+    await click('#modal .candidate-banner [data-action="people-tab"]');
+  }
+  const passed = open
+    ? await (async () => {
+        await click('#modal [data-action="pass-applicant"]');
+        return (await evaluate(`__store.getState().applicants.length`)) === open - 1;
+      })()
+    : true;
+  await click('#modal [data-action="people-tab"][data-value="all"]');
+  // The table used to be wider than the modal; the roster should be read without a scrollbar.
+  const overflow = await evaluate(`(() => {
+    const body = document.querySelector('#modal .modal-body');
+    return body && document.querySelector('#modal .people-table') ? body.scrollWidth - body.clientWidth : -1;
+  })()`);
+  const ok = passed && overflow === 0;
+  if (!ok) console.log(`      passed ${passed}, horizontal overflow ${overflow}px`);
+  return ok;
 });
 
 await check('Jobs: best-fit ranks the catalogue for whoever is free', async () => {

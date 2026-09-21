@@ -53,6 +53,8 @@ export interface GameState {
   reputation: number;
   /** Applicant ids who would consider joining; hiring is a decision, not automatic. */
   applicants: string[];
+  /** Applicants you turned down. They do not ask again. */
+  passed: string[];
   /**
    * Attention right now (§6). Unlike reputation this goes **down** on its own, which is what
    * makes it a clock rather than a score.
@@ -88,6 +90,7 @@ export interface GameState {
   removeOffer: (id: string) => void;
   openApplicant: (id: string) => void;
   closeApplicant: (id: string) => void;
+  passApplicant: (id: string) => void;
   ownMachine: (type: MachineType) => void;
   disownMachine: (type: MachineType) => void;
   recordShipped: (hype: number, record: ShippedRecord) => void;
@@ -130,6 +133,7 @@ export const store = createStore<GameState>((set, get) => ({
   ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
   backlog: [],
   applicants: [],
+  passed: [],
   hype: 0,
   posts: [],
   runtime: emptyRuntime(),
@@ -162,13 +166,13 @@ export const store = createStore<GameState>((set, get) => ({
     const {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      backlog, log, hype, posts, overdraftSince,
+      passed, backlog, log, hype, posts, overdraftSince,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      backlog, log, hype, posts, overdraftSince,
+      passed, backlog, log, hype, posts, overdraftSince,
     };
   },
 
@@ -209,6 +213,11 @@ export const store = createStore<GameState>((set, get) => ({
   openApplicant: (id) =>
     set((s) => (s.applicants.includes(id) ? s : { applicants: [...s.applicants, id] })),
   closeApplicant: (id) => set((s) => ({ applicants: s.applicants.filter((a) => a !== id) })),
+  passApplicant: (id) =>
+    set((s) => ({
+      applicants: s.applicants.filter((a) => a !== id),
+      passed: s.passed.includes(id) ? s.passed : [...s.passed, id],
+    })),
   ownMachine: (type) =>
     set((s) => (s.ownedMachines.includes(type) ? s : { ownedMachines: [...s.ownedMachines, type] })),
   disownMachine: (type) =>

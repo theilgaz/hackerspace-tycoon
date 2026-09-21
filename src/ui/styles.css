@@ -1812,3 +1812,39 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .keyslot--held .keyslot__who { color: var(--primary); }
 /* The one the game would pick, if you want the obvious answer. */
 .ui-toggle.suggested { border-style: solid; border-color: color-mix(in srgb, var(--warning) 55%, transparent); }
+
+/* --- people: roster and candidates ----------------------------------------
+   The roster table has to fit the modal: it used to carry Today and Standing job columns
+   (both said elsewhere — the keyholder row and the scene) and scrolled sideways. */
+.people-table td.note { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+.people-table td.wide { max-width: 190px; }
+
+/* Somebody waiting on an answer is the one thing in this panel that expires into a missed
+   hire, so it sits above the tabs in the accent colour rather than in a row at the bottom. */
+.candidate-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 11px;
+  padding: 8px 8px 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  font-size: 12px;
+}
+.candidate-banner > .ui-icon { color: var(--primary); flex: none; }
+.candidate-banner > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.candidate-banner b { color: var(--primary); }
+
+.candidates { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.candidate { display: flex; flex-direction: column; gap: 5px; padding: 10px 11px; }
+.candidate__head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 2px; }
+.candidate__head .icon-chip { width: 26px; height: 26px; }
+.candidate__head .icon-chip .ui-icon { width: 14px; height: 14px; }
+.candidate__name { font-size: 13px; font-weight: 600; margin-right: 2px; }
+.candidate__meta { font-size: 11px; color: var(--muted-foreground); }
+.candidate__actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.candidate__actions .ui-btn--ghost { margin-left: auto; }
+
+/* Candidates waiting: the People button says so in the accent, like a machine's alert. */
+.bar-item--news .bar-icon { color: var(--primary); }

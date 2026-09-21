@@ -863,9 +863,19 @@ unlocks it.** Moving costs ₺18,000 to Unit 4B and ₺52,000 to the Warehouse, 
 up with the space — so staying in the garage one more month to bank the cash is a real option.
 It used to happen *to* you on a day you had no say in.
 
-**Each lease looks like itself.** The floor and walls repaint on the move: cold concrete in the
-garage, warmer paint in Unit 4B, a pale poured floor in the Warehouse. A move you paid for
-should be visible the moment it happens.
+**Each lease is a bigger room.** The floor grows with it — 6x8 in the garage, 9x10 in Unit 4B,
+12x12 in the Warehouse — and `applyEraLayout` puts every bench back against a wall, because a
+station left on the tile it had in the garage would be standing in the middle of the
+warehouse. Station ids and types are preserved; only their tiles move. The floor and walls
+repaint too: cold concrete, then warmer paint, then a pale poured floor. A move you paid
+₺52,000 for should be visible the moment it happens, and the camera reframes to fit the new
+room unless the player has already set their own zoom.
+
+**The slot pools are derived from the grid, not hardcoded.** A bigger lease is simply more
+room for kit. They are spaced rather than shoulder to shoulder: a warehouse holds more
+printers than a garage, but a wall of nine of them is neither a decision nor a room you want
+to look at — and with people as the binding constraint (§13) the ninth printer is money that
+should have gone somewhere else.
 
 **Implemented so far:** eras gate the catalog and advance on **cumulative reputation** (1800,
 then 6000) — the sum of the hype of everything shipped.

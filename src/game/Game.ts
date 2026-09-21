@@ -78,6 +78,7 @@ export class Game {
       resaleFor: (machineId) => sim.resaleFor(machineId),
       buyablePrinters: () => sim.buyablePrinters(),
       hire: (memberId, employment) => act(() => sim.hire(memberId, employment)),
+      passApplicant: (memberId) => act(() => sim.passApplicant(memberId)),
       post: (projectId, subreddit, claim) => act(() => sim.post(projectId, subreddit, claim)),
       spaceSubject: () => sim.spaceSubject(),
       setRole: (memberId, role) => act(() => sim.setRole(memberId, role)),
@@ -187,7 +188,8 @@ export class Game {
       }
     }
 
-    this.view.setEra(state.era);
+    // A new room needs a new shot of it, so the camera reframes when the floor changes.
+    if (this.view.setEra(state.era)) this.scene.resize();
     this.view.update(state.runtime, dt);
     const over = this.scene.pick(this.pointer.x, this.pointer.y, this.view.pickables);
     if (over !== this.hovered) {

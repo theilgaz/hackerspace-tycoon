@@ -77,6 +77,9 @@ export interface UIHandlers {
   resaleFor(machineId: string): number;
   buyablePrinters(): PrinterModel[];
   hire(memberId: string, employment: Employment): void;
+  passApplicant(memberId: string): void;
+  /** Turn an applicant down. (Declared to match the handler already wired in Game.ts.) */
+  passApplicant(memberId: string): void;
   post(projectId: string, subreddit: string, claim: ClaimKey): void;
   setRole(memberId: string, role: Role | null): void;
   /** What a post about the space itself is judged on — the same one the sim will use. */
@@ -547,6 +550,10 @@ export class UI {
           break;
         case 'hire':
           if (id) h.hire(id, (value as Employment) ?? 'full-time');
+          this.rerender();
+          break;
+        case 'pass-applicant':
+          if (id) h.passApplicant(id);
           this.rerender();
           break;
         case 'jobs-back':
@@ -1030,8 +1037,9 @@ export class UI {
          <span class="bar-label">Machines</span>
          ${jobs ? `<i class="pip">${jobs}</i>` : ''}
        </button>
-       <button class="bar-item ${this.openModal === 'people' ? 'active' : ''}" data-action="people-open"
-         title="Who is here, and who you could take on">
+       <button class="bar-item ${this.openModal === 'people' ? 'active' : ''} ${state.applicants.length ? 'bar-item--news' : ''}"
+         data-action="people-open"
+         title="${state.applicants.length ? `${state.applicants.length} waiting on an answer` : 'Who is here, and who you could take on'}">
          ${icon('users', 'ui-icon bar-icon')}
          <span class="bar-label">People</span>
          ${state.applicants.length ? `<i class="pip">${state.applicants.length}</i>` : ''}
@@ -1510,8 +1518,11 @@ export class UI {
    * The roster as a table, for the same reason as the projects one: you read down the Doing
    * column to find the hours going nowhere. Somebody unallocated still pays dues and still
    * turns up, so a free member is the row you came here to act on — called out in warning
-   * tone and sorted to the top, with applicants in the same table as another state rather
-   * than in a section below the fold.
+   * tone and sorted to the top.
+   *
+   * Candidates are **not** rows. Mixed into the roster they read as people you already have,
+   * and a hire squeezed into the last cell of a wide row was easy to miss. They get their own
+   * tab of cards, and a banner above the tabs whenever anybody is waiting on an answer.
    */
   private peopleBody(state: GameState): { head: string; content: string; foot: string } {
     const members = state.runtime.members;
@@ -1552,10 +1563,8 @@ export class UI {
         <td class="note ${project ? '' : 'warn'}">
           ${project ? esc(project.name) : 'nothing allocated'}
         </td>
-        <td class="num">${m.employment === 'full-time' ? 'Full-time' : `Part-time · ${m.shift}s`}</td>
-        <td class="num">${m.present ? 'in today' : 'away'}</td>
-        <td class="num" title="${m.role ? ROLE_BLURB[m.role] : ''}">
-          ${m.role ? ROLE_LABEL[m.role] : '—'}
+        <td class="num" title="${m.employment === 'full-time' ? '40h a week' : `${m.shift}s`}">
+          ${m.employment === 'full-time' ? 'Full-time' : 'Part-time'}
         </td>
         ${skillCell(m.id)}
         ${traitCell(m.id)}
@@ -1568,41 +1577,58 @@ export class UI {
       </tr>`;
     };
 
-    const applicantRow = (id: string) => {
+    const candidateCard = (id: string) => {
       const data = MEMBER_DATA[id];
       if (!data) return '';
       const canFull = this.handlers.canHireFullTime(id);
-      const offer = (employment: Employment, label: string) => {
+      const top = topCategories(data.passions ?? {}, 1)[0];
+      const profile = top ? profileOf(top.category) : null;
+      const offer = (employment: Employment) => {
         const cost = this.handlers.hireCost(id, employment);
         const ok = this.affordable(state, cost) && hoursLeft >= VERB_HOURS.hire;
-        return `<button class="ui-btn ${employment === 'full-time' ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
+        const label = employment === 'full-time' ? 'Full-time' : 'Part-time';
+        return `<button class="ui-btn ${employment === 'full-time' || !canFull ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
           data-action="hire" data-id="${id}" data-value="${employment}" ${ok ? '' : 'disabled'}
-          title="${weeklyHoursFor(employment)}h a week · pays ${money(ECONOMY.crewDues)} a month in dues">
-          ${label}</button>`;
+          title="${weeklyHoursFor(employment)}h a week · then pays ${money(ECONOMY.crewDues)} a month in dues">
+          ${icon('plus')}${label} · ${money(cost)}</button>`;
       };
-      return `<tr>
-        ${nameCell(id, data.name)}
-        <td class="note">interested</td>
-        <td class="num">${canFull ? 'either' : 'part-time only'}</td>
-        <td class="num">~${data.commitment}h/wk</td>
-        <td class="num">—</td>
-        ${skillCell(id)}
-        ${traitCell(id)}
-        <td class="num">
-          <span class="row" style="gap:5px;justify-content:flex-end">
-            ${canFull ? offer('full-time', `Full-time · ${money(this.handlers.hireCost(id, 'full-time'))}`) : ''}
-            ${offer('part-time', `Part-time · ${money(this.handlers.hireCost(id, 'part-time'))}`)}
+      const traits = (data.traits ?? [])
+        .map((t) => `<span class="ui-badge" title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`)
+        .join('');
+      return `<div class="ui-card candidate">
+        <div class="candidate__head">
+          <span class="icon-chip" style="--tone:${profile?.accent ?? 'var(--muted-foreground)'}">
+            ${profile ? icon(CATEGORY_ICON[top!.category]) : icon('users')}
           </span>
-        </td>
-      </tr>`;
+          <span class="candidate__name">${esc(data.name)}</span>
+          ${traits}
+        </div>
+        <div class="candidate__meta">
+          ${topCategories(data.passions ?? {}, 2)
+            .map(({ category, score }) => `${profileOf(category).label} ${pct(score)}`)
+            .join(' · ')}
+        </div>
+        <div class="candidate__meta">
+          ~${data.commitment}h a week${canFull ? '' : ' · day job, part-time only'}
+        </div>
+        <div class="candidate__actions">
+          ${canFull ? offer('full-time') : ''}
+          ${offer('part-time')}
+          <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="pass-applicant" data-id="${id}"
+            title="Turn ${esc(data.name)} down. Free, but they will not ask again.">Pass</button>
+        </div>
+      </div>`;
     };
 
     const free = members.filter((m) => !m.team);
     const busy = members.filter((m) => m.team);
     const open = state.applicants;
+    // Hiring or passing on the last candidate empties that tab; an empty tab is a dead end.
+    if (this.peopleTab === 'open' && !open.length) this.peopleTab = 'all';
+    const tab = this.peopleTab;
 
     const filters = [
-      { key: 'all' as const, label: 'All', count: members.length + open.length },
+      { key: 'all' as const, label: 'All', count: members.length },
       { key: 'free' as const, label: 'Free', count: free.length },
       { key: 'on' as const, label: 'On a project', count: busy.length },
       { key: 'open' as const, label: 'Interested', count: open.length },
@@ -1611,7 +1637,7 @@ export class UI {
       ${filters
         .map(
           (f) => `<button data-action="people-tab" data-value="${f.key}"
-            aria-pressed="${f.key === this.peopleTab}" ${f.count ? '' : 'disabled'}>
+            aria-pressed="${f.key === tab}" ${f.count ? '' : 'disabled'}>
             ${f.label}<span class="seg-count">${f.count}</span>
           </button>`,
         )
@@ -1709,13 +1735,32 @@ export class UI {
       }`;
 
     const rows =
-      this.peopleTab === 'free'
-        ? free.map(memberRow)
-        : this.peopleTab === 'on'
-          ? busy.map(memberRow)
-          : this.peopleTab === 'open'
-            ? open.map(applicantRow)
-            : [...free.map(memberRow), ...busy.map(memberRow), ...open.map(applicantRow)];
+      tab === 'free' ? free.map(memberRow) : tab === 'on' ? busy.map(memberRow) : [...free, ...busy].map(memberRow);
+
+    const waiting =
+      open.length && tab !== 'open'
+        ? `<div class="candidate-banner">
+            ${icon('users', 'ui-icon')}
+            <span><b>${open.length}</b> ${open.length === 1 ? 'person wants' : 'people want'} to join
+              <span class="muted">· ${open.map((a) => esc(MEMBER_DATA[a]?.name ?? a)).join(', ')}</span></span>
+            <button class="ui-btn ui-btn--primary ui-btn--sm" data-action="people-tab" data-value="open">
+              Review candidates
+            </button>
+          </div>`
+        : '';
+
+    const body =
+      tab === 'open'
+        ? `<div class="candidates">${open.map(candidateCard).join('')}</div>`
+        : rows.length
+          ? `<table class="rank-table people-table">
+              <thead><tr>
+                <th class="space-head">Person</th><th>Doing</th><th>Contract</th>
+                <th>Good at</th><th>Trait</th><th></th>
+              </tr></thead>
+              <tbody>${rows.join('')}</tbody>
+            </table>`
+          : `<p class="ui-desc">Nobody here. Ship something and word gets around.</p>`;
 
     const next = APPLICANTS.filter(
       (a) => !members.some((m) => m.id === a.id) && !open.includes(a.id),
@@ -1724,17 +1769,7 @@ export class UI {
     return {
       head: `<div class="modal-head">${icon('users', 'ui-icon ui-icon--lg')}<b>People</b></div>`,
       content:
-        (members.length ? jobs + `<hr class="ui-sep" />` : '') +
-        chips +
-        (rows.length
-          ? `<table class="rank-table">
-              <thead><tr>
-                <th class="space-head">Person</th><th>Doing</th><th>Contract</th><th>Today</th>
-                <th>Standing job</th><th>Good at</th><th>Trait</th><th></th>
-              </tr></thead>
-              <tbody>${rows.join('')}</tbody>
-            </table>`
-          : `<p class="ui-desc">Nobody here. Ship something and word gets around.</p>`),
+        (members.length ? jobs + `<hr class="ui-sep" />` : '') + waiting + chips + body,
       foot: `<span class="ui-desc" style="font-size:10.5px">
           ${
             free.length
