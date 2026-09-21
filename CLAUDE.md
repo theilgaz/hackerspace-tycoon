@@ -921,6 +921,14 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   screen, after the leaderboard (§3c). You read *down* the payout column to see what paid, and
   the footer totals what the space has earned and made its name on. Wrapping badges (`Q 60%`,
   `2 tests`) could not be compared between two rows at all.
+- **A verb belongs next to the thing it is about.** "You" carried two buttons under the
+  energy bar: Stop, which the bench card already offered on the build you were on, and
+  Calibrate, which had no other home — but the calibration meter it is about lives on the
+  machine card in Machines, and with four printers on the floor a lone Calibrate button was
+  not even clear about which one it meant. Levelling the bed moved there; Stop went; and
+  **You is a readout again** — hours, energy, and what you are on, where the task line is
+  itself the way back to that build on the bench. A panel with no buttons is not a panel
+  missing something.
 - **The right column folds.** Two panels share it, so either can be collapsed to give the
   other the room — the log starts folded at two lines, because that is enough to notice
   something happened, and the roster is what you actually read. **You** moved out of that

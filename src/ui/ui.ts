@@ -2341,15 +2341,14 @@ export class UI {
       <div class="meters" style="margin:7px 0 0 0">
         <div class="meter"><label>energy</label>${bar(p.energy, 100, energyTone)}</div>
       </div>
-      <div class="verbs" style="margin-top:7px">
-        ${p.project || p.activity === 'babysitting' ? `<button class="tiny" data-action="stop-work">Stop</button>` : ''}
-        <button class="tiny" data-action="calibrate">Calibrate</button>
-      </div>
-      <div class="note" style="margin:6px 0 0 0" title="${esc(p.note || 'idle')}">${
-        task && p.stage
-          ? `${esc(task.name)} · ${stageLabel(task.category, p.stage).toLowerCase()}`
-          : esc(p.note || 'idle')
-      }</div>
+      ${
+        task
+          ? `<button class="you-task" data-action="bench-open" data-id="${task.id}"
+               title="Show ${esc(task.name)} on the bench">
+               ${esc(task.name)}${p.stage ? ` · ${stageLabel(task.category, p.stage).toLowerCase()}` : ''}
+             </button>`
+          : `<div class="note" style="margin:7px 0 0 0">${esc(p.note || 'idle')}</div>`
+      }
       ${p.burntOut ? `<p class="defect" style="margin-top:6px">⚠ Running on fumes — tomorrow will be shorter.</p>` : ''}
     `);
   }
@@ -2511,12 +2510,27 @@ export class UI {
       }`;
 
     const refill = machine.consumableMax > 0 ? this.handlers.refillCost(machine.id) : 0;
-    const actions = refill
-      ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="filament" data-id="${machine.id}"
-           ${this.affordable(state, refill) ? '' : 'disabled'}>
-           ${icon('package')}Fill up · ${money(refill)} · ${VERB_HOURS.filament}h
-         </button>`
-      : '';
+    // Levelling the bed lives next to the calibration meter it is about. It used to sit
+    // permanently under the player's energy bar, which is neither where you notice the
+    // drift nor, with four printers on the floor, clear about which one you meant.
+    const actions = `
+      ${
+        refill
+          ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="filament" data-id="${machine.id}"
+               ${this.affordable(state, refill) ? '' : 'disabled'}>
+               ${icon('package')}Fill up · ${money(refill)}
+             </button>`
+          : ''
+      }
+      ${
+        machine.calibration < 0.99
+          ? `<button class="ui-btn ${calLow ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
+               data-action="calibrate"
+               title="You walk over and level it yourself — your hours, not somebody else's.">
+               ${icon('cog')}Level the bed
+             </button>`
+          : ''
+      }`;
 
     const queue = machine.queue.length
       ? machine.queue

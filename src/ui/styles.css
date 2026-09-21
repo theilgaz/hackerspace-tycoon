@@ -1695,3 +1695,21 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 /* A build that is waiting on you is not one to fade into the list. */
 .project--needs { opacity: 1; }
 .project--needs .ui-title { color: var(--foreground); }
+
+/* The one line in You that is also a way back: it names what you are on, and clicking it
+   opens that build on the bench. */
+.you-task {
+  display: block;
+  width: calc(100% + 16px);
+  margin: 7px -8px 0;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.you-task:hover { background: color-mix(in srgb, var(--foreground) 6%, transparent); color: var(--foreground); }
