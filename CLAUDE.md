@@ -339,6 +339,12 @@ expense that would not be fair aimed at a real one.
 Their pace **compounds with their reputation**, as the player's does. Without that they grow
 linearly while the player's roster snowballs, and by day 200 the table is a formality.
 
+**The run keeps a real date.** The space opens on **1 January 2026**; a year is 90 sim-days
+split into twelve months, and the **awards are held every October**, the way a real scene's
+would be. That also means the first ceremony arrives two months before the year is out rather
+than landing on New Year's Eve — which matters, because a player who cannot reach a ceremony
+never sees one of the game's four set pieces.
+
 **A year is 90 days, and it ends with an awards night.** Four categories, judged on the year
 just gone rather than all time, so a bad year costs you even when you are ahead overall:
 
@@ -477,6 +483,16 @@ Winning pays reputation. Two tuning notes worth keeping:
   its own defaults each time and the values under test were never written. The numbers were
   plausible — they were last run's. Before trusting a sweep, change one input to something
   absurd and check the output moves.
+
+- **Building the same thing twice is worth less** (`REPEAT`). Reputation and payout fall away
+  per previous ship of a design, down to a fifth. The cheap fast entries in the catalogue are
+  there to teach the pipeline, and without this the answer to every question is "ship another
+  Space Website" — the work is the same, the novelty is not.
+
+- **The shipped ledger shows the profit, not the takings.** Every outgoing on a build — parts,
+  bounties, expediting — lands on `ProjectData.spent`, so the Projects table can show what the
+  thing actually made, green or red. A payout column on its own flattered every project that
+  had a large bill of materials.
 
 - **Rent has to be payable by the roster you will actually have when the lease lands.** Era
   advance is automatic — it fires on reputation — so the player cannot choose to stay small a
@@ -891,6 +907,14 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   sim-time data (member positions, machine job progress, project stage work) lives in the
   **Simulation**. The sim writes a `runtime` snapshot to the store at 5 Hz; **UI only ever reads the
   store.** Never let a panel reach into the Simulation directly.
+- **An old save is migrated, never discarded.** It used to be thrown away on any version
+  change, on the reasoning that a half-loaded save is worse than none. That is true of a
+  *broken* load and false of a missing field, and since every bump only ever *added*
+  something, four releases in a row silently deleted the player's run — they never once
+  reached an awards night. `migrate()` gives each field added since `MIN_LOADABLE` the value
+  a fresh run would have had. **Only raise `MIN_LOADABLE` when a field genuinely changed
+  meaning and no default can stand in for it.** Losing somebody's save is the worst thing
+  this file can do.
 - **Saving (`src/systems/SaveGame.ts`)** — one `localStorage` slot, autosaved on every day
   rollover and again on `beforeunload`. The store hands over a `snapshot()` of its own fields
   (never `runtime`, which the sim rebuilds on the next publish); the Simulation hands over

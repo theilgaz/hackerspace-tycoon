@@ -32,7 +32,8 @@ const STARTING_STATIONS: StationDef[] = [
   { id: 'printer-1', type: 'fdm', label: 'A1 Mini Combo', model: 'a1-mini', tile: { x: 3, y: 0 }, stand: { x: 3, y: 1 } },
   { id: 'bench', type: 'bench', label: 'Solder Bench', tile: { x: 0, y: 2 }, stand: { x: 1, y: 2 } },
   { id: 'assembly', type: 'assembly', label: 'Assembly Table', tile: { x: 0, y: 4 }, stand: { x: 1, y: 4 } },
-  { id: 'lounge', type: 'lounge', label: 'Sofa & Kettle', tile: { x: 0, y: 6 }, stand: { x: 1, y: 6 } },
+  // The sofa sits at an angle facing the room: nobody puts a sofa nose-first into a wall.
+  { id: 'lounge', type: 'lounge', label: 'Sofa & Kettle', tile: { x: 1, y: 6 }, stand: { x: 2, y: 7 } },
 ];
 
 /**

@@ -273,6 +273,8 @@ export interface ProjectData {
   partsArriveAt: number;
   sponsorCash: number;
   hypeMultiplier: number;
+  /** Everything this build has cost: parts, bounties, expediting. */
+  spent: number;
   proposerId?: string;
   startedOnDay: number;
   /** Consecutive days with nobody — crew or player — working on it. */
@@ -378,6 +380,8 @@ export interface ShippedRecord {
   hype: number;
   /** How long it took, start to ship. */
   days: number;
+  /** What it cost to make, so the record can show a profit rather than a takings. */
+  spent: number;
   testAttempts: number;
   failedPrints: number;
 }

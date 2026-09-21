@@ -32,8 +32,22 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   const arrived: Record<number, number> = {};
   let lastPostDay = 0;
   let night: string | null = null;
+  let stuckTicks = 0;
+  let lastDay = sim.day;
   while (sim.day <= 220) {
     sim.tick(0.05, 4);
+    if (sim.day === lastDay) {
+      stuckTicks += 1;
+      if (stuckTicks > 5000) {
+        console.log(`    STUCK on day ${sim.day}: time=${(sim as any).time} ` +
+          `projects=${sim.projects.length} gameOver=${!!store.getState().gameOver} ` +
+          `cash=${store.getState().cash}`);
+        break;
+      }
+    } else {
+      stuckTicks = 0;
+      lastDay = sim.day;
+    }
     if (store.getState().bill) store.getState().setBill(null);
     if (store.getState().gameOver) break;
     // Keep the next bill covered — the *net* of it, since dues arrive at the same moment.
@@ -183,7 +197,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
 console.log(`\n  ERA PACING (220 days, engaged player, ${LEVEL})\n` + rows.join('\n'));
 const wins = firstNight.reduce((n, line) => n + (line.match(/: US/g) ?? []).length, 0);
 console.log(
-  `\n  FIRST AWARDS NIGHT (day 90) — you took ${wins} of ${firstNight.length * 4} across ${firstNight.length} runs\n` +
+  `\n  FIRST AWARDS NIGHT (October) — you took ${wins} of ${firstNight.length * 4} across ${firstNight.length} runs\n` +
     firstNight.join('\n'),
 );
 console.log('\n  THE BOOKS\n' + outcomes.join('\n'));

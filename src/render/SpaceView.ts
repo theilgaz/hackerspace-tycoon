@@ -128,7 +128,7 @@ export class SpaceView {
       // wall faced away from its own user and its bay lay across its neighbour's.
       const dx = def.stand.x - def.tile.x;
       const dy = def.stand.y - def.tile.y;
-      const yaw = dx > 0 ? -Math.PI / 2 : dx < 0 ? Math.PI / 2 : dy < 0 ? Math.PI : 0;
+      const yaw = dx || dy ? -Math.atan2(dx, dy) : 0;
       zone.rotation.y = yaw;
       zone.position.copy(toWorld(def.tile.x + dx * 0.5, def.tile.y + dy * 0.5, 0.012));
       this.group.add(zone);

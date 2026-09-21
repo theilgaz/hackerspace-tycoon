@@ -54,6 +54,7 @@ export function startProject(entry: BacklogEntry, day: number): ProjectData {
     partsArriveAt: 0,
     sponsorCash: entry.sponsorCash ?? 0,
     hypeMultiplier: entry.hypeMultiplier ?? 1,
+    spent: 0,
     proposerId: entry.proposerId,
     startedOnDay: day,
     idleDays: 0,

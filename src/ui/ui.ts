@@ -832,8 +832,8 @@ export class UI {
       </div>
       <div class="sep"></div>
       <button class="season" data-action="ranking-open"
-        title="Year ${season.year} · ${daysLeft} days to the awards">
-        <span class="season-label">Year ${season.year}</span>
+        title="${season.year} · ${daysLeft} days to the awards in October">
+        <span class="season-label">${season.year}</span>
         <span class="season-bar"><i style="width:${seasonPct.toFixed(1)}%"></i></span>
         <span class="season-left">${daysLeft}d</span>
       </button>
@@ -910,7 +910,7 @@ export class UI {
       `<div class="modal-backdrop">
         <div class="modal ceremony" data-action="noop">
           <header>
-            <div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>Awards night · year ${ceremony.year}</b></div>
+            <div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>Awards night · October ${ceremony.year}</b></div>
           </header>
           <div class="modal-body">
             <p class="ui-desc" style="margin:0 0 14px">
@@ -1064,7 +1064,7 @@ export class UI {
 
     return {
       head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>The other spaces</b>
-        <span class="ui-badge">Year ${season.year}</span>
+        <span class="ui-badge">${season.year}</span>
         <span class="ui-badge${daysLeft <= 10 ? ' ui-badge--accent' : ''}">${daysLeft}d to the awards</span>
       </div>`,
       content: `<table class="rank-table">
@@ -1400,8 +1400,8 @@ export class UI {
         ${traitCell(id)}
         <td class="num">
           <span class="row" style="gap:5px;justify-content:flex-end">
-            ${canFull ? offer('full-time', money(this.handlers.hireCost(id, 'full-time'))) : ''}
-            ${offer('part-time', money(this.handlers.hireCost(id, 'part-time')))}
+            ${canFull ? offer('full-time', `Full-time · ${money(this.handlers.hireCost(id, 'full-time'))}`) : ''}
+            ${offer('part-time', `Part-time · ${money(this.handlers.hireCost(id, 'part-time'))}`)}
           </span>
         </td>
       </tr>`;
@@ -1461,7 +1461,9 @@ export class UI {
               : members.length
                 ? 'Everybody is on something · '
                 : ''
-          }dues ${money(members.length * ECONOMY.crewDues)} a month ·
+          }taking somebody on is a one-off joining fee; they then pay the space
+          ${money(ECONOMY.crewDues)} a month like everybody else — dues are
+          ${money(members.length * ECONOMY.crewDues)} a month ·
           ${
             next
               ? `${
@@ -2439,7 +2441,14 @@ export class UI {
         ${barCell(1, 'good')}
         <td class="note">${record.hype} rep · ${pct(record.quality)}</td>
         <td class="num wide">${record.days}d</td>
-        <td class="num">${record.payout ? money(record.payout) : 'you keep it'}</td>
+        ${(() => {
+          const net = record.payout - record.spent;
+          return `<td class="note ${net >= 0 ? '' : 'bad'}"
+            style="${net > 0 ? 'color:var(--success)' : ''}"
+            title="${money(record.payout)} in, ${money(record.spent)} on parts and bounties">
+            ${net >= 0 ? '' : '−'}${money(Math.abs(net))}
+          </td>`;
+        })()}
       </tr>`;
 
     // Blocked first, then whatever is nearest to shipping: the two reasons to look.
@@ -2485,7 +2494,7 @@ export class UI {
           ? `<table class="rank-table">
               <thead><tr>
                 <th class="space-head">Project</th><th>Stage</th><th>Progress</th>
-                <th>Needs</th><th>Crew</th><th>Paid</th>
+                <th>Needs</th><th>Crew</th><th>Net</th>
               </tr></thead>
               <tbody>${rows.join('')}</tbody>
             </table>`

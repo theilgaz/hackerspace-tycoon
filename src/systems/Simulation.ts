@@ -43,6 +43,7 @@ import {
   PLAYER,
   HYPE,
   RECRUIT,
+  REPEAT,
   SHELVE,
   ROSTER,
   TEAM,
@@ -57,7 +58,7 @@ import {
   weeklyHoursFor,
 } from '@/utils/constants';
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
-import { RIVAL_MAP, YEAR_DAYS } from '@/utils/rivals';
+import { RIVAL_MAP } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
 import type { SaveFile } from './SaveGame';
@@ -66,7 +67,7 @@ import { decayHype, hypePressure, react } from '@/systems/HypeSystem';
 import { SUBREDDIT_MAP } from '@/utils/subreddits';
 import { PRINTER_MAP, PRINTERS, STARTING_PRINTER, type PrinterModel } from '@/utils/printers';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
-import { clock, money, uid } from '@/utils/format';
+import { CALENDAR, awardsDay, clock, gameDate, money, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
 import {
   addWork,
@@ -132,19 +133,7 @@ export class Simulation {
       if (!FAB_MACHINES.includes(def.type)) continue;
       this.machines.push(this.makeMachine(def));
     }
-    // Day one's crew: the fixed roster, topped up from the front of the applicant ladder to
-    // whatever the difficulty says. Taking them in reputation order means an easy start is
-    // simply the people you would have recruited first anyway, not a different cast.
-    const wanted = DIFFICULTY_MAP[store.getState().difficulty].startMembers;
-    const extra = [...APPLICANTS]
-      .sort((a, b) => (a.repRequired ?? 0) - (b.repRequired ?? 0))
-      .slice(0, Math.max(0, wanted - ROSTER.length));
-    this.members = [...ROSTER, ...extra].map((data) => {
-      const member = new MemberEntity({ ...data }, DOOR);
-      member.employment = data.partTimeOnly ? 'part-time' : 'full-time';
-      member.shift = member.employment === 'part-time' ? data.prefers ?? 'morning' : null;
-      return member;
-    });
+    this.seedRoster();
     this.player = new PlayerEntity(DOOR);
     this.player.arrive(DOOR);
     for (const rival of this.rivals) {
@@ -921,10 +910,18 @@ export class Simulation {
       }
     }
 
-    if (def.payout > 0) {
-      store.getState().earn(def.payout);
-      this.incomeThisMonth += def.payout;
-      this.log(`${project.name} shipped on day ${this.day} — ₺${def.payout.toLocaleString('tr-TR')}.`, 'good');
+    const built = store.getState().shipped.filter((r) => r.defId === project.defId).length;
+    const novelty = Math.max(REPEAT.floor, REPEAT.falloff ** built);
+    const payout = Math.round(def.payout * novelty);
+    if (payout > 0) {
+      store.getState().earn(payout);
+      this.incomeThisMonth += payout;
+      this.log(
+        built
+          ? `${project.name} shipped again — ₺${payout.toLocaleString('tr-TR')}, and the room has seen it before.`
+          : `${project.name} shipped on day ${this.day} — ₺${payout.toLocaleString('tr-TR')}.`,
+        'good',
+      );
     } else {
       this.log(`${project.name} shipped on day ${this.day}.`, 'good');
     }
@@ -933,7 +930,7 @@ export class Simulation {
     this.recruit(project);
 
     const before = store.getState().era;
-    const hype = Math.round(def.hype * project.hypeMultiplier);
+    const hype = Math.round(def.hype * project.hypeMultiplier * novelty);
     store.getState().recordShipped(hype, {
       id: project.id,
       defId: project.defId,
@@ -941,9 +938,10 @@ export class Simulation {
       category: project.category,
       day: this.day,
       quality: project.quality,
-      payout: def.payout,
+      payout,
       hype,
       days: this.day - project.startedOnDay,
+      spent: Math.round(project.spent),
       testAttempts: project.testAttempts,
       failedPrints: project.parts.reduce((sum, part) => sum + part.attempts, 0),
     });
@@ -1201,6 +1199,33 @@ export class Simulation {
     this.log(`${member.name} left ${project.name}.`, 'info');
   }
 
+  /**
+   * Day one's crew: the fixed roster, topped up from the front of the applicant ladder to
+   * whatever the difficulty says. Taking them in reputation order means an easy start is
+   * simply the people you would have recruited first anyway, not a different cast.
+   *
+   * This has to be callable *after* construction. The Simulation is built when the page
+   * loads, which is before the player has chosen anything, so the constructor can only ever
+   * see the default difficulty — picking Hard and starting with four people was exactly that.
+   */
+  seedRoster() {
+    const wanted = DIFFICULTY_MAP[store.getState().difficulty].startMembers;
+    const extra = [...APPLICANTS]
+      .sort((a, b) => (a.repRequired ?? 0) - (b.repRequired ?? 0))
+      .slice(0, Math.max(0, wanted - ROSTER.length));
+    this.members = [...ROSTER, ...extra].map((data) => {
+      const member = new MemberEntity({ ...data }, DOOR);
+      member.employment = data.partTimeOnly ? 'part-time' : 'full-time';
+      member.shift = member.employment === 'part-time' ? data.prefers ?? 'morning' : null;
+      return member;
+    });
+    this.plans.clear();
+    for (const m of this.members) {
+      this.plans.set(m.id, { attending: false, arriveAt: 0, leaveAt: 0 });
+    }
+    this.planDay();
+  }
+
   /** Bring somebody into the space as a member. */
   joinMember(data: MemberData): MemberEntity {
     const entity = new MemberEntity({ ...data }, DOOR);
@@ -1365,22 +1390,34 @@ export class Simulation {
   }
 
   /** Difficulty and the yearly ramp, folded into the multipliers the rivals tick on. */
+  /**
+   * Years the run has been going, 1-based. **Not `season.year`**, which is a calendar year:
+   * feeding 2026 into a ramp that expects 1 multiplied the rivals' pace by 162 on day one,
+   * and since their pace compounds with their own reputation it reached millions of ships a
+   * day within a fortnight. The `while (progress >= 1)` loop in `tickRivals` then ran
+   * millions of times per day, which is what looked like a hang.
+   */
+  get yearIndex(): number {
+    return store.getState().ceremonies.length + 1;
+  }
+
   private rivalPressure() {
     const difficulty = DIFFICULTY_MAP[store.getState().difficulty];
-    const year = this.season.year;
     return {
-      pace: difficulty.rivalPace * (1 + (year - 1) * difficulty.yearRamp),
+      pace: difficulty.rivalPace * (1 + (this.yearIndex - 1) * difficulty.yearRamp),
       reputation: difficulty.rivalRep,
     };
   }
 
-  /** Where the current awards year has got to. */
+  /** Where the run has got to on the way to the next awards night. */
   get season(): { year: number; dayOfYear: number; length: number } {
-    const elapsed = this.day - this.yearStart.day;
+    const thisYear = awardsDay(this.day);
+    // Once this year's night has been held, the bar counts toward next October.
+    const due = thisYear > this.yearStart.day ? thisYear : awardsDay(this.day + CALENDAR.daysPerYear);
     return {
-      year: Math.floor((this.day - 1) / YEAR_DAYS) + 1,
-      dayOfYear: Math.min(YEAR_DAYS, elapsed),
-      length: YEAR_DAYS,
+      year: gameDate(this.day).year,
+      dayOfYear: this.day - this.yearStart.day,
+      length: Math.max(1, due - this.yearStart.day),
     };
   }
 
@@ -1422,8 +1459,12 @@ export class Simulation {
 
   /** The awards night, once a year. */
   private checkAwards() {
-    if (this.day - this.yearStart.day < YEAR_DAYS) return;
-    const ceremony = runCeremony(this.season.year - 1, this.scoreboard());
+    // Awards are held every October, so the award year runs October to October and the
+    // first night arrives two months before the calendar year is out — rather than landing
+    // on New Year's Eve, which is both odd and a long wait for a first-time player.
+    const due = awardsDay(this.day);
+    if (this.day < due || due <= this.yearStart.day) return;
+    const ceremony = runCeremony(gameDate(this.day).year, this.scoreboard());
     if (ceremony.reputationGained > 0) {
       store.getState().recordReputation(ceremony.reputationGained);
     }
@@ -1730,6 +1771,7 @@ export class Simulation {
       this.log(`Even on the overdraft, that bounty is out of reach.`, 'bad');
       return false;
     }
+    project.spent += cost;
     project.bounties.push(project.stage);
     for (const m of this.members) {
       m.interest = Math.min(1.4, m.interest + DRIFT.bountyInterest);
@@ -1751,6 +1793,7 @@ export class Simulation {
     // No separate affordability test: `spend` refuses only below the overdraft floor, and
     // a project whose parts were never ordered is a project that can never be assembled.
     if (!store.getState().spend(project.bomCost)) return false;
+    project.spent += project.bomCost;
     project.partsOrdered = true;
     project.partsArriveAt = this.totalHours + project.leadDays * TIME.hoursPerDay;
     return true;
@@ -1788,6 +1831,7 @@ export class Simulation {
       this.log(`Even on the overdraft, expediting is out of reach.`, 'bad');
       return false;
     }
+    project.spent += cost;
     project.partsArriveAt = this.totalHours + remaining * SOURCING.expediteFactor;
     this.log(`Paid to expedite the ${project.name} order.`, 'good');
     return true;
@@ -1891,7 +1935,7 @@ export class Simulation {
       season: this.season,
       recruitIn: Math.max(
         0,
-        DIFFICULTY_MAP[store.getState().difficulty].recruitEvery - this.recruitClock,
+        Math.ceil(DIFFICULTY_MAP[store.getState().difficulty].recruitEvery - this.recruitClock),
       ),
       player: (() => {
         const snap = this.player.playerSnapshot();

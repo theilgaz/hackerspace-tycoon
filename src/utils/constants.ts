@@ -125,6 +125,19 @@ export const DRIFT = {
   cooldownHours: 16,
 };
 
+/**
+ * Building the same thing again is worth less every time. Without this the answer to every
+ * question is "ship another Space Website" — the catalogue has cheap, fast entries on purpose
+ * and they are meant to teach the pipeline, not to be farmed. Reputation and payout both fall
+ * away; the work is the same, the novelty is not.
+ */
+export const REPEAT = {
+  /** Multiplier applied per previous ship of the same design. */
+  falloff: 0.75,
+  /** However many times you have built it, it is never worth quite nothing. */
+  floor: 0.4,
+};
+
 export const BOUNTY = {
   /** Cost scales with remaining work on the stage. */
   costPerWorkUnit: 14,
@@ -278,11 +291,11 @@ export const PLAYER = {
    * `energyRestore / energyDrain` hours, so twelve rested hours sustain about eleven. Change
    * one and the equilibrium moves — check it before assuming the budget is what it says.
    */
-  baseHours: 12,
-  minHours: 4,
+  baseHours: 18,
+  minHours: 6,
   /** Energy per hour of work; restored overnight. Working flat out shrinks tomorrow. */
-  energyDrain: 5,
-  energyRestore: 54,
+  energyDrain: 3.6,
+  energyRestore: 60,
   /** Below this you are burnt out. Kept low enough that a normal long day is not "burnt out". */
   burnoutEnergy: 20,
   /** You are there whenever you like — nights included. The hour budget is the real limit. */

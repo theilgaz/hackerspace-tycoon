@@ -80,6 +80,9 @@ export class Game {
       begin: (name, logo, difficulty) => {
         const badge = LOGOS[logo] ?? LOGOS[0];
         store.getState().begin({ name, icon: badge.icon, colour: badge.colour }, difficulty);
+        // The difficulty is only known now, and it decides the size of the crew — so the
+        // roster is built here rather than in the constructor.
+        sim.seedRoster();
         sim.publish();
       },
       dismissCeremony: () => store.getState().setCeremony(null),
