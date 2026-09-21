@@ -70,7 +70,7 @@ function runOnce(seed: number, mode: Mode): Result {
     missedBills: 0,
     gameOver: null,
     backlog: [],
-    applicants: [],
+    applicants: [], upvotes: 0,
     ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
     runtime: emptyRuntime(),
   });

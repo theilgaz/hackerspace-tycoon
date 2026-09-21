@@ -67,7 +67,7 @@ function run(style: Style, seed: number) {
   store.setState({
     difficulty: LEVEL, cash: DIFFICULTY_MAP[LEVEL].startCash, log: [], era: 1, shippedCount: 0,
     reputation: 0, hype: 0, posts: [], ceremony: null, ceremonies: [], bill: null, bills: [],
-    missedBills: 0, gameOver: null, backlog: [], applicants: [], runtime: emptyRuntime(),
+    missedBills: 0, gameOver: null, backlog: [], applicants: [], upvotes: 0, runtime: emptyRuntime(),
   });
   const sim = new Simulation();
   let posts = 0;

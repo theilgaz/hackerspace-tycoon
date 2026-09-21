@@ -284,22 +284,23 @@ export const TEST = {
  * recruiting the person who would do it faster. This is the only thing standing between
  * the influence model and "tycoon where you are simply the best employee".
  */
+/**
+ * You (§3a). **Your day is one number.** Energy and an hour budget used to be two resources
+ * pointed at the same thing — you spent hours, which drained energy, which shrank tomorrow's
+ * hours — and carrying both meant reading two bars to answer one question. There is now a
+ * single span: you are in the building from `dayStart` and you have `dayHours` of work in
+ * you, and when they are gone the day is over whatever the clock says.
+ *
+ * You start before the crew and finish long after them. That is the whole of your advantage,
+ * and §3a's arc is that it stops mattering: eighteen hours is most of a garage's output and
+ * a rounding error on a warehouse's.
+ */
 export const PLAYER = {
   name: 'You',
-  /**
-   * Hours on a full-energy day. The three numbers below are a set: a day settles at
-   * `energyRestore / energyDrain` hours, so twelve rested hours sustain about eleven. Change
-   * one and the equilibrium moves — check it before assuming the budget is what it says.
-   */
-  baseHours: 18,
-  minHours: 6,
-  /** Energy per hour of work; restored overnight. Working flat out shrinks tomorrow. */
-  energyDrain: 3.6,
-  energyRestore: 60,
-  /** Below this you are burnt out. Kept low enough that a normal long day is not "burnt out". */
-  burnoutEnergy: 20,
-  /** You are there whenever you like — nights included. The hour budget is the real limit. */
-  startHour: 0,
+  /** Hours of work in you, every day, flat. Spent on building and on managing alike. */
+  dayHours: 18,
+  /** You unlock at seven, two hours before the crew's shift starts. */
+  startHour: 7,
   walkSpeed: 22,
 };
 

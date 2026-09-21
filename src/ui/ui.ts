@@ -26,6 +26,7 @@ import {
   APPLICANTS,
   FILAMENT,
   MACHINE,
+  PLAYER,
   ROSTER,
   STAGE_MAP,
   STAGE_ORDER,
@@ -144,7 +145,16 @@ const SOURCE_BADGE: Record<BacklogEntry['source'], { label: string; cls: string 
 };
 
 type JobStep = 'category' | 'project' | 'crew';
-type RankKey = 'projectsThisYear' | 'projects' | 'members' | 'cash' | 'reputationThisYear' | 'reputation';
+type RankKey =
+  | 'projectsThisYear'
+  | 'projects'
+  | 'members'
+  | 'cash'
+  | 'reputationThisYear'
+  | 'growthThisYear'
+  | 'upvotesThisYear'
+  | 'bestBuild'
+  | 'reputation';
 
 /** The clock face of somebody's contract, e.g. "09:00-14:00". */
 
@@ -1167,6 +1177,31 @@ export class UI {
         format: (r) => r.reputationThisYear.toLocaleString('tr-TR'),
       },
       {
+        key: 'growthThisYear',
+        label: 'Rise',
+        title: 'Reputation earned this year, as a share of what it started with',
+        award: 'Rising Star',
+        value: (r) => r.growthThisYear,
+        format: (r) => `${r.growthThisYear}%`,
+      },
+      {
+        key: 'upvotesThisYear',
+        label: 'Votes',
+        title: 'Upvotes this year',
+        award: "People's Choice",
+        value: (r) => r.upvotesThisYear,
+        format: (r) =>
+          r.upvotesThisYear >= 10000 ? `${Math.round(r.upvotesThisYear / 1000)}k` : r.upvotesThisYear.toLocaleString('tr-TR'),
+      },
+      {
+        key: 'bestBuild',
+        label: 'Best',
+        title: 'Hype from the best single build this year',
+        award: 'Best Project',
+        value: (r) => r.bestBuild?.score ?? 0,
+        format: (r) => (r.bestBuild ? String(r.bestBuild.score) : '—'),
+      },
+      {
         key: 'reputation',
         label: 'Rep',
         title: 'Reputation all time',
@@ -1175,7 +1210,8 @@ export class UI {
       },
     ];
 
-    const active = columns.find((c) => c.key === this.rankSort.key) ?? columns[5];
+    const active =
+      columns.find((c) => c.key === this.rankSort.key) ?? columns.find((c) => c.key === 'reputation')!;
     const rows = [...this.handlers.scoreboard()].sort(
       (a, b) => (active.value(a) - active.value(b)) * this.rankSort.dir,
     );
@@ -1240,7 +1276,7 @@ export class UI {
         </div>` +
         (this.rankTab === 'trophies'
           ? this.trophyRoom(state)
-          : `<table class="rank-table">
+          : `<table class="rank-table standings-table">
               <thead><tr><th></th><th class="space-head">Space</th>${head}</tr></thead>
               <tbody>${body}</tbody>
             </table>`),
@@ -2519,16 +2555,18 @@ export class UI {
       return;
     }
     const task = p.project ? state.runtime.projects.find((x) => x.id === p.project) : null;
-    const hoursTone = p.hoursLeft <= 1 ? 'bad' : p.hoursLeft <= 2.5 ? 'warn' : '';
-    const energyTone = p.burntOut ? 'bad' : p.energy < 55 ? 'warn' : 'good';
+    const left = p.hoursLeft / Math.max(1, p.hoursToday);
+    const dayTone = left <= 0.08 ? 'bad' : left <= 0.2 ? 'warn' : 'good';
+    // One bar, because there is one resource. The hours are in the tooltip for anyone
+    // deciding whether a two-hour job still fits; the panel itself is a glance, not a sum.
     return void this.setHTML(this.you, 'you', `
       <div class="row between" style="margin-bottom:6px">
-        <span class="mono" style="font-size:13px">${p.hoursLeft.toFixed(1)}h left</span>
-        <span class="muted" style="font-size:10.5px">of ${p.hoursToday.toFixed(1)}h</span>
+        <span class="mono" style="font-size:13px">${p.present ? 'In today' : 'Gone home'}</span>
+        <span class="muted" style="font-size:10.5px">${Math.round(left * 100)}% left</span>
       </div>
-      ${bar(p.hoursLeft, p.hoursToday, hoursTone)}
-      <div class="meters" style="margin:7px 0 0 0">
-        <div class="meter"><label>energy</label>${bar(p.energy, 100, energyTone)}</div>
+      <div title="${p.hoursLeft.toFixed(1)} of ${p.hoursToday.toFixed(0)} hours left — you are in
+        from ${clock(PLAYER.startHour)} and go home when they run out">
+        ${bar(p.hoursLeft, p.hoursToday, dayTone)}
       </div>
       ${
         task
@@ -2538,7 +2576,6 @@ export class UI {
              </button>`
           : `<div class="note" style="margin:7px 0 0 0">${esc(p.note || 'idle')}</div>`
       }
-      ${p.burntOut ? `<p class="defect" style="margin-top:6px">⚠ Running on fumes — tomorrow will be shorter.</p>` : ''}
     `);
   }
 

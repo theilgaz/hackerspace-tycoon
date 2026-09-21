@@ -1613,14 +1613,18 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 }
 .stage-curtain--left { left: 0; border-right: 1px solid #4d1418; }
 .stage-curtain--right { right: 0; border-left: 1px solid #4d1418; }
+/* Seven awards: a row of four and a centred row of three reads as a podium, where a fixed
+   four-column grid left the second row hanging off the left. */
 .stage-floor {
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
   margin: 0 46px;
   padding-top: 6px;
 }
+.stage-floor .trophy { flex: 0 0 calc((100% - 30px) / 4); min-width: 0; }
 .trophy {
   display: flex;
   flex-direction: column;
@@ -1657,7 +1661,8 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 /* The trophy room: every year you have had, oldest at the bottom. */
 .trophy-year { margin-bottom: 14px; }
 .trophy-year > .ui-label { margin-bottom: 7px; }
-.trophy-shelf { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.trophy-shelf { display: flex; flex-wrap: wrap; gap: 8px; }
+.trophy-shelf .trophy { flex: 0 0 calc((100% - 24px) / 4); min-width: 0; }
 .trophy-shelf .trophy { padding: 9px 5px 8px; background: var(--card); }
 .trophy-shelf .trophy-cup { width: 32px; height: 32px; }
 .trophy-shelf .trophy-cup .ui-icon { width: 18px; height: 18px; }
@@ -1853,3 +1858,8 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 
 /* Candidates waiting: the People button says so in the accent, like a machine's alert. */
 .bar-item--news .bar-icon { color: var(--primary); }
+
+/* Nine numeric columns once the awards reached seven: tighter cells keep the standings inside
+   the modal instead of scrolling sideways. */
+.standings-table td.num { padding: 0 5px; }
+.standings-table thead th button { padding-left: 5px; padding-right: 5px; }

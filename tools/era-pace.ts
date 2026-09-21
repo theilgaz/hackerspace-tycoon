@@ -7,7 +7,8 @@ import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 import { partsPending } from '@/systems/ProjectSystem';
 import { ECONOMY } from '@/utils/economy';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
-import { ROLE_LABEL, type Role } from '@/game/types';
+import { ROLE_LABEL, type Role, type ScoreRow } from '@/game/types';
+import { AWARDS } from '@/utils/rivals';
 
 const ROLES = Object.keys(ROLE_LABEL) as Role[];
 import { CLAIMS, SUBREDDITS, tasteMatch } from '@/utils/subreddits';
@@ -30,14 +31,21 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     bill: null,
     bills: [],
     missedBills: 0,
-    gameOver: null, backlog: [], applicants: [], runtime: emptyRuntime() });
+    gameOver: null, backlog: [], applicants: [], upvotes: 0, runtime: emptyRuntime() });
   const sim = new Simulation();
   const arrived: Record<number, number> = {};
   let lastPostDay = 0;
   let night: string | null = null;
   let stuckTicks = 0;
   let lastDay = sim.day;
+  // The board as it stood on the morning of the awards, read before the night resets the year.
+  let eve: ScoreRow[] = [];
+  let eveDay = 0;
   while (sim.day <= 220) {
+    if (sim.day !== eveDay) {
+      eve = sim.scoreboard();
+      eveDay = sim.day;
+    }
     sim.tick(0.05, 4);
     if (sim.day === lastDay) {
       stuckTicks += 1;
@@ -66,6 +74,17 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
           .map((a) => `${a.category}: ${a.playerWon ? 'US' : a.winnerName}`)
           .join('  ·  ') +
         `\n           [captured day ${sim.day}, rival rep ${sim.rivals.map((r) => r.reputation).join('/')}]` +
+        // The three awards the rivals only approximate: is the player on the field's scale?
+        (() => {
+          const field = eve.filter((r) => !r.isPlayer);
+          const me = eve.find((r) => r.isPlayer)!;
+          const spread = (pick: (r: ScoreRow) => number) => {
+            const v = field.map(pick).sort((x, y) => x - y);
+            return `you ${pick(me)} / field ${v[0]}-${v[Math.floor(v.length / 2)]}-${v[v.length - 1]}`;
+          };
+          return `\n           votes ${spread((r) => r.upvotesThisYear)}  ·  best ${spread((r) => r.bestBuild?.score ?? 0)}` +
+            `  ·  rise% ${spread((r) => r.growthThisYear)}`;
+        })() +
         `\n           crews: ` +
         board
           .slice(0, 4)
@@ -220,7 +239,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
 console.log(`\n  ERA PACING (220 days, engaged player, ${LEVEL})\n` + rows.join('\n'));
 const wins = firstNight.reduce((n, line) => n + (line.match(/: US/g) ?? []).length, 0);
 console.log(
-  `\n  FIRST AWARDS NIGHT (October) — you took ${wins} of ${firstNight.length * 4} across ${firstNight.length} runs\n` +
+  `\n  FIRST AWARDS NIGHT (October) — you took ${wins} of ${firstNight.length * AWARDS.length} across ${firstNight.length} runs\n` +
     firstNight.join('\n'),
 );
 console.log('\n  THE BOOKS\n' + outcomes.join('\n'));

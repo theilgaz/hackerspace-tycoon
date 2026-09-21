@@ -53,6 +53,8 @@ export interface GameState {
   reputation: number;
   /** Applicant ids who would consider joining; hiring is a decision, not automatic. */
   applicants: string[];
+  /** Upvotes from every post that landed, all time. The award year reads its share. */
+  upvotes: number;
   /** Applicants you turned down. They do not ask again. */
   passed: string[];
   /**
@@ -134,6 +136,7 @@ export const store = createStore<GameState>((set, get) => ({
   backlog: [],
   applicants: [],
   passed: [],
+  upvotes: 0,
   hype: 0,
   posts: [],
   runtime: emptyRuntime(),
@@ -166,13 +169,13 @@ export const store = createStore<GameState>((set, get) => ({
     const {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      passed, backlog, log, hype, posts, overdraftSince,
+      passed, upvotes, backlog, log, hype, posts, overdraftSince,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      passed, backlog, log, hype, posts, overdraftSince,
+      passed, upvotes, backlog, log, hype, posts, overdraftSince,
     };
   },
 
@@ -226,6 +229,8 @@ export const store = createStore<GameState>((set, get) => ({
   recordPost: (post, reputationDelta) =>
     set((s) => ({
       posts: [...s.posts, post].slice(-40),
+      // Kept as a running total because the post list is trimmed to the last forty.
+      upvotes: s.upvotes + (post.burned ? 0 : Math.max(0, post.upvotes)),
       hype: Math.max(0, s.hype + post.hype),
       // A burned post takes reputation with it, and reputation gates the era — so a claim
       // the work cannot back up genuinely sets the run back rather than merely not helping.

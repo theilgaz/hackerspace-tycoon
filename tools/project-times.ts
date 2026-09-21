@@ -46,7 +46,7 @@ function runProject(def: ProjectDef, seed: number): number | null {
     missedBills: 0,
     gameOver: null,
     backlog: [],
-    applicants: [],
+    applicants: [], upvotes: 0,
     ownedMachines: [...ALL_MACHINES],
     runtime: emptyRuntime(),
   });

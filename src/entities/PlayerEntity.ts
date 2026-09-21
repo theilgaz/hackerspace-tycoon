@@ -5,14 +5,15 @@ import type { Tile } from '@/utils/grid';
 
 /**
  * You. A member like any other, except: you never drift, you can be told what to do, and
- * your hours are a hard daily budget shared between building and managing (CLAUDE.md §3a).
+ * **your day is a single number** — eighteen hours, spent on building and managing alike
+ * (CLAUDE.md §3a). When they are gone you go home, whatever the clock says.
  *
  * The budget is what keeps the influence model intact. Without it you would simply be the
  * best volunteer in the room and nobody else would matter.
  */
 export class PlayerEntity extends MemberEntity {
-  hoursToday = PLAYER.baseHours;
-  hoursLeft = PLAYER.baseHours;
+  hoursToday = PLAYER.dayHours;
+  hoursLeft = PLAYER.dayHours;
   /**
    * The project you have put yourself on. A project, not a stage — like everyone else on a
    * team, you stay through the stage changes and work whatever currently needs hands.
@@ -36,16 +37,10 @@ export class PlayerEntity extends MemberEntity {
     super(data, startTile);
   }
 
-  get burntOut(): boolean {
-    return this.data.energy < PLAYER.burnoutEnergy;
-  }
-
-  /** Energy shapes tomorrow, not today — overwork is a decision with a delayed bill. */
+  /** A fresh eighteen hours. No carry-over and no hangover: the day is the whole resource. */
   startDay() {
-    this.data.energy = Math.min(100, this.data.energy + PLAYER.energyRestore);
-    const factor = 0.5 + this.data.energy / 200;
-    this.hoursToday = Math.max(PLAYER.minHours, Math.min(PLAYER.baseHours + 1, PLAYER.baseHours * factor));
-    this.hoursLeft = this.hoursToday;
+    this.hoursToday = PLAYER.dayHours;
+    this.hoursLeft = PLAYER.dayHours;
   }
 
   /** Spend hours on a management verb. Returns false when the day is gone. */
@@ -64,7 +59,6 @@ export class PlayerEntity extends MemberEntity {
     const level = skill ? this.data.skills[skill] : 2;
     let rate = MEMBER.baseWorkRate * (1 + (level - 1) * MEMBER.skillRateBonus);
     rate *= 1 + ((this.data.mood - 50) / 50) * MEMBER.moodRateSwing;
-    if (this.burntOut) rate *= 0.7;
     return Math.max(0.1, rate);
   }
 
@@ -74,9 +68,8 @@ export class PlayerEntity extends MemberEntity {
       activity: this.activity,
       hoursToday: this.hoursToday,
       hoursLeft: this.hoursLeft,
-      energy: this.data.energy,
-      strain: Math.max(0, 100 - this.data.energy),
-      burntOut: this.burntOut,
+      // The one bar the UI draws. It *is* the day: hours and energy are the same thing now.
+      energy: (this.hoursLeft / Math.max(1, this.hoursToday)) * 100,
       project: this.project,
       stage: null,
       tile: this.tile,

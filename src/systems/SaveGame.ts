@@ -71,8 +71,8 @@ export interface SaveFile {
   sim: {
     day: number;
     time: number;
-    yearStart: { day: number; projects: number; reputation: number };
-    rivalYearStart: [string, { projects: number; reputation: number }][];
+    yearStart: { day: number; projects: number; reputation: number; upvotes?: number };
+    rivalYearStart: [string, { projects: number; reputation: number; upvotes?: number }][];
     machineHoursThisMonth: number;
     incomeThisMonth: number;
     recruitClock: number;

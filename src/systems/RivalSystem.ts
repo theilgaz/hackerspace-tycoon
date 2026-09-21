@@ -1,5 +1,10 @@
 import type { RivalState, ScoreRow } from '@/game/types';
-import { AWARDS, RIVALS } from '@/utils/rivals';
+import { AWARDS, RIVALS, RIVAL_STANDOUT, RIVAL_UPVOTES_PER_REP } from '@/utils/rivals';
+
+const [boostLow, boostHigh] = RIVAL_STANDOUT.boost;
+/** Keeps the average build's impact at its reputation, so standouts are spread, not inflation. */
+const STANDOUT_NORM =
+  1 / (1 - RIVAL_STANDOUT.chance + RIVAL_STANDOUT.chance * ((boostLow + boostHigh) / 2));
 import { rng } from '@/utils/rng';
 
 /**
@@ -16,6 +21,8 @@ export function createRivals(): RivalState[] {
     cash: def.startCash,
     reputation: 0,
     progress: 0,
+    upvotes: 0,
+    bestBuild: null,
   }));
 }
 
@@ -36,7 +43,16 @@ export function tickRivals(rivals: RivalState[], pressure: RivalPressure = { pac
     while (rival.progress >= 1) {
       rival.progress -= 1;
       rival.projects += 1;
-      rival.reputation += Math.round(def.repPerProject * pressure.reputation * rng.range(0.7, 1.3));
+      const earned = Math.round(def.repPerProject * pressure.reputation * rng.range(0.7, 1.3));
+      rival.reputation += earned;
+      // How loud the build was. A standout changes this and only this: fed into reputation it
+      // compounded through `paceGrowth` and the field finished a third higher than it should.
+      const standout = rng.chance(RIVAL_STANDOUT.chance) ? rng.range(boostLow, boostHigh) : 1;
+      const impact = Math.round(earned * standout * STANDOUT_NORM);
+      rival.upvotes += Math.round(impact * RIVAL_UPVOTES_PER_REP * def.online * rng.range(0.5, 1.5));
+      if (!rival.bestBuild || impact > rival.bestBuild.score) {
+        rival.bestBuild = { name: rng.pick(def.builds), score: impact };
+      }
       rival.cash += Math.round(def.cashPerProject * rng.range(0.6, 1.4));
     }
 
@@ -69,14 +85,19 @@ export interface Ceremony {
  * time — otherwise the first winner keeps winning and the ceremony stops meaning anything.
  */
 export function runCeremony(year: number, rows: ScoreRow[]): Ceremony {
+  const winners = new Map<string, string>();
   const awards: CeremonyAward[] = AWARDS.map((award) => {
-    const best = [...rows].sort((a, b) => award.value(b) - award.value(a))[0];
+    const barred = award.notWinnerOf ? winners.get(award.notWinnerOf) : undefined;
+    const best = rows
+      .filter((row) => row.id !== barred)
+      .sort((a, b) => award.value(b) - award.value(a))[0];
+    winners.set(award.label, best.id);
     return {
       category: award.label,
       blurb: award.blurb,
       winnerId: best.id,
       winnerName: best.name,
-      value: award.format(award.value(best)),
+      value: award.format(award.value(best), best),
       playerWon: best.id === 'player',
     };
   });

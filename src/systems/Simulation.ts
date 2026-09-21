@@ -5,6 +5,7 @@ import type {
   MemberData,
   RivalState,
   ScoreRow,
+  ShippedRecord,
   MachineSnapshot,
   MachineType,
   ProjectData,
@@ -63,7 +64,7 @@ import {
 } from '@/utils/constants';
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
 import { ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
-import { RIVAL_MAP } from '@/utils/rivals';
+import { RIVAL_MAP, RISING_FLOOR } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
 import type { SaveFile } from './SaveGame';
@@ -124,8 +125,8 @@ export class Simulation {
   private requeueTimers = new Map<string, number>();
   /** The other spaces in town, and where we are in the awards year (§11). */
   rivals: RivalState[] = createRivals();
-  private yearStart = { day: 1, projects: 0, reputation: 0 };
-  private rivalYearStart = new Map<string, { projects: number; reputation: number }>();
+  private yearStart = { day: 1, projects: 0, reputation: 0, upvotes: 0 };
+  private rivalYearStart = new Map<string, { projects: number; reputation: number; upvotes: number }>();
   /** Bumped every day so the host can autosave without polling. */
   dayRolled = false;
   /** Machine-hours run since the last bill, for the utilities line. */
@@ -153,7 +154,7 @@ export class Simulation {
     this.player = new PlayerEntity(DOOR);
     this.player.arrive(DOOR);
     for (const rival of this.rivals) {
-      this.rivalYearStart.set(rival.id, { projects: 0, reputation: 0 });
+      this.rivalYearStart.set(rival.id, { projects: 0, reputation: 0, upvotes: 0 });
     }
     this.planDay();
     this.player.startDay();
@@ -641,7 +642,9 @@ export class Simulation {
   private tickPlayer(dt: number) {
     const p = this.player;
 
-    if (p.hoursLeft <= 0) {
+    // Out of hours is either "spent them" or "before you open up" — the day is a span as
+    // well as a budget, so midnight does not put you back on the floor with a fresh eighteen.
+    if (p.hoursLeft <= 0 || this.time < PLAYER.startHour) {
       if (!p.present) return;
       if (p.tile.x === DOOR.x && p.tile.y === DOOR.y && !p.walking) {
         p.leave();
@@ -725,7 +728,6 @@ export class Simulation {
 
   private spendPlayerTime(dt: number) {
     this.player.hoursLeft = Math.max(0, this.player.hoursLeft - dt);
-    this.player.data.energy = Math.max(0, this.player.data.energy - PLAYER.energyDrain * dt);
   }
 
   /** Charge a management verb against today's budget. */
@@ -1165,13 +1167,20 @@ export class Simulation {
   restore(data: SaveFile['sim']) {
     this.day = data.day;
     this.time = data.time;
-    this.yearStart = { ...data.yearStart };
-    this.rivalYearStart = new Map(data.rivalYearStart);
+    // Upvotes and best builds arrived with the second set of awards; older saves have neither.
+    this.yearStart = { upvotes: 0, ...data.yearStart };
+    this.rivalYearStart = new Map(
+      data.rivalYearStart.map(([id, since]) => [id, { upvotes: 0, ...since }] as const),
+    );
     this.machineHoursThisMonth = data.machineHoursThisMonth;
     this.incomeThisMonth = data.incomeThisMonth;
     this.seeded = new Set(data.seeded);
     this.requeueTimers = new Map(data.requeueTimers);
-    this.rivals = data.rivals;
+    this.rivals = data.rivals.map((rival) => ({
+      ...rival,
+      upvotes: rival.upvotes ?? 0,
+      bestBuild: rival.bestBuild ?? null,
+    }));
     this.projects = data.projects;
 
     // The floor is the lease's size, and tool-built machines live in a module-level list —
@@ -1528,9 +1537,15 @@ export class Simulation {
   /** Everybody on one leaderboard, the player included. */
   scoreboard(): ScoreRow[] {
     const state = store.getState();
+    const growth = (earned: number, startedWith: number) =>
+      Math.round((100 * earned) / Math.max(RISING_FLOOR, startedWith));
+    const best = state.shipped
+      .filter((record) => record.day >= this.yearStart.day)
+      .reduce<ShippedRecord | null>((top, record) => (!top || record.hype > top.hype ? record : top), null);
     const rows: ScoreRow[] = this.rivals.map((rival) => {
       const def = RIVAL_MAP[rival.id];
-      const since = this.rivalYearStart.get(rival.id) ?? { projects: 0, reputation: 0 };
+      const since = this.rivalYearStart.get(rival.id) ?? { projects: 0, reputation: 0, upvotes: 0 };
+      const reputationThisYear = rival.reputation - since.reputation;
       return {
         id: rival.id,
         name: def.name,
@@ -1541,7 +1556,10 @@ export class Simulation {
         members: rival.members,
         cash: rival.cash,
         reputation: rival.reputation,
-        reputationThisYear: rival.reputation - since.reputation,
+        reputationThisYear,
+        growthThisYear: growth(reputationThisYear, since.reputation),
+        upvotesThisYear: rival.upvotes - since.upvotes,
+        bestBuild: rival.bestBuild ? { ...rival.bestBuild } : null,
         isPlayer: false,
       };
     });
@@ -1556,6 +1574,9 @@ export class Simulation {
       cash: state.cash,
       reputation: state.reputation,
       reputationThisYear: state.reputation - this.yearStart.reputation,
+      growthThisYear: growth(state.reputation - this.yearStart.reputation, this.yearStart.reputation),
+      upvotesThisYear: state.upvotes - this.yearStart.upvotes,
+      bestBuild: best ? { name: best.name, score: best.hype } : null,
       isPlayer: true,
     });
     return rows.sort((a, b) => b.reputation - a.reputation);
@@ -1582,9 +1603,19 @@ export class Simulation {
     );
 
     const state = store.getState();
-    this.yearStart = { day: this.day, projects: state.shippedCount, reputation: state.reputation };
+    this.yearStart = {
+      day: this.day,
+      projects: state.shippedCount,
+      reputation: state.reputation,
+      upvotes: state.upvotes,
+    };
     for (const rival of this.rivals) {
-      this.rivalYearStart.set(rival.id, { projects: rival.projects, reputation: rival.reputation });
+      this.rivalYearStart.set(rival.id, {
+        projects: rival.projects,
+        reputation: rival.reputation,
+        upvotes: rival.upvotes,
+      });
+      rival.bestBuild = null;
     }
   }
 

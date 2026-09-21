@@ -129,8 +129,6 @@ export interface PlayerSnapshot {
   hoursLeft: number;
   energy: number;
   /** Consecutive days of overwork; drives the budget down. */
-  strain: number;
-  burntOut: boolean;
   /** Project you have put yourself on, and the stage it is currently at. */
   project: string | null;
   stage: StageKey | null;
@@ -377,6 +375,10 @@ export interface RivalState {
   reputation: number;
   /** Fraction of their current build that is done. */
   progress: number;
+  /** Upvotes their builds have drawn, all time. People's Choice reads the year's share. */
+  upvotes: number;
+  /** Their best single build since the last awards night, by hype. Cleared on the night. */
+  bestBuild: { name: string; score: number } | null;
 }
 
 /** One line of the leaderboard — the player and every rival share this shape. */
@@ -391,6 +393,12 @@ export interface ScoreRow {
   cash: number;
   reputation: number;
   reputationThisYear: number;
+  /** Reputation earned this year as a share of what they walked in with — Rising Star. */
+  growthThisYear: number;
+  /** Upvotes this year — People's Choice. */
+  upvotesThisYear: number;
+  /** The best single build this year, by the hype it made — Best Project. */
+  bestBuild: { name: string; score: number } | null;
   isPlayer: boolean;
 }
 

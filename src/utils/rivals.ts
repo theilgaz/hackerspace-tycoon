@@ -28,6 +28,13 @@ export interface RivalDef {
    * night a walkover, so check both ends before moving it.
    */
   paceGrowth: number;
+  /**
+   * How loud they are on the internet: a multiplier on the upvotes a build draws. Noisebridge
+   * and c-base get talked about; Konya is busy doing the work.
+   */
+  online: number;
+  /** What their best builds are called on awards night. Picked from, in character. */
+  builds: string[];
 }
 
 /**
@@ -53,6 +60,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 90,
     repPerMember: 340,
     paceGrowth: 4500,
+    online: 1.4,
+    builds: ['Space Station Lighting Rig', 'Freifunk Mesh Node', 'Club-Mate Vending Hack'],
   },
   {
     id: 'london-hackspace',
@@ -69,6 +78,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 170,
     repPerMember: 180,
     paceGrowth: 4500,
+    online: 0.9,
+    builds: ['Laser Cutter Rebuild', 'Community Loom', 'Bike Workshop Jig'],
   },
   {
     id: 'konya',
@@ -85,6 +96,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 130,
     repPerMember: 250,
     paceGrowth: 4500,
+    online: 0.6,
+    builds: ['Greenhouse Irrigation Controller', 'Bazaar Scale Retrofit', 'School Robotics Kit'],
   },
   {
     id: 'tokyo',
@@ -101,6 +114,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 90,
     repPerMember: 200,
     paceGrowth: 4500,
+    online: 0.8,
+    builds: ['Disaster Radio Kit', 'Earthquake Sensor Network', 'Neighbourhood Air Monitor'],
   },
   {
     id: 'garaj',
@@ -117,6 +132,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 150,
     repPerMember: 300,
     paceGrowth: 4500,
+    online: 1.1,
+    builds: ['Desk Fan Mod', 'Printed Phone Stand', 'LED Name Badge'],
   },
   {
     id: 'noisebridge',
@@ -133,6 +150,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 25,
     repPerMember: 190,
     paceGrowth: 4500,
+    online: 1.5,
+    builds: ['Open Source Synth', 'Door Access System', 'Circuit Hacking Kit'],
   },
   {
     id: 'nyc-resistor',
@@ -149,6 +168,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 180,
     repPerMember: 300,
     paceGrowth: 4500,
+    online: 1.2,
+    builds: ['Interactive Light Sculpture', 'E-Textile Jacket', 'Laser-Cut Clock'],
   },
   {
     id: 'metalab',
@@ -165,6 +186,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 110,
     repPerMember: 260,
     paceGrowth: 4500,
+    online: 1.0,
+    builds: ['Retro Game Cabinet', 'Wiki Server Rack', 'Soldering Workshop Kit'],
   },
   {
     id: 'dallas',
@@ -185,6 +208,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 150,
     repPerMember: 170,
     paceGrowth: 4500,
+    online: 0.7,
+    builds: ['Electric Go-Kart', 'Forge Controller', 'CNC Plasma Table'],
   },
   {
     id: 'xinchejian',
@@ -201,6 +226,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 120,
     repPerMember: 280,
     paceGrowth: 4500,
+    online: 0.9,
+    builds: ['Swarm Robot Kit', 'Open Hardware Drone', 'Dev Board Breakout'],
   },
   {
     id: 'hacdc',
@@ -217,6 +244,8 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 140,
     repPerMember: 270,
     paceGrowth: 4500,
+    online: 0.8,
+    builds: ['Satellite Ground Station', 'Ham Radio Transceiver', 'SDR Weather Receiver'],
   },
 ];
 
@@ -226,40 +255,90 @@ export interface AwardDef {
   label: string;
   blurb: string;
   value: (row: ScoreRow) => number;
-  format: (value: number) => string;
+  format: (value: number, row: ScoreRow) => string;
   /** Reputation the winner takes home. */
   reputation: number;
+  /**
+   * The winner of that award cannot also take this one; it goes to the runner-up. Rising
+   * Star would otherwise just be Space of the Year twice: in the first year everybody starts
+   * from nothing, so the biggest grower and the biggest earner are the same space.
+   */
+  notWinnerOf?: string;
 }
 
-/** Measured over the year just gone, except the two that are simply a snapshot. */
+/** Below this, a space's starting reputation counts as this — a first year is not infinite growth. */
+export const RISING_FLOOR = 2000;
+
+/**
+ * Upvotes a rival's build draws per point of reputation it earned, before their `online`
+ * factor. Calibrated so the field's year lands where a player who posts sensibly does —
+ * `npm run era-pace` prints both.
+ */
+export const RIVAL_UPVOTES_PER_REP = 15;
+
+/**
+ * Now and then a rival ships something that gets talked about for months. Without it every
+ * rival build lands within ±30% of their average, and Best Project was a walkover: the
+ * player's one big build scores three times the field's best. It moves a build's hype and
+ * upvotes only, never the rival's reputation — see `tickRivals`.
+ */
+export const RIVAL_STANDOUT = { chance: 0.12, boost: [2.5, 4.5] as const };
+
+/**
+ * Measured over the year just gone, except the two that are simply a snapshot. The purse is
+ * a fixed 1,000 reputation shared across the categories: more awards must not mean more
+ * reputation, because reputation is what advances the era.
+ */
 export const AWARDS: AwardDef[] = [
   {
     label: 'Most Projects',
     blurb: 'Shipped more than anybody else this year',
     value: (row) => row.projectsThisYear,
     format: (v) => `${v} shipped`,
-    reputation: 260,
+    reputation: 200,
   },
   {
     label: 'Biggest Crew',
     blurb: 'The most people through the door',
     value: (row) => row.members,
     format: (v) => `${v} members`,
-    reputation: 180,
+    reputation: 140,
   },
   {
     label: 'Deepest Pockets',
     blurb: 'Ended the year with the healthiest balance',
     value: (row) => row.cash,
     format: (v) => money(v),
-    reputation: 140,
+    reputation: 100,
   },
   {
     label: 'Space of the Year',
     blurb: 'Made the biggest name for itself this year',
     value: (row) => row.reputationThisYear,
     format: (v) => `${v} reputation`,
-    reputation: 420,
+    reputation: 320,
+  },
+  {
+    label: 'Rising Star',
+    blurb: 'Grew the most on what it started the year with',
+    value: (row) => row.growthThisYear,
+    format: (v) => `+${v}% reputation`,
+    reputation: 80,
+    notWinnerOf: 'Space of the Year',
+  },
+  {
+    label: "People's Choice",
+    blurb: 'Drew the most upvotes this year',
+    value: (row) => row.upvotesThisYear,
+    format: (v) => `${v.toLocaleString('tr-TR')} upvotes`,
+    reputation: 80,
+  },
+  {
+    label: 'Best Project',
+    blurb: 'The single build that made the most noise this year',
+    value: (row) => row.bestBuild?.score ?? 0,
+    format: (v, row) => (row.bestBuild ? `${row.bestBuild.name} · ${v} hype` : 'nothing shipped'),
+    reputation: 80,
   },
 ];
 

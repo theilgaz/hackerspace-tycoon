@@ -430,6 +430,24 @@ await check('Jobs: best-fit ranks the catalogue for whoever is free', async () =
   return ok;
 });
 
+await check('Ranking: one column per award, and the table fits without scrolling', async () => {
+  await openPanel('ranking-open');
+  const shape = JSON.parse(
+    await evaluate(`JSON.stringify((() => {
+      const body = document.querySelector('#modal .modal-body');
+      return {
+        awards: document.querySelectorAll('#modal .rank-table th.award-col').length,
+        overflow: body ? body.scrollWidth - body.clientWidth : -1,
+      };
+    })())`),
+  );
+  // Seven awards, seven marked columns — a category the table cannot show is one the player
+  // cannot chase.
+  const ok = shape.awards === 7 && shape.overflow === 0;
+  if (!ok) console.log(`      ${shape.awards} award columns, horizontal overflow ${shape.overflow}px`);
+  return ok;
+});
+
 await check('Projects: the filter narrows one list', async () => {
   await ensureWorkInFlight();
   await openPanel('projects-open');

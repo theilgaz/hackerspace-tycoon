@@ -187,16 +187,16 @@ You are on the grid, you are always in the building, and you can work. That matt
 §13 established that **attendance is the binding constraint** — and you are the one person
 whose attendance is guaranteed.
 
-The counterweight is the hour budget:
+The counterweight is the hour budget, and **it is the only number you have**:
 
-- You get **twelve hours on a rested day**, scaled by energy. Working flat out drains energy,
-  which shrinks *tomorrow's* budget — overwork is a decision with a delayed bill, not an
-  immediate one.
-- `baseHours`, `energyDrain` and `energyRestore` are one setting, not three. A day settles at
-  `energyRestore / energyDrain` hours, so the twelve-hour owner sustains about eleven and only
-  reaches twelve after backing off. Move one number and the other two have to follow, or the
-  budget stops being what it says — and `burnoutEnergy` has to stay below the evening trough of
-  a normal long day, otherwise "burnt out" fires every afternoon and means nothing.
+- **Your day is one resource.** Eighteen hours, flat, every day, spent on building and on
+  managing alike. You are in the building from **07:00** — two hours before the crew's shift
+  — and you go home when the eighteen are gone, whatever the clock says. Nothing carries over
+  and there is no hangover.
+- **Energy used to be a second resource pointed at the same thing**: you spent hours, which
+  drained energy, which shrank tomorrow's hours. Two bars to answer one question, and the
+  burnout threshold had been tuned so low that it almost never fired. It is gone. The bar in
+  the You panel *is* the day, and the hours are in its tooltip for anyone sizing up a job.
 - **Every management verb spends the same pool**: a bounty 1h, ordering parts 1h, expediting 1h,
   re-pitching 1h, going out for filament 0.5h. Pitching is free — waiting on your own hours to
   *start* something was pure friction, and the money it commits is the real cost.
