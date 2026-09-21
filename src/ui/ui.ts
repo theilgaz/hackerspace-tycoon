@@ -234,7 +234,7 @@ export class UI {
   private jobs: {
     open: boolean;
     step: JobStep;
-    source: ProjectCategory | 'offers' | null;
+    source: ProjectCategory | 'offers' | 'bestfit' | null;
     size: SizeFilter;
     defId: string | null;
     offerId: string | null;
@@ -452,7 +452,10 @@ export class UI {
           this.rerender();
           break;
         case 'jobs-category':
-          this.jobs.source = value === 'offers' ? 'offers' : (value as ProjectCategory);
+          this.jobs.source =
+            value === 'offers' || value === 'bestfit'
+              ? (value as 'offers' | 'bestfit')
+              : (value as ProjectCategory);
           this.jobs.size = 'any';
           this.jobs.step = 'project';
           this.rerender();
@@ -1519,6 +1522,32 @@ export class UI {
     };
   }
 
+  /**
+   * What the people standing around are actually good for. Genre tiles ask you to know which
+   * genre your idle members suit; this asks the list instead, across every genre at once, and
+   * ranks by how well the free crew matches — weighted down when there are not enough of them
+   * to fill the team, because a job you cannot crew is not a good fit however well it reads.
+   */
+  private bestFitDefs(state: GameState): { def: ProjectDef; fit: number; names: string[] }[] {
+    const free = state.runtime.members.filter((m) => !m.team);
+    if (!free.length) return [];
+    return this.availableDefs(state)
+      .map((def) => {
+        const ranked = free
+          .map((m) => ({
+            name: m.name,
+            match: categoryAffinity(MEMBER_DATA[m.id]?.passions ?? {}, def.category),
+          }))
+          .sort((a, b) => b.match - a.match)
+          .slice(0, def.teamSize);
+        const coverage = ranked.length / def.teamSize;
+        const average = ranked.reduce((sum, r) => sum + r.match, 0) / Math.max(1, ranked.length);
+        return { def, fit: average * coverage, names: ranked.map((r) => r.name) };
+      })
+      .filter((entry) => entry.fit > 0)
+      .sort((a, b) => b.fit - a.fit);
+  }
+
   /** Step 1: what kind of work, or one of the offers that came to you. */
   private jobsCategoryStep(state: GameState): string {
     const available = this.availableDefs(state);
@@ -1537,7 +1566,28 @@ export class UI {
       </button>`;
     }).join('');
 
+    const bestFit = this.bestFitDefs(state);
+    const idle = state.runtime.members.filter((m) => !m.team).length;
     return `
+      ${
+        bestFit.length
+          ? `<button class="ui-row offers-row" data-action="jobs-category" data-value="bestfit">
+              <span class="icon-chip" style="--tone:var(--warning)">${icon('users', 'ui-icon ui-icon--lg')}</span>
+              <span class="ui-row__main">
+                <span class="ui-title">Best for your idle hands</span>
+                <p class="ui-desc" style="margin:3px 0 0">
+                  What the ${idle === 1 ? 'one person' : `${idle} people`} with nothing to do
+                  would actually be good at
+                </p>
+              </span>
+              <span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">
+                top ${pct(bestFit[0].fit)}
+              </span>
+              <span class="ui-row__chevron">${icon('chevronRight')}</span>
+            </button>
+            <hr class="ui-sep" />`
+          : ''
+      }
       ${
         offers
           ? `<button class="ui-row offers-row" data-action="jobs-category" data-value="offers">
@@ -1561,6 +1611,17 @@ export class UI {
     if (this.jobs.source === 'offers') {
       return `<div class="ui-label" style="margin-bottom:9px">Offers</div>
         ${state.backlog.map((entry) => this.jobCard(CATALOG_MAP[entry.defId], state, entry)).join('')}`;
+    }
+    if (this.jobs.source === 'bestfit') {
+      const ranked = this.bestFitDefs(state);
+      if (!ranked.length) return `<p class="ui-desc">Everybody is already on something.</p>`;
+      return `<div class="ui-label" style="margin-bottom:9px">
+          Best for your idle hands · ${esc(ranked[0].names.join(', '))} and co.
+        </div>
+        ${ranked
+          .slice(0, 8)
+          .map((entry) => this.jobCard(entry.def, state, undefined, entry))
+          .join('')}`;
     }
 
     const all = this.availableDefs(state).filter((def) => def.category === this.jobs.source);
@@ -1723,7 +1784,13 @@ export class UI {
     return bits.length ? `<span class="ui-row__meta">${bits.join('')}</span>` : '';
   }
 
-  private jobCard(def: ProjectDef, state: GameState, entry?: BacklogEntry): string {
+  private jobCard(
+    def: ProjectDef,
+    state: GameState,
+    entry?: BacklogEntry,
+    /** Who among the idle would take it, when the list is ranked by fit. */
+    fit?: { fit: number; names: string[] },
+  ): string {
     const badge = entry ? SOURCE_BADGE[entry.source] : null;
     const missing = missingMachines(def, state.ownedMachines);
     const profile = profileOf(def.category);
@@ -1734,6 +1801,14 @@ export class UI {
         <span class="row between" style="gap:8px">
           <span class="ui-title">${esc(def.name)}</span>
           ${badge?.label ? `<span class="ui-badge ui-badge--accent">${badge.label}</span>` : ''}
+          ${
+            fit
+              ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)"
+                   title="${esc(fit.names.join(', '))} would take it">
+                   ${icon('users')}${pct(fit.fit)} fit
+                 </span>`
+              : ''
+          }
         </span>
         <p class="ui-desc ui-clamp-2" style="margin:4px 0 0">${esc(def.blurb)}</p>
         <span class="ui-row__meta">

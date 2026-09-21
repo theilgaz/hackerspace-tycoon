@@ -350,6 +350,33 @@ await check('People opens and hiring works', async () => {
   return hireable > 0 && after === before + 1;
 });
 
+await check('Jobs: best-fit ranks the catalogue for whoever is free', async () => {
+  // Free somebody up first, or there is nothing for the view to rank.
+  await evaluate(`
+    (() => { const sim = window.__game.sim;
+      const m = sim.members.find((x) => x.team);
+      if (m) { const p = sim.projects.find((x) => x.id === m.team);
+               if (p) p.team = p.team.filter((i) => i !== m.id);
+               m.team = null; }
+      sim.publish(); })()
+  `);
+  await openPanel('jobs-open');
+  const hasTile = await evaluate(
+    `!!document.querySelector('#modal [data-action="jobs-category"][data-value="bestfit"]')`,
+  );
+  await click('#modal [data-action="jobs-category"][data-value="bestfit"]');
+  const fits = JSON.parse(
+    await evaluate(`JSON.stringify([...document.querySelectorAll('#modal .ui-row .ui-badge')]
+      .map((el) => el.textContent.trim()).filter((t) => t.endsWith('fit'))
+      .map((t) => parseInt(t, 10)))`),
+  );
+  // Ranked means ranked: a list that is not sorted is not a recommendation.
+  const sorted = fits.every((v, i) => i === 0 || fits[i - 1] >= v);
+  const ok = hasTile && fits.length > 1 && sorted;
+  if (!ok) console.log(`      tile ${hasTile}, fits ${JSON.stringify(fits)}`);
+  return ok;
+});
+
 await check('Projects: the filter narrows one list', async () => {
   await openPanel('projects-open');
   const count = () => evaluate(`document.querySelectorAll('#modal .ui-row').length`);
