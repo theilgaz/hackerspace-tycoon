@@ -128,7 +128,11 @@ export class SpaceView {
       // wall faced away from its own user and its bay lay across its neighbour's.
       const dx = def.stand.x - def.tile.x;
       const dy = def.stand.y - def.tile.y;
-      const yaw = dx || dy ? -Math.atan2(dx, dy) : 0;
+      // Grid +y is world +z and a positive rotation.y turns +z toward +x, so this is the
+      // angle that points the front of the model at its stand tile. The sign was inverted
+      // and only the sofa could show it — every other station is symmetric enough to look
+      // the same either way, which is why a bench facing its own wall went unnoticed.
+      const yaw = dx || dy ? Math.atan2(dx, dy) : 0;
       zone.rotation.y = yaw;
       zone.position.copy(toWorld(def.tile.x + dx * 0.5, def.tile.y + dy * 0.5, 0.012));
       this.group.add(zone);
