@@ -134,6 +134,14 @@ async function click(selector, gapMs = 400) {
 /** Open an overlay from a known state — a bar button sits under the backdrop when one is
  *  already open, so clicking it there closes the overlay instead. */
 async function openPanel(action) {
+  // A bill or an awards night is modal and has no jobs-close, so it has to be dismissed on
+  // its own terms first — otherwise the bar button underneath is covered by the backdrop and
+  // the click silently does nothing. That made this suite intermittent once already.
+  for (const dismiss of ['bill-close', 'ceremony-close']) {
+    if (await evaluate(`!!document.querySelector('[data-action="${dismiss}"]')`)) {
+      await click(`[data-action="${dismiss}"]`);
+    }
+  }
   if (await evaluate(`document.querySelectorAll('#modal .modal').length > 0`)) {
     await click('#modal header [data-action="jobs-close"]');
   }
@@ -340,6 +348,29 @@ await check('People opens and hiring works', async () => {
     console.log(`      hireable=${hireable} roster ${before} -> ${after}`);
   }
   return hireable > 0 && after === before + 1;
+});
+
+await check('Reddit: a post lands and moves hype', async () => {
+  await openPanel('reddit-open');
+  // Pick the sceptical room and the biggest claim on purpose: the post should still land,
+  // and whether it lands well or badly is the game's business, not this check's.
+  await click('#modal [data-action="reddit-sub"][data-value="electronics"]');
+  await click('#modal [data-action="reddit-claim"][data-value="bold"]');
+  const before = await evaluate(
+    `JSON.stringify({ posts: __store.getState().posts.length, hours: __game.sim.player.hoursLeft })`,
+  );
+  await click('#modal [data-action="reddit-post"]:not([disabled])');
+  const after = await evaluate(
+    `JSON.stringify({ posts: __store.getState().posts.length,
+                      hype: __store.getState().hype,
+                      hours: __game.sim.player.hoursLeft })`,
+  );
+  const a = JSON.parse(before);
+  const b = JSON.parse(after);
+  // The hour must actually be spent, or the verb is free and the whole trade is fake.
+  const ok = b.posts === a.posts + 1 && b.hours < a.hours;
+  if (!ok) console.log(`      posts ${a.posts} -> ${b.posts}, hours ${a.hours} -> ${b.hours}`);
+  return ok;
 });
 
 await check('a run survives a reload', async () => {

@@ -352,9 +352,13 @@ Winning pays reputation. Two tuning notes worth keeping:
   everybody. It was capped at 40 first, which made one of the four awards decoration.
 - `npm run era-pace [seeds]` prints the first awards night, the day each era arrives, and the
   final standings. Targets: an engaged player takes **one or two of four** on the first night
-  (currently 14 of 32 across eight runs), finishes **first overall** by day 220 without
-  finishing at twice the field (currently 1.38×, ranging 1.21-1.64), and no single rival wins
-  two categories every time. Twelve seeds also finish with **no evictions** — the autoplayer
+  (currently 1.0 per night on normal), finishes **first overall** by day 220 without finishing
+  at twice the field (currently 1.48× on normal), and no single rival wins two categories every
+  time. Measured with a player who uses every verb, Reddit included.
+- **Reddit softened hard, and that is left standing on purpose.** Before Phase 2 a hard run
+  came first in six seeds of eight; with posting it comes first in all eight, though by as
+  little as 1.02×. A new verb making the game easier is expected, and the honest fix is to see
+  whether a human posts as relentlessly as the harness does before tightening anything. Twelve seeds also finish with **no evictions** — the autoplayer
   is competent, so a death there means the economy is unfair rather than hard.
 - **A category nobody else can win is as dead as one you cannot.** Space of the Year goes to
   the player in eight runs out of eight. Most Projects, Biggest Crew and Deepest Pockets are
@@ -417,6 +421,26 @@ Winning pays reputation. Two tuning notes worth keeping:
   person's dues), **rent** re-sized against dues rather than against cash, and Garaj's pace
   raised so the prolific space stays the prolific one. **When a cost is removed, find what it
   was really limiting** — it was never survival, it was the speed the roster filled.
+
+- **A reward with no matching punishment is not a choice.** The claim system shipped its first
+  measurement with `backfire: 3`, which read as reasonable and was not: the claim multipliers
+  (0.7 / 1.0 / 1.55) simply outran the penalty, so the biggest claim was right almost
+  everywhere and the hype-man was punished 0.8 times in 181 posts. The test that caught it was
+  not the numbers but the **archetype race** — a deliberately reckless player finishing *ahead*
+  of a careful one. Whenever a mechanic offers a risky option, race a player who always takes
+  it against one who never does; if the reckless one wins, there is no decision there.
+
+- **A tuning script that rebuilds from HEAD stops being idempotent the moment you commit.** The
+  difficulty sweep regenerated `difficulty.ts` from `git show HEAD:` plus its own insertions.
+  That was fine until the fields it inserts were themselves committed, after which every run
+  duplicated them. It stayed silent because duplicate object keys are legal JavaScript and the
+  *last* one wins, which happened to be the committed value — so the measurements were right
+  and the file was broken. Prefer scripts that edit in place and assert the pattern exists.
+
+- **A modal you did not expect makes a click suite intermittent.** The Reddit check passed and
+  failed on alternate runs: a bill lands on a schedule, it is modal, and it has no `jobs-close`,
+  so the bar button underneath was covered and the click did nothing at all. Dismissing bills
+  and ceremonies now lives in the `openPanel` helper, so no future check has to remember.
 
 - **A metric that cannot move is a broken metric.** `era-pace` at three difficulties produced
   identical output three runs running, because the sweep script rebuilt `difficulty.ts` from
@@ -569,18 +593,57 @@ Job { id, projectId, partName, machineType, hoursRequired, material, materialCos
 Machine types: FDM printer · resin printer · laser cutter · CNC router · mill/lathe · soldering
 bench · welding bay · electronics bench · assembly table.
 
-## 6. Reddit & Hype
+## 6. Reddit & Hype — BUILT (`src/utils/subreddits.ts`, `src/systems/HypeSystem.ts`)
 
-Subreddits are the publisher. Each has `audience`, `tasteTags`, and `skepticism`.
+Six subreddits are the publisher, each with `audience`, `tasteTags` and `skepticism`. Posting
+costs you an hour and asks three questions at once — **which build, which room, what you are
+claiming** — on one screen, because the interesting part is how they interact.
 
-- The player **posts a WIP update** at a chosen stage. Reaction = f(project quality, stage
-  interestingness, taste match, novelty, honesty of the claim).
-- Good post → upvotes → **hype**. Hype is a spendable, decaying resource.
-- Overclaiming or posting something derivative → the top comment is "this is just a remix of a
-  Thingiverse model" → **negative hype and a reputation hit.**
-- Hype converts into: crowdfunding backers, sponsor offers, membership applications, and the Era-3
-  "front page of r/all" goal.
-- Hype decays daily. Attention is a resource with a shelf life — this is the anti-drift clock.
+**The claim is the verb.** Three of them: *Work in progress* (safe, modest), *It works*, and
+*Nobody has built this*. Each multiplies the room's reaction **and sets a merit bar**, where
+merit is mostly build quality plus how far down the pipeline you are. Claim more than the work
+backs and the overreach is punished by the room's skepticism, so the same boast is cheap in
+r/homeassistant and a reputation event in r/programming.
+
+**The punishment has to outweigh the reward, or the answer is always "claim the most".** It
+did not, at first: a hype-man who picked the biggest claim every single time was punished 0.8
+times in 181 posts and finished with *more* reputation than a careful player. Tripling
+`HYPE.backfire` to 7 is what turned it into a decision. The shape it produces, for a
+quality-0.7 electronics build in r/electronics:
+
+| Stage | Work in progress | It works | Nobody has built this |
+|---|---|---|---|
+| concept | **113** | 37 | −97 burned |
+| cad | **208** | 168 | −178 burned |
+| fabrication | 302 | **432** | 5 |
+| assembly | 321 | **459** | 161 |
+| release | 378 | 540 | **741** |
+
+That is the whole design in one table: the claim you can afford tracks how finished the thing
+is, and a boast is something you earn by finishing rather than something you spend to skip it.
+
+**Attention is a shelf life, not a stock.** Hype decays 5% a day — about a fortnight to half —
+whether you touch it or not, and everything it feeds sags with it: word of mouth (the
+recruitment clock, §5), how many of the public pay to be here, and how often a sponsor calls.
+A project parked at eighty per cent therefore costs you something continuously, which nothing
+else in the game does. **That is the anti-drift clock, and it is the reason the layer exists.**
+
+Three details that keep the verb honest:
+
+- **Novelty decays per room, not globally**, so the counter-play to a stale build is to take it
+  somewhere new rather than to stop posting.
+- **The generalist room needs a taste floor.** r/somethingimade is "everything is welcome" and
+  was scoring a flat zero for anything outside its four tags, which is the opposite of its
+  character. It now grants 0.45 to anything: always somewhere to post, never a big win.
+- **The panel previews the reaction before you commit.** Each claim card shows the upvotes it
+  would actually get, and turns destructive when the room would turn on you. A claim you cannot
+  evaluate before making it is a dice roll, not a decision.
+
+**Does it pay for the hour?** `npm run hype-check` answers §13's rule directly, against an
+identical player who never posts. Over six seeds at 180 days: reputation +19%, crew +13%, cash
++42%, and about three fewer projects shipped — the hours are real. A reckless poster earns
+slightly more cash and a visibly worse name. Still unbuilt from this section: **crowdfunding**
+(`Campaign` in §12) and the Era-3 front-page goal.
 
 ## 7. Economy & Funding
 
@@ -756,7 +819,8 @@ BacklogEntry { id, defId, source: 'catalog'|'member'|'sponsor'|'trending',
 Part       { id, name, machineType, hours, material, status: 'pending'|'queued'|'done'|'failed' }
 Machine    { id, type, calibration, currentJob?, queue[], consumable, starved }
 Job        { id, projectId, partId, partName, hoursRequired, progress, material }
-Post       { id, projectId, subreddit, stage, claim, upvotes, comments[], hypeDelta }   // Phase 2
+Post       { id, projectId, projectName, subreddit, stage, claim, upvotes, hype,
+             comment, burned, day }                                                     // BUILT
 Campaign   { id, projectId, goal, raised, backers, deadline, delivered }                // Phase 2
 Space      { era, tiles[][], rooms[], powerCapacity, rent }                             // Phase 4
 Policy     { id, name, moodDelta, efficiencyDelta, active }                             // Phase 5
@@ -856,6 +920,19 @@ Two further findings, both now fixed and worth not re-introducing:
   and was re-queued, producing 361 failed prints in one run instead of one idle printer.
   `Machine.starved` blocks job *start*; running out mid-job still fails the print, as it should.
 
+### Declared but not wired up (audited, and still true)
+
+The doc has described a richer game than the code plays in three places. Kept here so the gap
+is visible rather than rediscovered:
+
+- **`mood` is written nowhere** except when a save is restored. §3 says the player raises
+  commitment with mood; nothing raises mood.
+- **`commitment` drives nothing.** It is shown in the People panel and on the member card, but
+  contracted hours (§3d) replaced it as the capacity number.
+- **Five of the seven traits are type declarations only** — `scopeCreeper`, `mentor`,
+  `gatekeeper`, `nightOwl` and `documenter` are never read. Only Perfectionist and Ghost do
+  anything. Each is a Phase 5 job, and §13's rule applies: measure it against attendance.
+
 ## 14. Development Priority
 
 **Phase 1.12 — The scene: identity, rivals and awards — BUILT.**
@@ -905,12 +982,15 @@ machines; eras grant the slots. Tool projects install real machines into the spa
 Fixed 6×8 garage, 3 volunteers, 1 FDM printer + benches, the FPV Drone run from Concept to
 Release. No building, no Reddit, no hiring, no rent. Implemented: the eight-stage pipeline,
 the machine job queue with continuous failure rolls and consumables, volunteer attendance,
-self-assignment, drift with burnout cooldowns, the Perfectionist / Ghost / Night Owl traits,
+self-assignment, drift with burnout cooldowns, the Perfectionist and Ghost traits,
 and the verbs Re-pitch / Bounty / Skip simulation / queue management / buy filament.
 A playthrough runs 20-36 days depending on how hard the player pushes (§13).
 **Still open, and only a human can answer it: is the loop fun?**
 
-Phase 2 — Reddit + hype + crowdfunding (the novel layer, on top of a real project).
+**Phase 2 — Reddit and hype — BUILT** (§6). Six rooms, the claim you make, hype that decays
+every day and feeds recruitment, dues and sponsors. `npm run hype-check` measures whether the
+hour it costs is worth spending. **Crowdfunding is still open** — it is the piece that turns
+hype into a deadline you can miss, which is the sharpest version of the anti-drift clock.
 **Phase 3 — Economy — BUILT.** Dues, rent, wages, metered consumables, the monthly statement
 and eviction (§7a).
 Phase 4 — Space builder: tile painting, machine placement, rooms, power, adjacency.
@@ -932,6 +1012,11 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     elapsed days per stage. Use it whenever a stage feels the wrong length.
   - `npm run project-times` — best-case length of every catalog entry against its declared
     tier. Run it after any change to `catalog.ts`; `TOO LONG` is a failure, not an opinion.
+  - `npm run hype-check [seeds] [easy|normal|hard]` — prints the claim/room reaction table,
+    then plays three players against each other: one who never posts, one who claims only what
+    the work backs, and one who always claims the most. Run it after touching `HYPE`,
+    `subreddits.ts` or `HypeSystem.ts`. **The careful player must beat both others**; when the
+    reckless one wins, the claim is not a decision.
   - `npm run era-pace [seeds] [easy|normal|hard]` — what day each era arrives for a committed
     player, plus the final standings against the rival spaces. Run it after changing
     throughput, team sizes, the catalog, or anything in `rivals.ts` — **and run all three
@@ -947,7 +1032,7 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
   - `src/entities/` — `MemberEntity.ts` (state machine: idle → walk → work → idle),
     `PlayerEntity.ts` (you, plus the hour budget)
   - `src/machines/` — `Machine.ts` (queue + job execution), `layout.ts` (grid placement)
-  - `src/systems/` — `Simulation.ts`, `ProjectSystem.ts`, later `HypeSystem.ts`
+  - `src/systems/` — `Simulation.ts`, `ProjectSystem.ts`, `HypeSystem.ts`, `RivalSystem.ts`
   - `src/render/` — `SceneManager.ts`, `SpaceView.ts`
   - `src/ui/` — panels, modals, `styles.css`
   - `src/utils/` — `constants.ts` (**all balance numbers**), `catalog.ts` (**all project

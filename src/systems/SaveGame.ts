@@ -48,7 +48,7 @@ export interface MachineSave {
  * than no save at all.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface SaveFile {
   version: number;

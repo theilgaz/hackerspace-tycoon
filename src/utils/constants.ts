@@ -298,6 +298,7 @@ export const PLAYER = {
  */
 export const VERB_HOURS: Record<string, number> = {
   pitch: 0,
+  post: 1,
   repitch: 1,
   bounty: 1,
   order: 1,
@@ -339,6 +340,49 @@ export const ERAS: EraDef[] = [
 export function eraDef(era: number): EraDef {
   return ERAS[Math.min(ERAS.length, Math.max(1, era)) - 1];
 }
+
+// --- Reddit and hype (§6) ---------------------------------------------------
+
+/**
+ * Attention, as numbers. The layer exists to be the **anti-drift clock**: hype decays every
+ * day whether you touch it or not, and everything it feeds — who applies, how many of the
+ * public pay to be here, whether a sponsor calls — sags with it. A project left at eighty
+ * per cent therefore costs you something continuously, which nothing else in the game does.
+ */
+export const HYPE = {
+  /** Upvotes a perfect post could reach before the room's own numbers scale it. */
+  perPost: 900,
+  hypePerUpvote: 0.55,
+  /**
+   * How much of a post's merit comes from build quality rather than how far through the
+   * pipeline it is. Quality dominates, but a render is not a photograph.
+   */
+  meritFromQuality: 0.6,
+  /**
+   * Overreach × skepticism × this = how far the verdict falls. The teeth of the claim, and
+   * they have to outweigh the claim's own multiplier or the answer is always "claim the most"
+   * — which is exactly what the first measurement said: 181 bold posts, 0.8 of them punished.
+   */
+  backfire: 7,
+  /** A post cannot do worse than this, so one bad call is a setback and not a run-ender. */
+  worstVerdict: 0.6,
+  /** Reputation lost per downvote when the room turns. Negative by construction. */
+  reputationPerBurn: 0.12,
+  /** Each repeat of the same build in the same room is worth this much less. */
+  repeatPenalty: 0.8,
+  /** Daily decay. About a fortnight to half — attention is a shelf life, not a stock. */
+  decayPerDay: 0.05,
+  /** Below this it is rounded away rather than left as a rounding tail. */
+  floor: 1,
+  /** Hype at which its effects are at half strength; the curve never saturates hard. */
+  halfEffect: 700,
+  /** At full pressure, word of mouth moves this many times faster. */
+  recruitSpeedUp: 1.35,
+  /** At full pressure, this many extra of the public are paying to use the place. */
+  extraMembers: 30,
+  /** At full pressure, sponsors call this many times as often. */
+  sponsorSpeedUp: 2.5,
+};
 
 // --- Backlog (§4a) ----------------------------------------------------------
 

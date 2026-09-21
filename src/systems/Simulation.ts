@@ -11,6 +11,8 @@ import type {
   ProjectDef,
   StageKey,
   Tag,
+  ClaimKey,
+  Post,
 } from '@/game/types';
 import { MemberEntity } from '@/entities/MemberEntity';
 import { PlayerEntity } from '@/entities/PlayerEntity';
@@ -36,6 +38,7 @@ import {
   PERFECTIONIST_QUALITY_GATE,
   APPLICANTS,
   PLAYER,
+  HYPE,
   RECRUIT,
   SHELVE,
   ROSTER,
@@ -56,6 +59,8 @@ import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
 import type { SaveFile } from './SaveGame';
 import { ECONOMY, membershipFor, rentFor, type Bill, type BillLine } from '@/utils/economy';
+import { decayHype, hypePressure, react } from '@/systems/HypeSystem';
+import { SUBREDDIT_MAP } from '@/utils/subreddits';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
 import { clock, money, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
@@ -198,6 +203,7 @@ export class Simulation {
       tickRivals(this.rivals, this.rivalPressure());
       this.runBilling();
       this.checkAwards();
+      store.getState().setHype(decayHype(store.getState().hype));
       this.tickRecruiting();
       this.planDay();
       this.player.startDay();
@@ -338,7 +344,7 @@ export class Simulation {
     }
 
     // A sponsor wants something specific, with money attached and a deadline.
-    if (rng.chance(BACKLOG.sponsorChance)) {
+    if (rng.chance(BACKLOG.sponsorChance * (1 + this.pressure * (HYPE.sponsorSpeedUp - 1)))) {
       const def = rng.pick(options);
       const [lo, hi] = BACKLOG.sponsorCashRatio;
       const cash = Math.round((def.bomCost * rng.range(lo, hi)) / 100) * 100;
@@ -1138,7 +1144,15 @@ export class Simulation {
 
   /** Paying members of the public — the passive income a reputation earns you. */
   get membership(): number {
-    return membershipFor(store.getState().reputation);
+    // Hype behaves like reputation you have not earned yet: it brings the public in while it
+    // lasts and takes them away again when it fades, through the same curve and the same cap.
+    const borrowed = this.pressure * HYPE.extraMembers * ECONOMY.reputationPerMember;
+    return membershipFor(store.getState().reputation + borrowed);
+  }
+
+  /** How loudly the place is being talked about, 0-1. Everything hype feeds scales off this. */
+  get pressure(): number {
+    return hypePressure(store.getState().hype);
   }
 
   /** What the next bill will look like if nothing changes. */
@@ -1332,7 +1346,9 @@ export class Simulation {
    */
   private tickRecruiting() {
     const every = DIFFICULTY_MAP[store.getState().difficulty].recruitEvery;
-    this.recruitClock = Math.min(this.recruitClock + 1, every);
+    // Attention is why people hear about you at all, so it buys days on this clock.
+    const gain = 1 + this.pressure * (HYPE.recruitSpeedUp - 1);
+    this.recruitClock = Math.min(this.recruitClock + gain, every);
     if (this.recruitClock < every) return;
     const next = this.nextApplicant();
     if (!next) return;
@@ -1382,6 +1398,46 @@ export class Simulation {
   /** §5 — what you just shipped is what the next person through the door cared about. */
   private recruit(project: ProjectData) {
     this.recentShip = { tags: [...project.tags], name: project.name, day: this.day };
+  }
+
+  /**
+   * Put a project in front of a room (§6). The room, the stage you show it at and the claim
+   * you make are three separate decisions, and the claim is the one with teeth: it multiplies
+   * the reaction and sets a merit bar, and a room's skepticism decides how hard the fall is
+   * when the work does not clear it.
+   */
+  post(projectId: string, subredditId: string, claim: ClaimKey): boolean {
+    const project = this.project(projectId);
+    const sub = SUBREDDIT_MAP[subredditId];
+    if (!project || !sub || project.shipped) return false;
+    const already = store
+      .getState()
+      .posts.filter((p) => p.projectId === projectId && p.subreddit === subredditId).length;
+    if (!this.chargeHours('post')) return false;
+
+    const reaction = react(project, sub, claim, already);
+    const entry: Post = {
+      id: uid(),
+      projectId,
+      projectName: project.name,
+      subreddit: subredditId,
+      stage: project.stage,
+      claim,
+      upvotes: reaction.upvotes,
+      hype: reaction.hype,
+      comment: reaction.comment,
+      burned: reaction.burned,
+      day: this.day,
+    };
+    store.getState().recordPost(entry, reaction.reputationHit);
+    this.log(
+      reaction.burned
+        ? `${sub.name} turned on the ${project.name} post — ${reaction.upvotes} and a pile-on.`
+        : `${project.name} did ${reaction.upvotes} on ${sub.name}.`,
+      reaction.burned ? 'bad' : 'good',
+    );
+    this.publish();
+    return true;
   }
 
   /** Ask somebody to leave. It costs you their dues, so this is a last resort now. */

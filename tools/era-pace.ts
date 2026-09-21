@@ -7,6 +7,8 @@ import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 import { partsPending } from '@/systems/ProjectSystem';
 import { ECONOMY } from '@/utils/economy';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
+import { CLAIMS, SUBREDDITS, tasteMatch } from '@/utils/subreddits';
+import { merit } from '@/systems/HypeSystem';
 import { STAGE_STATION } from '@/machines/layout';
 
 const rows: string[] = [];
@@ -28,6 +30,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     gameOver: null, backlog: [], applicants: [], runtime: emptyRuntime() });
   const sim = new Simulation();
   const arrived: Record<number, number> = {};
+  let lastPostDay = 0;
   let night: string | null = null;
   while (sim.day <= 220) {
     sim.tick(0.05, 4);
@@ -96,6 +99,17 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
         sim.hire(id, 'full-time');
       } else if (spendable() >= sim.hireCost(id, 'part-time')) {
         sim.hire(id, 'part-time');
+      }
+    }
+    if (sim.day > lastPostDay && sim.player.hoursLeft >= VERB_HOURS.post + 2) {
+      const target = [...sim.projects].filter((p) => !p.shipped).sort((a, b) => merit(b) - merit(a))[0];
+      if (target) {
+        const room = [...SUBREDDITS].sort(
+          (a, b) => tasteMatch(target.tags, b) * b.audience - tasteMatch(target.tags, a) * a.audience,
+        )[0];
+        const earned = merit(target);
+        const claim = ([...CLAIMS].reverse().find((c) => c.ask <= earned) ?? CLAIMS[0]).key;
+        if (sim.post(target.id, room.id, claim)) lastPostDay = sim.day;
       }
     }
     // Step off a project that has nothing to do by hand — the sim keeps you on it

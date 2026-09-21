@@ -207,6 +207,25 @@ export interface ProjectDef {
 
 export type BacklogSource = 'catalog' | 'member' | 'sponsor' | 'trending';
 
+/** How loudly you said it (§6). The claim is the decision; the room judges it. */
+export type ClaimKey = 'wip' | 'works' | 'bold';
+
+/** One thing you put in front of Reddit, and what came back. */
+export interface Post {
+  id: string;
+  projectId: string;
+  projectName: string;
+  subreddit: string;
+  stage: StageKey;
+  claim: ClaimKey;
+  upvotes: number;
+  hype: number;
+  /** The top comment — it exists to explain the number, not to decorate it. */
+  comment: string;
+  burned: boolean;
+  day: number;
+}
+
 /** An offer sitting in the backlog waiting to be pitched. */
 export interface BacklogEntry {
   id: string;

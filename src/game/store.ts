@@ -4,6 +4,7 @@ import type {
   Identity,
   LogEntry,
   MachineType,
+  Post,
   RuntimeSnapshot,
   ShippedRecord,
 } from './types';
@@ -49,6 +50,13 @@ export interface GameState {
   reputation: number;
   /** Applicant ids who would consider joining; hiring is a decision, not automatic. */
   applicants: string[];
+  /**
+   * Attention right now (§6). Unlike reputation this goes **down** on its own, which is what
+   * makes it a clock rather than a score.
+   */
+  hype: number;
+  /** Everything you have put in front of Reddit, newest last. */
+  posts: Post[];
   /** Machine types the space owns; gates what can be attempted. */
   ownedMachines: MachineType[];
   /** Offers waiting to be pitched (CLAUDE.md §4a). */
@@ -80,6 +88,9 @@ export interface GameState {
   ownMachine: (type: MachineType) => void;
   recordShipped: (hype: number, record: ShippedRecord) => void;
   recordReputation: (amount: number) => void;
+  /** Bank a post's reaction: the post itself, the hype it moved, the reputation it cost. */
+  recordPost: (post: Post, reputationDelta: number) => void;
+  setHype: (hype: number) => void;
 }
 
 export const emptyRuntime = (): RuntimeSnapshot => ({
@@ -114,6 +125,8 @@ export const store = createStore<GameState>((set, get) => ({
   ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
   backlog: [],
   applicants: [],
+  hype: 0,
+  posts: [],
   runtime: emptyRuntime(),
   log: [],
 
@@ -144,13 +157,13 @@ export const store = createStore<GameState>((set, get) => ({
     const {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      backlog, log,
+      backlog, log, hype, posts,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      backlog, log,
+      backlog, log, hype, posts,
     };
   },
 
@@ -192,6 +205,15 @@ export const store = createStore<GameState>((set, get) => ({
   ownMachine: (type) =>
     set((s) => (s.ownedMachines.includes(type) ? s : { ownedMachines: [...s.ownedMachines, type] })),
 
+  recordPost: (post, reputationDelta) =>
+    set((s) => ({
+      posts: [...s.posts, post].slice(-40),
+      hype: Math.max(0, s.hype + post.hype),
+      // A burned post takes reputation with it, and reputation gates the era — so a claim
+      // the work cannot back up genuinely sets the run back rather than merely not helping.
+      reputation: Math.max(0, s.reputation + reputationDelta),
+    })),
+  setHype: (hype) => set({ hype }),
   recordReputation: (amount) =>
     set((s) => {
       const reputation = s.reputation + amount;
