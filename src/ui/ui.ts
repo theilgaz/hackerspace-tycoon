@@ -208,6 +208,9 @@ export class UI {
   /** Which group of projects is on screen. Falls through when the chosen one is empty. */
   private projectsTab: 'all' | 'on' | 'done' = 'all';
 
+  /** Which slice of the roster is on screen. */
+  private peopleTab: 'all' | 'free' | 'on' | 'open' = 'all';
+
   /** What the composer is pointed at. Three decisions, and the claim is the one with teeth. */
   private reddit: { projectId: string | null; subreddit: string; claim: ClaimKey } = {
     projectId: null,
@@ -339,6 +342,10 @@ export class UI {
           break;
         case 'projects-open':
           this.openModal = 'projects';
+          this.rerender();
+          break;
+        case 'people-tab':
+          this.peopleTab = (value as 'all' | 'free' | 'on' | 'open') ?? 'all';
           this.rerender();
           break;
         case 'projects-tab':
@@ -1296,13 +1303,22 @@ export class UI {
 
   // --- People: who is here, and who could be ------------------------------
 
+  /**
+   * The same question the Projects panel asks, pointed at people: **who needs me now?**
+   * Somebody unallocated is the answer almost every time — they still pay dues and still
+   * turn up, and their hours are simply going nowhere — so a free member is called out the
+   * way a blocked project is, in warning tone, and sorted to the top.
+   *
+   * One list with chips rather than stacked sections, and the applicants live in it as
+   * another state rather than below the fold: hiring is the other thing you come here to do.
+   */
   private peopleBody(state: GameState): { head: string; content: string; foot: string } {
     const members = state.runtime.members;
     const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
 
-    const person = (id: string, name: string, trailing: string, note: string) => {
+    /** One row shape for everybody, member or applicant, so the list scans as one column. */
+    const person = (id: string, name: string, trailing: string, note: string, meta: string) => {
       const data = MEMBER_DATA[id];
-      const member = members.find((m) => m.id === id);
       const top = topCategories(data?.passions ?? {}, 1)[0];
       const profile = top ? profileOf(top.category) : null;
       return `<div class="ui-row" style="cursor:default">
@@ -1316,16 +1332,7 @@ export class UI {
           </span>
           <p class="ui-desc" style="margin:3px 0 0">${note}</p>
           <span class="ui-row__meta">
-            ${
-              member
-                ? `<span class="ui-badge ui-badge--tone" style="--tone:${member.employment === 'full-time' ? 'var(--primary)' : 'var(--warning)'}"
-                     title="${member.weeklyHours}h a week">
-                     ${icon('clock')}${member.employment === 'full-time' ? 'Full-time' : `Part-time · ${member.shift}s`}
-                   </span>
-                   <span class="ui-badge">${shiftSpan(member)}</span>`
-                : `<span class="ui-badge">${icon('clock')}wants ~${data?.commitment ?? '?'}h/wk</span>
-                   <span class="ui-badge">prefers ${data?.prefers ?? 'morning'}s</span>`
-            }
+            ${meta}
             ${topCategories(data?.passions ?? {})
               .map(({ category, score }) => {
                 const pr = profileOf(category);
@@ -1333,83 +1340,139 @@ export class UI {
                   ${icon(CATEGORY_ICON[category])}${pr.label} ${pct(score)}</span>`;
               })
               .join('')}
-            ${(data?.traits ?? []).map((t) => `<span class="ui-badge" title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`).join('')}
+            ${(data?.traits ?? [])
+              .map((t) => `<span class="ui-badge" title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`)
+              .join('')}
           </span>
         </span>
       </div>`;
     };
 
-    const roster = members
-      .map((m) => {
-        const project = m.team ? state.runtime.projects.find((x) => x.id === m.team) : null;
-        const status = `<span class="row" style="gap:5px">
-          ${
-            m.present
+    const memberRow = (m: MemberSnapshot) => {
+      const data = MEMBER_DATA[m.id];
+      const project = m.team ? state.runtime.projects.find((x) => x.id === m.team) : null;
+      const free = !project;
+      const trailing = `<span class="row" style="gap:5px">
+        ${
+          free
+            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">
+                 ${icon('users')}free
+               </span>`
+            : m.present
               ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">in today</span>`
               : `<span class="ui-badge">away</span>`
-          }
-          <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="let-go" data-id="${m.id}"
-            title="Ask them to leave — costs you ${money(ECONOMY.crewDues)} a month in dues">
-            Ask to leave
-          </button>
-        </span>`;
-        return person(m.id, m.name, status, project ? `On ${esc(project.name)}` : 'Unallocated');
-      })
-      .join('');
+        }
+        <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="let-go" data-id="${m.id}"
+          title="Ask ${esc(m.name)} to leave — the space loses ${money(ECONOMY.crewDues)} a month in dues">
+          ${icon('x')}
+        </button>
+      </span>`;
+      return person(
+        m.id,
+        m.name,
+        trailing,
+        project
+          ? `On ${esc(project.name)}`
+          : 'Nothing allocated — their hours are going nowhere.',
+        // The shift window is only worth saying when it is not the obvious one.
+        `<span class="ui-badge ui-badge--tone"
+           style="--tone:${m.employment === 'full-time' ? 'var(--primary)' : 'var(--warning)'}"
+           title="${m.weeklyHours}h a week">
+           ${icon('clock')}${m.employment === 'full-time' ? 'Full-time' : `Part-time · ${m.shift}s`}
+         </span>
+         ${m.employment === 'full-time' ? '' : `<span class="ui-badge">${shiftSpan(m)}</span>`}
+         ${data?.traits?.length ? '' : ''}`,
+      );
+    };
 
-    const open = state.applicants
-      .map((id) => {
-        const data = MEMBER_DATA[id];
-        if (!data) return '';
-        const canFull = this.handlers.canHireFullTime(id);
-        const offer = (employment: Employment, label: string) => {
-          const cost = this.handlers.hireCost(id, employment);
-          const ok = state.cash >= cost && hoursLeft >= VERB_HOURS.hire;
-          return `<button class="ui-btn ${employment === 'full-time' ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
-            data-action="hire" data-id="${id}" data-value="${employment}" ${ok ? '' : 'disabled'}
-            title="${weeklyHoursFor(employment)}h a week">
-            ${label} · ${money(cost)}
-          </button>`;
-        };
-        const buttons = `<span class="row" style="gap:5px">
-          ${offer('part-time', 'Part-time')}
-          ${canFull ? offer('full-time', 'Full-time') : ''}
-        </span>`;
-        return person(
-          id,
-          data.name,
-          buttons,
-          canFull ? 'Interested in joining' : 'Has a day job — part-time only',
-        );
-      })
-      .join('');
+    const applicantRow = (id: string) => {
+      const data = MEMBER_DATA[id];
+      if (!data) return '';
+      const canFull = this.handlers.canHireFullTime(id);
+      const offer = (employment: Employment, label: string) => {
+        const cost = this.handlers.hireCost(id, employment);
+        const ok = state.cash >= cost && hoursLeft >= VERB_HOURS.hire;
+        return `<button class="ui-btn ${employment === 'full-time' ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
+          data-action="hire" data-id="${id}" data-value="${employment}" ${ok ? '' : 'disabled'}
+          title="${weeklyHoursFor(employment)}h a week · pays ${money(ECONOMY.crewDues)} a month in dues">
+          ${label} · ${money(cost)}
+        </button>`;
+      };
+      return person(
+        id,
+        data.name,
+        `<span class="row" style="gap:5px">
+           ${canFull ? offer('full-time', 'Full-time') : ''}
+           ${offer('part-time', 'Part-time')}
+         </span>`,
+        canFull
+          ? 'Interested in joining.'
+          : 'Has a day job — a part-time shift is all they can give you.',
+        `<span class="ui-badge">${icon('clock')}wants ~${data.commitment}h/wk</span>
+         <span class="ui-badge">prefers ${data.prefers ?? 'morning'}s</span>`,
+      );
+    };
+
+    // Free hands first: that is the row you came here to do something about.
+    const free = members.filter((m) => !m.team);
+    const busy = members.filter((m) => m.team);
+    const open = state.applicants;
+
+    const filters = [
+      { key: 'all' as const, label: 'All', count: members.length + open.length },
+      { key: 'free' as const, label: 'Free', count: free.length },
+      { key: 'on' as const, label: 'On a project', count: busy.length },
+      { key: 'open' as const, label: 'Interested', count: open.length },
+    ];
+    const chips = `<div class="ui-segmented" style="margin-bottom:11px">
+      ${filters
+        .map(
+          (f) => `<button data-action="people-tab" data-value="${f.key}"
+            aria-pressed="${f.key === this.peopleTab}" ${f.count ? '' : 'disabled'}>
+            ${f.label}<span class="seg-count">${f.count}</span>
+          </button>`,
+        )
+        .join('')}
+    </div>`;
+
+    const rows =
+      this.peopleTab === 'free'
+        ? free.map(memberRow)
+        : this.peopleTab === 'on'
+          ? busy.map(memberRow)
+          : this.peopleTab === 'open'
+            ? open.map(applicantRow)
+            : [...free.map(memberRow), ...busy.map(memberRow), ...open.map(applicantRow)];
 
     const next = APPLICANTS.filter(
-      (a) => !members.some((m) => m.id === a.id) && !state.applicants.includes(a.id),
+      (a) => !members.some((m) => m.id === a.id) && !open.includes(a.id),
     ).sort((a, b) => (a.repRequired ?? 0) - (b.repRequired ?? 0))[0];
 
     return {
       head: `<div class="modal-head">${icon('users', 'ui-icon ui-icon--lg')}<b>People</b></div>`,
-      content: `
-        <div class="ui-label" style="margin-bottom:9px">Your people · ${members.length}</div>
-        ${roster}
-        <hr class="ui-sep" />
-        <div class="ui-label" style="margin-bottom:9px">Interested · ${state.applicants.length}</div>
-        ${open || `<p class="ui-desc">Nobody right now. Ship something and word gets around.</p>`}
-      `,
-      foot: next
-        ? `<span class="ui-desc" style="font-size:10.5px">
-             Dues ${money(members.length * ECONOMY.crewDues)} a month ·
-             ${
-               // A pace you cannot see reads as a broken list, so say both halves out loud:
-               // how long until word gets around, and who it has to reach.
-               state.runtime.recruitIn > 0
-                 ? `somebody gets in touch in <b>${state.runtime.recruitIn}d</b>`
-                 : `word is out — waiting on reputation`
-             } ·
-             next along: <b>${next.name}</b> at ${next.repRequired} reputation — you have ${state.reputation}.
-           </span>`
-        : `<span class="ui-desc" style="font-size:10.5px">Everybody in town knows about you now.</span>`,
+      content:
+        chips +
+        (rows.length
+          ? rows.join('')
+          : `<p class="ui-desc">Nobody here. Ship something and word gets around.</p>`),
+      foot: `<span class="ui-desc" style="font-size:10.5px">
+          ${
+            free.length
+              ? `<b>${free.length}</b> with nothing to do · `
+              : members.length
+                ? 'Everybody is on something · '
+                : ''
+          }dues ${money(members.length * ECONOMY.crewDues)} a month ·
+          ${
+            next
+              ? `${
+                  state.runtime.recruitIn > 0
+                    ? `somebody gets in touch in <b>${state.runtime.recruitIn}d</b>`
+                    : 'word is out — waiting on reputation'
+                }, next along <b>${next.name}</b> at ${next.repRequired} reputation.`
+              : 'everybody in town knows about you now.'
+          }
+        </span>`,
     };
   }
 
