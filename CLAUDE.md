@@ -889,6 +889,13 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   Paid to see what the work was worth; a stack of cards with wrapping badges cannot be compared
   between two rows that are nowhere near each other. Filter chips narrow one list rather than
   tabs swapping between several, and All is the default.
+- **The bench is where you act; Projects is where you survey.** Once the Projects panel took
+  over the overview job, "On the bench" was still drawing everything for every build at once
+  — and each card carried *three* renderings of the same progress (a bar, a stage counter and
+  the full pipeline strip) on top of a team box, a parts list and four buttons. Five projects
+  open was several screens of scrolling. It now opens **one** build and folds the rest to a
+  line each: name, bar, current stage, and what is blocking it. The open one is whichever you
+  are working on, so the panel is already showing the thing you came to do something about.
 - **The Projects panel is triage, not an inventory.** The question it answers is "what needs
   me now?", so a row that is blocked says *why* in the row itself — about to be shelved, parts
   not ordered, order in transit, prints outstanding, nobody on it — and **the progress bar

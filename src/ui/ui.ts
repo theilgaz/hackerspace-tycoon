@@ -207,6 +207,9 @@ export class UI {
   /** Which group of projects is on screen. Falls through when the chosen one is empty. */
   private projectsTab: 'all' | 'on' | 'done' = 'all';
 
+  /** Which build on the bench is open. One at a time; the rest are a line each. */
+  private benchOpen: string | null = null;
+
   /** Standings, or the shelf of everything you have won. */
   private rankTab: 'table' | 'trophies' = 'table';
 
@@ -390,6 +393,11 @@ export class UI {
           break;
         case 'set-role':
           if (id) h.setRole(id, (value || null) as Role | null);
+          this.rerender();
+          break;
+        case 'bench-open':
+          // Clicking the open one folds it away, so you can see the whole bench at a glance.
+          this.benchOpen = this.benchOpen === id ? '' : (id ?? null);
           this.rerender();
           break;
         case 'panel-toggle': {
@@ -1965,6 +1973,15 @@ export class UI {
 
   // --- active projects ---  // --- active projects ------------------------------------------------------
 
+  /**
+   * The bench is where you *act*, not where you survey — the Projects panel does surveying.
+   * So it shows one build open and the rest as a line each: with five or six running, a
+   * column of fully expanded cards was several screens of scrolling, and every one of them
+   * carried three separate renderings of the same progress.
+   *
+   * The open one is whichever you are working on, else whatever you last opened, else the
+   * first — so the panel is already showing the thing you came to do something about.
+   */
   private renderProjects(state: GameState) {
     const projects = state.runtime.projects;
     if (!projects.length) {
@@ -1974,10 +1991,21 @@ export class UI {
       `);
       return;
     }
-    this.setHTML(this.left, 'left', projects.map((p) => this.projectCard(p, state)).join(''));
+    const mine = state.runtime.player?.project;
+    // '' means the player folded everything away on purpose; null means "you choose".
+    const open =
+      this.benchOpen === ''
+        ? null
+        : (projects.find((x) => x.id === this.benchOpen)?.id ??
+          (mine && projects.some((x) => x.id === mine) ? mine : projects[0].id));
+    this.setHTML(
+      this.left,
+      'left',
+      projects.map((p) => this.projectCard(p, state, p.id === open)).join(''),
+    );
   }
 
-  private projectCard(project: ProjectData, state: GameState): string {
+  private projectCard(project: ProjectData, state: GameState, expanded = true): string {
     const player = state.runtime.player;
     const currentIndex = STAGE_ORDER.indexOf(project.stage);
     const stageDef = STAGE_MAP[project.stage];
@@ -2121,17 +2149,53 @@ export class UI {
         </div>`
       : '';
 
+    // What is actually holding this one up, in a few words. It is the only thing a folded
+    // card needs to say beyond its name and its bar.
+    const shelving = project.idleDays >= SHELVE.warnAfterIdleDays;
+    const stop = shelving
+      ? { text: `shelved in ${SHELVE.afterIdleDays - project.idleDays}d`, tone: 'bad' }
+      : blockedAssembly
+        ? { text: project.partsOrdered ? `parts in ${(waiting / 24).toFixed(1)}d` : 'parts not ordered', tone: 'warn' }
+        : !project.team.length && !playerOn
+          ? { text: 'nobody on it', tone: 'warn' }
+          : null;
+
+    const header = `<button class="proj-head" data-action="bench-open" data-id="${project.id}">
+      <span class="row between" style="gap:8px;width:100%">
+        <span class="ui-title" style="flex:1;min-width:0;text-align:left">${esc(project.name)}</span>
+        <span class="mono" style="font-size:10.5px;color:var(--subtle-foreground)">
+          ${Math.round(overall.ratio * 100)}%
+        </span>
+      </span>
+      <span class="bar ${stop?.tone ?? ''}" style="margin:6px 0 5px">
+        <i style="width:${(overall.ratio * 100).toFixed(1)}%"></i>
+      </span>
+      <span class="proj-line">
+        <span class="proj-line__stage">${stageName}</span>
+        <span class="proj-line__val">${statusLine}</span>
+        ${
+          stop
+            ? `<span class="proj-line__stop ${stop.tone}">${esc(stop.text)}</span>`
+            : `<span class="proj-line__crew">${
+                playerOn && project.team.length
+                  ? `you + ${project.team.length}`
+                  : playerOn
+                    ? 'you'
+                    : `${project.team.length} on it`
+              }</span>`
+        }
+      </span>
+    </button>`;
+
+    if (!expanded) return `<div class="project project--folded">${header}</div>`;
+
     return `<div class="project">
-      <div class="row between" style="gap:8px;margin-bottom:6px">
-        <span class="ui-title" style="flex:1;min-width:0">${esc(project.name)}</span>
-        <span class="mono" style="font-size:10.5px;color:var(--subtle-foreground)">Q ${pct(project.quality)}</span>
-      </div>
-      <div class="row wrap" style="gap:5px;margin-bottom:8px">
+      ${header}
+      <div class="row wrap" style="gap:5px;margin:2px 0 8px">
         ${categoryChip(project.category)}
-        ${(() => {
-          const def = CATALOG_MAP[project.defId];
-          return def ? tierBadge(def.tier) : '';
-        })()}
+        <span class="ui-badge" title="build quality — it gates what you can claim on Reddit">
+          ${icon('effort')}quality ${pct(project.quality)}
+        </span>
         ${
           project.hypeMultiplier > 1
             ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('flame')}×${project.hypeMultiplier}</span>`
@@ -2143,17 +2207,7 @@ export class UI {
             : ''
         }
       </div>
-
-      <div class="proj-progress">
-        <div class="bar"><i style="width:${(overall.ratio * 100).toFixed(1)}%"></i></div>
-        <span class="mono proj-pct">${Math.round(overall.ratio * 100)}%</span>
-      </div>
       <div class="pipe">${strip}</div>
-      <div class="proj-now">
-        <span class="caret">›</span>
-        <span class="proj-now__stage">${stageName}</span>
-        <span class="mono proj-now__val">${statusLine}</span>
-      </div>
 
       ${sourcing}
       ${teamBlock}
@@ -2169,13 +2223,6 @@ export class UI {
         </button>
         ${project.stage === 'simulation' ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="skip-sim" data-id="${project.id}">Skip sim</button>` : ''}
       </div>
-      ${
-        project.idleDays >= SHELVE.warnAfterIdleDays
-          ? `<p class="defect">${icon('clock')} Untouched for ${project.idleDays} days — shelved in
-             ${SHELVE.afterIdleDays - project.idleDays}.</p>`
-          : ''
-      }
-      ${project.defects.length ? `<p class="defect">${esc(project.defects[project.defects.length - 1])}</p>` : ''}
       ${parts}
     </div>`;
   }

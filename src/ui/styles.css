@@ -1652,3 +1652,37 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .trophy-shelf .trophy { padding: 9px 5px 8px; background: var(--card); }
 .trophy-shelf .trophy-cup { width: 32px; height: 32px; }
 .trophy-shelf .trophy-cup .ui-icon { width: 18px; height: 18px; }
+
+/* --- the bench: one build open, the rest a line each ---------------------- */
+.proj-head {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.proj-head:hover .ui-title { color: var(--primary); }
+/* `.bar` carries `flex: 1`, which inside a column flex container resolves its basis to 0
+   and collapses the height to nothing. It has to opt out of flexing here. */
+.proj-head .bar { display: block; flex: none; width: 100%; height: 5px; }
+.proj-line {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+}
+.proj-line__stage { color: var(--foreground); text-transform: lowercase; }
+.proj-line__val { font-family: var(--font); color: var(--subtle-foreground); }
+.proj-line__crew { margin-left: auto; font-family: var(--font); color: var(--subtle-foreground); }
+.proj-line__stop { margin-left: auto; }
+.proj-line__stop.warn { color: var(--warning); }
+.proj-line__stop.bad { color: var(--destructive); }
+/* A folded card is deliberately quiet: it is a place to click, not a thing to read. */
+.project--folded { padding: 8px 0; opacity: 0.72; }
+.project--folded:hover { opacity: 1; }
