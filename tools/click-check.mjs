@@ -350,21 +350,24 @@ await check('People opens and hiring works', async () => {
   return hireable > 0 && after === before + 1;
 });
 
-await check('Projects: tabs switch, and the ledger is a table', async () => {
+await check('Projects: the filter narrows one list', async () => {
   await openPanel('projects-open');
-  // Switch both ways, so the assertion does not depend on which tab the panel opened on.
-  await click('#modal [data-action="projects-tab"][data-value="done"]:not([disabled])');
-  const shipped = await evaluate(`__store.getState().shipped.length`);
-  const ledger = await evaluate(`document.querySelectorAll('#modal .rank-table tbody tr').length`);
-  await click('#modal [data-action="projects-tab"][data-value="on"]:not([disabled])');
-  const backToRows = await evaluate(
-    `JSON.stringify({ rows: document.querySelectorAll('#modal .ui-row').length,
-                      table: document.querySelectorAll('#modal .rank-table').length })`,
+  const count = () => evaluate(`document.querySelectorAll('#modal .ui-row').length`);
+  const totals = JSON.parse(
+    await evaluate(`JSON.stringify({ done: __store.getState().shipped.length,
+                                     open: __store.getState().runtime.projects.length })`),
   );
-  const back = JSON.parse(backToRows);
-  const ok = shipped > 0 && ledger === shipped && back.rows > 0 && back.table === 0;
+  const all = await count();
+  await click('#modal [data-action="projects-tab"][data-value="done"]:not([disabled])');
+  const onlyDone = await count();
+  await click('#modal [data-action="projects-tab"][data-value="on"]:not([disabled])');
+  const onlyOpen = await count();
+  // All really is everything, and each filter really is its own slice of it.
+  const ok =
+    totals.done > 0 && totals.open > 0 &&
+    all === totals.done + totals.open && onlyDone === totals.done && onlyOpen === totals.open;
   if (!ok) {
-    console.log(`      ledger ${ledger}/${shipped} shipped; back: ${back.rows} rows, ${back.table} tables`);
+    console.log(`      all ${all}, done ${onlyDone}/${totals.done}, open ${onlyOpen}/${totals.open}`);
   }
   return ok;
 });
