@@ -644,7 +644,7 @@ export class Simulation {
 
     // Out of hours is either "spent them" or "before you open up" — the day is a span as
     // well as a budget, so midnight does not put you back on the floor with a fresh eighteen.
-    if (p.hoursLeft <= 0 || this.time < PLAYER.startHour) {
+    if (p.hoursLeft <= 0 || this.time < PLAYER.startHour || this.time >= PLAYER.endHour) {
       if (!p.present) return;
       if (p.tile.x === DOOR.x && p.tile.y === DOOR.y && !p.walking) {
         p.leave();

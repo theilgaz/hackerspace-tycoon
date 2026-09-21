@@ -2562,18 +2562,30 @@ export class UI {
       return;
     }
     const task = p.project ? state.runtime.projects.find((x) => x.id === p.project) : null;
-    const left = p.hoursLeft / Math.max(1, p.hoursToday);
+    // What you can still get done today is the *lesser* of what is left in you and what is
+    // left of the day. Drawing only the first meant a bar that sat almost full at half ten
+    // at night, when there was one usable hour in it.
+    const open = state.simTime >= PLAYER.startHour && state.simTime < PLAYER.endHour;
+    const untilClose = open
+      ? PLAYER.endHour - state.simTime
+      : state.simTime < PLAYER.startHour
+        ? p.hoursToday
+        : 0;
+    const usable = Math.max(0, Math.min(p.hoursLeft, untilClose));
+    const left = usable / Math.max(1, p.hoursToday);
     const dayTone = left <= 0.08 ? 'bad' : left <= 0.2 ? 'warn' : 'good';
     // One bar, because there is one resource. The hours are in the tooltip for anyone
     // deciding whether a two-hour job still fits; the panel itself is a glance, not a sum.
     return void this.setHTML(this.you, 'you', `
       <div class="row between" style="margin-bottom:6px">
-        <span class="mono" style="font-size:13px">${p.present ? 'In today' : 'Gone home'}</span>
-        <span class="muted" style="font-size:10.5px">${Math.round(left * 100)}% left</span>
+        <span class="mono" style="font-size:13px">${usable.toFixed(1)}h left</span>
+        <span class="muted" style="font-size:10.5px">
+          ${p.present ? `until ${clock(PLAYER.endHour)}` : 'gone home'}
+        </span>
       </div>
-      <div title="${p.hoursLeft.toFixed(1)} of ${p.hoursToday.toFixed(0)} hours left — you are in
-        from ${clock(PLAYER.startHour)} and go home when they run out">
-        ${bar(p.hoursLeft, p.hoursToday, dayTone)}
+      <div title="${p.hoursLeft.toFixed(1)}h of work left in you, ${untilClose.toFixed(1)}h of the
+        day left — you are on the floor ${clock(PLAYER.startHour)} to ${clock(PLAYER.endHour)}">
+        ${bar(usable, p.hoursToday, dayTone)}
       </div>
       ${
         task

@@ -297,10 +297,15 @@ export const TEST = {
  */
 export const PLAYER = {
   name: 'You',
-  /** Hours of work in you, every day, flat. Spent on building and on managing alike. */
-  dayHours: 18,
-  /** You unlock at seven, two hours before the crew's shift starts. */
-  startHour: 7,
+  /**
+   * Your day, 06:00 to 23:00. **The span and the budget are the same seventeen hours** on
+   * purpose: an eighteen-hour budget inside a seventeen-hour window could never be spent, so
+   * the bar never emptied and the remainder was quietly thrown away at midnight. Work solidly
+   * and you run out exactly as you lock up.
+   */
+  startHour: 6,
+  endHour: 23,
+  dayHours: 17,
   walkSpeed: 22,
 };
 

@@ -189,10 +189,15 @@ whose attendance is guaranteed.
 
 The counterweight is the hour budget, and **it is the only number you have**:
 
-- **Your day is one resource.** Eighteen hours, flat, every day, spent on building and on
-  managing alike. You are in the building from **07:00** — two hours before the crew's shift
-  — and you go home when the eighteen are gone, whatever the clock says. Nothing carries over
-  and there is no hangover.
+- **Your day is one resource.** Seventeen hours, flat, every day, spent on building and on
+  managing alike. You are on the floor **06:00 to 23:00** — three hours before the crew's
+  shift starts and five after it ends — and the span and the budget are deliberately the same
+  seventeen hours. They were not: an eighteen-hour budget inside a seventeen-hour window
+  could never be spent, so the bar never emptied and the remainder was thrown away at
+  midnight. Nothing carries over and there is no hangover.
+- **The bar draws the binding constraint, not the budget.** What you can still get done is
+  the *lesser* of what is left in you and what is left of the day — drawing only the first
+  gave a bar that sat nearly full at half ten at night with one usable hour in it.
 - **Energy used to be a second resource pointed at the same thing**: you spent hours, which
   drained energy, which shrank tomorrow's hours. Two bars to answer one question, and the
   burnout threshold had been tuned so low that it almost never fired. It is gone. The bar in
