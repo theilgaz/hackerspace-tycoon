@@ -837,6 +837,9 @@ button.primary { padding: 9px 12px; font-size: 12.5px; }
 .ui-row__main { flex: 1; min-width: 0; }
 .ui-row__chevron { color: var(--subtle-foreground); align-self: center; }
 .ui-row__meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+/* A meta row that ends a card has nothing below it to provide the gap, so it brings its
+   own — otherwise an offer's "₺1.800 up front · 6d left" sits on top of the next card. */
+.ui-row__meta:last-child { margin-bottom: 3px; }
 
 /* Toggleable person chips ------------------------------------------------ */
 
@@ -1767,3 +1770,45 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   border-radius: 0 0 9px 9px;
   background: color-mix(in srgb, var(--muted) 40%, transparent);
 }
+
+/* --- keyholders (§3b) -----------------------------------------------------
+   Three slots on one row rather than three full-width rows: it is a small decision made
+   rarely, and it was taking a third of the panel to say so. */
+.keyholders { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.keyslot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.keyslot:hover { border-color: var(--muted-foreground); }
+.keyslot--held { border-color: color-mix(in srgb, var(--primary) 35%, transparent); }
+.keyslot--open { border-color: var(--primary); }
+.keyslot .icon-chip { width: 26px; height: 26px; flex: none; }
+.keyslot .icon-chip .ui-icon { width: 14px; height: 14px; }
+.keyslot__text { display: flex; flex-direction: column; min-width: 0; }
+.keyslot__role {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--subtle-foreground);
+}
+.keyslot__who {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.keyslot--held .keyslot__who { color: var(--primary); }
+/* The one the game would pick, if you want the obvious answer. */
+.ui-toggle.suggested { border-style: solid; border-color: color-mix(in srgb, var(--warning) 55%, transparent); }

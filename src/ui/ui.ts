@@ -11,6 +11,7 @@ import type {
   Employment,
   ClaimKey,
   ShippedRecord,
+  SkillKey,
 } from '@/game/types';
 import { ROLE_BLURB, ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
 import { CATALOG_MAP, catalogForEra, missingMachines } from '@/utils/catalog';
@@ -345,6 +346,23 @@ export class UI {
   }
 
   private bind() {
+    /**
+     * Escape closes the topmost thing that is open, one layer per press — a bill sits over
+     * a ceremony sits over a panel sits over a picker inside it. Closing the whole stack on
+     * one keypress loses the two screens you had not read yet.
+     */
+    window.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      const state = this.lastState;
+      if (state?.bill) this.handlers.dismissBill();
+      else if (state?.ceremony) this.handlers.dismissCeremony();
+      else if (this.roleOpen) this.roleOpen = null;
+      else if (this.openModal) this.openModal = null;
+      else return;
+      event.preventDefault();
+      this.rerender();
+    });
+
     this.root.addEventListener('input', (event) => {
       const target = event.target as HTMLElement;
       if (target.id === 'space-name') this.onNameTyped(target as HTMLInputElement);
@@ -1600,53 +1618,95 @@ export class UI {
         .join('')}
     </div>`;
 
-    // Three rows that say what each job is for. A role you have to discover by cycling a
-    // button is a role nobody ever uses — and "Quartermaster" tells you nothing on its own.
+    /**
+     * Who is actually suited to a standing job. Each one leans on a different skill and a
+     * different trait, so the picker can lead with the person who ought to have it rather
+     * than making you cross-reference the table underneath — which is what you were doing.
+     */
+    const roleFit = (id: string, role: Role): { score: number; why: string } => {
+      const data = MEMBER_DATA[id];
+      if (!data) return { score: 0, why: '' };
+      const skill = (key: SkillKey) => (data.skills[key] ?? 0) / 5;
+      const has = (t: string) => (data.traits ?? []).includes(t as never);
+      let score = 0;
+      let why = '';
+      if (role === 'manager') {
+        // Starting the right thing is judgement plus a broad enough taste to judge with.
+        const breadth = Math.min(1, Object.keys(data.passions ?? {}).length / 4);
+        score = skill('docs') * 0.55 + breadth * 0.45;
+        why = has('mentor') ? 'mentor' : breadth > 0.7 ? 'broad interests' : 'keeps notes';
+      } else if (role === 'printer') {
+        score = skill('machining') * 0.8 + 0.2;
+        why = has('nightOwl') ? 'night owl' : `machining ${data.skills.machining ?? 0}`;
+      } else {
+        score = skill('docs') * 0.7 + skill('electronics') * 0.3;
+        why = has('documenter') ? 'documenter' : `docs ${data.skills.docs ?? 0}`;
+      }
+      if (has('mentor') && role === 'manager') score *= 1.25;
+      if (has('nightOwl') && role === 'printer') score *= 1.2;
+      if (has('documenter') && role === 'quartermaster') score *= 1.3;
+      // Somebody who signs up and then stops turning up is nobody's keyholder.
+      if (has('ghost')) score *= 0.4;
+      return { score: Math.min(1, score), why };
+    };
+
     const roleIcon: Record<Role, IconName> = {
       manager: 'clipboard',
       printer: 'printer',
       quartermaster: 'package',
     };
-    const jobs = `<div class="jobs-board">
-      ${(Object.keys(ROLE_LABEL) as Role[])
-        .map((role) => {
-          const holder = members.find((m) => m.role === role);
-          const open = this.roleOpen === role;
-          return `<div class="job-row ${holder ? 'job-row--held' : ''}">
-            <span class="icon-chip" style="--tone:${holder ? 'var(--primary)' : 'var(--muted-foreground)'}">
-              ${icon(roleIcon[role], 'ui-icon ui-icon--lg')}
-            </span>
-            <span class="ui-row__main">
-              <span class="ui-title">${ROLE_LABEL[role]}</span>
-              <p class="ui-desc" style="margin:2px 0 0">${ROLE_BLURB[role]}</p>
-            </span>
-            <button class="ui-btn ${holder ? 'ui-btn--outline' : 'ui-btn--ghost'} ui-btn--sm"
-              data-action="role-open" data-value="${open ? '' : role}">
-              ${holder ? esc(holder.name) : 'nobody yet'}
-            </button>
-          </div>
-          ${
-            open
-              ? `<div class="job-pick">
-                  <button class="ui-toggle" aria-pressed="${!holder}"
-                    data-action="set-role" data-id="${holder?.id ?? ''}" data-value="">
-                    ${icon('x')}nobody
-                  </button>
-                  ${members
-                    .map(
-                      (m) => `<button class="ui-toggle" aria-pressed="${m.role === role}"
-                        data-action="set-role" data-id="${m.id}" data-value="${role}"
-                        title="${m.role && m.role !== role ? `currently ${ROLE_LABEL[m.role]}` : ''}">
-                        ${icon(m.role === role ? 'check' : 'plus')}${esc(m.name)}
-                      </button>`,
-                    )
-                    .join('')}
-                </div>`
-              : ''
-          }`;
-        })
-        .join('')}
-    </div>`;
+    const roles = Object.keys(ROLE_LABEL) as Role[];
+    const openRole = this.roleOpen;
+    const jobs = `<div class="ui-label" style="margin-bottom:7px">
+        Keyholders <span class="muted" style="text-transform:none;letter-spacing:0">
+          · members you have trusted with a standing job</span>
+      </div>
+      <div class="keyholders">
+        ${roles
+          .map((role) => {
+            const holder = members.find((m) => m.role === role);
+            return `<button class="keyslot ${holder ? 'keyslot--held' : ''} ${openRole === role ? 'keyslot--open' : ''}"
+              data-action="role-open" data-value="${openRole === role ? '' : role}"
+              title="${ROLE_BLURB[role]}">
+              <span class="icon-chip" style="--tone:${holder ? 'var(--primary)' : 'var(--muted-foreground)'}">
+                ${icon(roleIcon[role], 'ui-icon')}
+              </span>
+              <span class="keyslot__text">
+                <span class="keyslot__role">${ROLE_LABEL[role]}</span>
+                <span class="keyslot__who">${holder ? esc(holder.name) : 'nobody yet'}</span>
+              </span>
+            </button>`;
+          })
+          .join('')}
+      </div>
+      ${
+        openRole
+          ? `<div class="job-pick">
+              <p class="ui-desc" style="width:100%;margin:0 0 3px">${ROLE_BLURB[openRole]}</p>
+              ${[...members]
+                .map((m) => ({ m, fit: roleFit(m.id, openRole) }))
+                .sort((a, b) => b.fit.score - a.fit.score)
+                .map(
+                  ({ m, fit }, index) => `<button class="ui-toggle ${index === 0 && m.role !== openRole ? 'suggested' : ''}"
+                    aria-pressed="${m.role === openRole}"
+                    data-action="set-role" data-id="${m.id}" data-value="${openRole}"
+                    title="${fit.why}${m.role && m.role !== openRole ? ` · currently ${ROLE_LABEL[m.role]}` : ''}">
+                    ${icon(m.role === openRole ? 'check' : 'plus')}${esc(m.name)}
+                    <span class="ui-toggle__pct">${pct(fit.score)}</span>
+                  </button>`,
+                )
+                .join('')}
+              ${
+                members.some((m) => m.role === openRole)
+                  ? `<button class="ui-toggle" data-action="set-role"
+                      data-id="${members.find((m) => m.role === openRole)!.id}" data-value="">
+                      ${icon('x')}take it back
+                    </button>`
+                  : ''
+              }
+            </div>`
+          : ''
+      }`;
 
     const rows =
       this.peopleTab === 'free'

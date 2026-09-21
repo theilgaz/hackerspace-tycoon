@@ -949,6 +949,15 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   screen, after the leaderboard (§3c). You read *down* the payout column to see what paid, and
   the footer totals what the space has earned and made its name on. Wrapping badges (`Q 60%`,
   `2 tests`) could not be compared between two rows at all.
+- **Escape closes one layer, not the lot.** A bill sits over a ceremony sits over a panel
+  sits over a picker inside it, and each press unwinds exactly one — closing the whole stack
+  on a single keypress loses the two screens you had not read yet.
+- **Keyholders, not a list of roles.** The three standing jobs are three slots on one row
+  rather than three full-width rows: it is a small decision made rarely and it was taking a
+  third of the panel to say so. The picker **ranks candidates** by what the job actually
+  leans on — docs and breadth for the manager, machining for the printer keeper, docs for the
+  quartermaster, with Mentor, Night Owl and Documenter counting for and Ghost counting
+  heavily against. Somebody who signs up and stops turning up is nobody's keyholder.
 - **A verb belongs next to the thing it is about.** "You" carried two buttons under the
   energy bar: Stop, which the bench card already offered on the build you were on, and
   Calibrate, which had no other home — but the calibration meter it is about lives on the
