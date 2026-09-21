@@ -15,24 +15,36 @@ export interface StationDef {
 }
 
 /**
- * Two working walls with a clear aisle down the middle, and the sofa at the door end.
- * Furniture scattered across an open floor reads as clutter; a room reads as a workshop
- * when the benches line up and the walking space is obvious.
+ * **Benches go against the walls.** The room has exactly two of them — the back wall along
+ * `y = 0` and the left wall along `x = 0` — and everything works better when the kit is
+ * pushed up against them: the floor reads as one open aisle instead of several awkward gaps,
+ * and a bench with its back to a wall is simply what a workshop looks like. The first
+ * arrangement sat a tile off both walls, which left a dead lane against each one and a large
+ * empty floor at the door end.
+ *
+ * The sofa is the exception and it is deliberate: it sits by the door, because that is the
+ * first thing you want to see when you walk in and the last thing you pass on the way out.
  */
 const STARTING_STATIONS: StationDef[] = [
-  { id: 'cad-desk', type: 'cad-desk', label: 'CAD Desk', tile: { x: 1, y: 1 }, stand: { x: 1, y: 2 } },
-  { id: 'printer-1', type: 'fdm', label: 'A1 Mini Combo', tile: { x: 4, y: 1 }, stand: { x: 4, y: 2 } },
-  { id: 'bench', type: 'bench', label: 'Solder Bench', tile: { x: 1, y: 3 }, stand: { x: 1, y: 4 } },
-  { id: 'assembly', type: 'assembly', label: 'Assembly Table', tile: { x: 4, y: 3 }, stand: { x: 4, y: 4 } },
-  { id: 'lounge', type: 'lounge', label: 'Sofa & Kettle', tile: { x: 2, y: 6 }, stand: { x: 2, y: 5 } },
+  { id: 'cad-desk', type: 'cad-desk', label: 'CAD Desk', tile: { x: 1, y: 0 }, stand: { x: 1, y: 1 } },
+  { id: 'printer-1', type: 'fdm', label: 'A1 Mini Combo', tile: { x: 3, y: 0 }, stand: { x: 3, y: 1 } },
+  { id: 'bench', type: 'bench', label: 'Solder Bench', tile: { x: 0, y: 2 }, stand: { x: 1, y: 2 } },
+  { id: 'assembly', type: 'assembly', label: 'Assembly Table', tile: { x: 0, y: 4 }, stand: { x: 1, y: 4 } },
+  { id: 'lounge', type: 'lounge', label: 'Sofa & Kettle', tile: { x: 0, y: 6 }, stand: { x: 1, y: 6 } },
 ];
 
-/** Where a machine unlocked by a tool project gets installed. */
-/** New machines continue the two working walls rather than landing wherever there is room. */
+/**
+ * Where a bought or built machine lands. They carry on along the same two walls rather than
+ * landing wherever there is room, so the space stays legible however much kit you buy — and
+ * the back wall fills first, because that is where the printers live.
+ */
 const EXPANSION_SLOTS: { tile: Tile; stand: Tile }[] = [
-  { tile: { x: 4, y: 6 }, stand: { x: 4, y: 5 } },
-  { tile: { x: 1, y: 6 }, stand: { x: 1, y: 5 } },
-  { tile: { x: 0, y: 1 }, stand: { x: 0, y: 2 } },
+  { tile: { x: 4, y: 0 }, stand: { x: 4, y: 1 } },
+  { tile: { x: 2, y: 0 }, stand: { x: 2, y: 1 } },
+  { tile: { x: 5, y: 0 }, stand: { x: 5, y: 1 } },
+  { tile: { x: 0, y: 3 }, stand: { x: 1, y: 3 } },
+  { tile: { x: 0, y: 5 }, stand: { x: 1, y: 5 } },
+  { tile: { x: 0, y: 1 }, stand: { x: 1, y: 1 } },
 ];
 
 export const MACHINE_LABEL: Record<MachineType, string> = {
@@ -103,10 +115,10 @@ export const DOOR: Tile = { x: 0, y: 7 };
 
 /** The aisle. People loiter here rather than inside somebody's workspace. */
 export const IDLE_TILES: Tile[] = [
-  { x: 2, y: 2 },
-  { x: 3, y: 2 },
-  { x: 2, y: 4 },
-  { x: 3, y: 4 },
+  { x: 3, y: 3 },
+  { x: 4, y: 3 },
+  { x: 3, y: 5 },
+  { x: 4, y: 5 },
 ];
 
 export function isBlocked(tile: Tile): boolean {
