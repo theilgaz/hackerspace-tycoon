@@ -350,6 +350,25 @@ await check('People opens and hiring works', async () => {
   return hireable > 0 && after === before + 1;
 });
 
+await check('Projects: tabs switch, and the ledger is a table', async () => {
+  await openPanel('projects-open');
+  // Switch both ways, so the assertion does not depend on which tab the panel opened on.
+  await click('#modal [data-action="projects-tab"][data-value="done"]:not([disabled])');
+  const shipped = await evaluate(`__store.getState().shipped.length`);
+  const ledger = await evaluate(`document.querySelectorAll('#modal .rank-table tbody tr').length`);
+  await click('#modal [data-action="projects-tab"][data-value="on"]:not([disabled])');
+  const backToRows = await evaluate(
+    `JSON.stringify({ rows: document.querySelectorAll('#modal .ui-row').length,
+                      table: document.querySelectorAll('#modal .rank-table').length })`,
+  );
+  const back = JSON.parse(backToRows);
+  const ok = shipped > 0 && ledger === shipped && back.rows > 0 && back.table === 0;
+  if (!ok) {
+    console.log(`      ledger ${ledger}/${shipped} shipped; back: ${back.rows} rows, ${back.table} tables`);
+  }
+  return ok;
+});
+
 await check('Reddit: a post lands and moves hype', async () => {
   await openPanel('reddit-open');
   // Pick the sceptical room and the biggest claim on purpose: the post should still land,

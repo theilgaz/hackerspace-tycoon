@@ -10,6 +10,7 @@ import type {
   ProjectDef,
   Employment,
   ClaimKey,
+  ShippedRecord,
 } from '@/game/types';
 import { CATALOG_MAP, catalogForEra, canBuild, missingMachines } from '@/utils/catalog';
 import {
@@ -41,7 +42,7 @@ import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import { DIFFICULTIES, type DifficultyKey } from '@/utils/difficulty';
 import { ECONOMY } from '@/utils/economy';
-import { projectProgress } from '@/systems/ProjectSystem';
+import { partsEta, partsPending, projectProgress } from '@/systems/ProjectSystem';
 import { SHELVE } from '@/utils/constants';
 
 export interface UIHandlers {
@@ -204,6 +205,9 @@ export class UI {
   private openModal:
     | 'jobs' | 'people' | 'ranking' | 'machines' | 'projects' | 'reddit' | null = null;
 
+  /** Which group of projects is on screen. Falls through when the chosen one is empty. */
+  private projectsTab: 'on' | 'waiting' | 'done' = 'on';
+
   /** What the composer is pointed at. Three decisions, and the claim is the one with teeth. */
   private reddit: { projectId: string | null; subreddit: string; claim: ClaimKey } = {
     projectId: null,
@@ -335,6 +339,10 @@ export class UI {
           break;
         case 'projects-open':
           this.openModal = 'projects';
+          this.rerender();
+          break;
+        case 'projects-tab':
+          this.projectsTab = (value as 'on' | 'waiting' | 'done') ?? 'on';
           this.rerender();
           break;
         case 'machines-open':
@@ -1133,7 +1141,7 @@ export class UI {
       this.modal,
       'modal',
       `<div class="modal-backdrop" data-action="jobs-close">
-        <div class="modal ${this.openModal === 'machines' ? 'modal--fit' : ''}" data-action="noop">
+        <div class="modal ${this.openModal === 'machines' || this.openModal === 'projects' ? 'modal--fit' : ''}" data-action="noop">
           <header>
             ${body.head}
             <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="jobs-close">
@@ -1715,7 +1723,7 @@ export class UI {
     }).join('<span class="pipe-dot">·</span>');
 
     // What the current stage is waiting on, in one line.
-    const waitingParts = project.stage === 'assembly' && partsWait(project, nowHours) > 0;
+    const waitingParts = project.stage === 'assembly' && partsEta(project, nowHours) > 0;
     let statusLine: string;
     if (project.stage === 'fabrication') {
       const madeParts = project.parts.filter((p) => p.status === 'done').length;
@@ -1777,7 +1785,7 @@ export class UI {
     </div>`;
 
     // --- sourcing -----------------------------------------------------------
-    const waiting = partsWait(project, nowHours);
+    const waiting = partsEta(project, nowHours);
     let sourcing = '';
     if (!project.partsOrdered) {
       const affordable = state.cash >= project.bomCost;
@@ -2174,41 +2182,109 @@ export class UI {
 
   // --- projects: everything on, waiting, and done ---------------------------
 
+  /**
+   * Triage, not an inventory. The question this panel answers is "what needs me now?", so
+   * anything blocked says *why* in the row itself and the progress bar takes its colour from
+   * that — a run of amber bars is readable at a glance in a way a column of identical rows
+   * never was. Groups are tabs rather than stacked sections: with the shelf letting a player
+   * keep twenty projects open, three sections in one column is a scroll, and an empty one
+   * used to spend a heading and a sentence to say nothing.
+   */
   private projectsBody(state: GameState): { head: string; content: string; foot: string } {
     const active = state.runtime.projects;
-    const onIt = active.filter(
-      (p) => p.team.length > 0 || state.runtime.player?.project === p.id,
-    );
-    const waiting = active.filter(
-      (p) => p.team.length === 0 && state.runtime.player?.project !== p.id,
-    );
+    const mine = (p: ProjectData) => state.runtime.player?.project === p.id;
+    const onIt = active.filter((p) => p.team.length > 0 || mine(p));
+    const waiting = active.filter((p) => p.team.length === 0 && !mine(p));
     const done = [...state.shipped].reverse();
+    const nowHours = this.handlers.totalHours();
+
+    const groups = [
+      { key: 'on' as const, label: 'On it', rows: onIt },
+      { key: 'waiting' as const, label: 'Waiting', rows: waiting },
+      { key: 'done' as const, label: 'Done', rows: done },
+    ];
+    // Never strand the player on an empty tab — fall through to one with something in it.
+    const chosen =
+      groups.find((g) => g.key === this.projectsTab && g.rows.length) ??
+      groups.find((g) => g.rows.length) ??
+      groups[0];
+
+    const tabs = `<div class="ui-segmented" style="margin-bottom:11px">
+      ${groups
+        .map(
+          (g) => `<button data-action="projects-tab" data-value="${g.key}"
+            aria-pressed="${g.key === chosen.key}" ${g.rows.length ? '' : 'disabled'}>
+            ${g.label}<span class="seg-count">${g.rows.length}</span>
+          </button>`,
+        )
+        .join('')}
+    </div>`;
+
+    /** What is actually stopping this one, if anything. Order matters: worst first. */
+    const blocker = (project: ProjectData, crew: number) => {
+      const left = SHELVE.afterIdleDays - project.idleDays;
+      if (project.idleDays >= SHELVE.warnAfterIdleDays) {
+        return { text: `shelved in ${left}d`, icon: 'clock' as const, tone: 'bad' as const };
+      }
+      if (project.stage === 'assembly' && partsPending(project, nowHours)) {
+        // The bought bill of materials, which is what actually gates assembly (§4) — not the
+        // printed parts. Conflating the two hid this blocker entirely on any build whose
+        // parts all arrive in a box.
+        if (!project.partsOrdered) {
+          return {
+            text: `parts not ordered · ${money(project.bomCost)}`,
+            icon: 'package' as const,
+            tone: 'bad' as const,
+          };
+        }
+        const days = Math.ceil(partsEta(project, nowHours) / 24);
+        return { text: `parts in ${days}d`, icon: 'package' as const, tone: 'warn' as const };
+      }
+      const unprinted = project.parts.filter((part) => part.status !== 'done').length;
+      if (project.stage === 'assembly' && unprinted) {
+        return {
+          text: `${unprinted} still to print`,
+          icon: 'printer' as const,
+          tone: 'warn' as const,
+        };
+      }
+      if (!crew) return { text: 'nobody on it', icon: 'users' as const, tone: 'warn' as const };
+      return null;
+    };
 
     const activeRow = (project: ProjectData) => {
-      const def = CATALOG_MAP[project.defId];
       const overall = projectProgress(project);
       const crew = project.team
         .map((id) => state.runtime.members.find((m) => m.id === id)?.name)
         .filter(Boolean);
-      if (state.runtime.player?.project === project.id) crew.unshift('you');
+      if (mine(project)) crew.unshift('you');
       const profile = profileOf(project.category);
+      const stop = blocker(project, crew.length);
       return `<div class="ui-row" style="cursor:default">
-        <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[project.category], 'ui-icon ui-icon--lg')}</span>
+        <span class="icon-chip" style="--tone:${profile.accent}">
+          ${icon(CATEGORY_ICON[project.category], 'ui-icon ui-icon--lg')}
+        </span>
         <span class="ui-row__main">
           <span class="row between" style="gap:8px">
             <span class="ui-title">${esc(project.name)}</span>
-            <span class="mono" style="font-size:11px;color:var(--muted-foreground)">${Math.round(overall.ratio * 100)}%</span>
+            <span class="mono" style="font-size:11px;color:var(--muted-foreground)">
+              ${Math.round(overall.ratio * 100)}%
+            </span>
           </span>
-          <div class="bar" style="margin:6px 0 7px"><i style="width:${(overall.ratio * 100).toFixed(1)}%"></i></div>
+          <div class="bar ${stop?.tone ?? ''}" style="margin:6px 0 7px">
+            <i style="width:${(overall.ratio * 100).toFixed(1)}%"></i>
+          </div>
           <span class="ui-row__meta">
             <span class="ui-badge ui-badge--tone" style="--tone:${profile.accent}">
               ${stageLabel(project.category, project.stage)}
             </span>
-            ${def ? tierBadge(def.tier) : ''}
-            <span class="ui-badge">${icon('users')}${crew.length ? esc(crew.join(', ')) : 'nobody'}</span>
+            ${crew.length ? `<span class="ui-badge">${icon('users')}${esc(crew.join(', '))}</span>` : ''}
             ${
-              project.idleDays >= SHELVE.warnAfterIdleDays
-                ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--destructive)">${icon('clock')}shelved in ${SHELVE.afterIdleDays - project.idleDays}d</span>`
+              stop
+                ? `<span class="ui-badge ui-badge--tone"
+                     style="--tone:var(--${stop.tone === 'bad' ? 'destructive' : 'warning'})">
+                     ${icon(stop.icon)}${esc(stop.text)}
+                   </span>`
                 : ''
             }
           </span>
@@ -2216,48 +2292,83 @@ export class UI {
       </div>`;
     };
 
-    const doneRow = (record: (typeof done)[number]) => {
-      const profile = profileOf(record.category);
-      return `<div class="ui-row" style="cursor:default">
-        <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[record.category], 'ui-icon ui-icon--lg')}</span>
-        <span class="ui-row__main">
-          <span class="row between" style="gap:8px">
-            <span class="ui-title">${esc(record.name)}</span>
-            <span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('check')}day ${record.day}</span>
-          </span>
-          <span class="ui-row__meta" style="margin-top:6px">
-            <span class="ui-badge">${icon('clock')}${record.days}d</span>
-            <span class="ui-badge">Q ${pct(record.quality)}</span>
-            <span class="ui-badge">${icon('flame')}${record.hype} rep</span>
-            ${record.payout ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('coins')}${money(record.payout)}</span>` : ''}
-            ${record.failedPrints ? `<span class="ui-badge">${icon('printer')}${record.failedPrints} failed</span>` : ''}
-            ${record.testAttempts > 1 ? `<span class="ui-badge">${record.testAttempts} tests</span>` : ''}
-          </span>
-        </span>
-      </div>`;
+    // Blocked first, then whatever is nearest to shipping: the two reasons to look.
+    const urgency = (p: ProjectData) => {
+      const stop = blocker(p, p.team.length + (mine(p) ? 1 : 0));
+      return stop ? (stop.tone === 'bad' ? 0 : 1) : 2;
+    };
+    const ordered = (rows: ProjectData[]) =>
+      [...rows].sort(
+        (a, b) => urgency(a) - urgency(b) || projectProgress(b).ratio - projectProgress(a).ratio,
+      );
+
+    // The ledger is a comparison job — you read down the payout column — so it is a table
+    // with tabular figures, not a stack of cards with wrapping badges (§3c).
+    const ledger = () => {
+      const columns: { label: string; value: (r: ShippedRecord) => string }[] = [
+        { label: 'Shipped', value: (r) => `day ${r.day}` },
+        { label: 'Took', value: (r) => `${r.days}d` },
+        { label: 'Quality', value: (r) => pct(r.quality) },
+        { label: 'Rep', value: (r) => String(r.hype) },
+        { label: 'Paid', value: (r) => (r.payout ? money(r.payout) : '—') },
+        { label: 'Retries', value: (r) => (r.testAttempts > 1 ? `${r.testAttempts - 1}` : '—') },
+      ];
+      return `<table class="rank-table">
+        <thead><tr><th class="space-head">Project</th>
+          ${columns.map((c) => `<th>${c.label}</th>`).join('')}
+        </tr></thead>
+        <tbody>
+          ${done
+            .map((record) => {
+              const profile = profileOf(record.category);
+              return `<tr>
+                <td class="space-cell">
+                  <span class="space-dot" style="--tone:${profile.accent}">
+                    ${icon(CATEGORY_ICON[record.category])}
+                  </span>
+                  <span class="space-name">${esc(record.name)}</span>
+                </td>
+                ${columns.map((c) => `<td class="num">${c.value(record)}</td>`).join('')}
+              </tr>`;
+            })
+            .join('')}
+        </tbody>
+      </table>`;
     };
 
-    const section = (label: string, count: number, body: string, empty: string) =>
-      `<div class="ui-label" style="margin-bottom:9px">${label} · ${count}</div>
-       ${count ? body : `<p class="ui-desc" style="margin-bottom:4px">${empty}</p>`}`;
+    const earned = done.reduce((sum, r) => sum + r.payout, 0);
+    const reputation = done.reduce((sum, r) => sum + r.hype, 0);
+    const blocked = onIt.filter((p) => blocker(p, p.team.length + (mine(p) ? 1 : 0))).length;
+
+    const content =
+      chosen.key === 'done'
+        ? done.length
+          ? ledger()
+          : `<p class="ui-desc">Nothing has made it out of the door yet.</p>`
+        : chosen.rows.length
+          ? ordered(chosen.rows as ProjectData[])
+              .map(activeRow)
+              .join('')
+          : `<p class="ui-desc">Nothing here.</p>`;
 
     return {
-      head: `<div class="modal-head">${icon('clipboard', 'ui-icon ui-icon--lg')}<b>Projects</b>
-        <span class="ui-badge">${onIt.length} on</span>
-        <span class="ui-badge">${waiting.length} waiting</span>
-        <span class="ui-badge ui-badge--accent">${done.length} done</span>
-      </div>`,
-      content: `
-        ${section('In progress', onIt.length, onIt.map(activeRow).join(''), 'Nobody is working on anything.')}
-        <hr class="ui-sep" />
-        ${section('Waiting for hands', waiting.length, waiting.map(activeRow).join(''), 'Everything started has somebody on it.')}
-        <hr class="ui-sep" />
-        ${section('Done', done.length, done.map(doneRow).join(''), 'Nothing shipped yet.')}
-      `,
-      foot: `<span class="ui-desc" style="font-size:10.5px">
-        Anything nobody touches for ${SHELVE.afterIdleDays} days ends up on the shelf, and the money
-        spent on its parts goes with it.
-      </span>`,
+      head: `<div class="modal-head">${icon('clipboard', 'ui-icon ui-icon--lg')}<b>Projects</b></div>`,
+      content: tabs + content,
+      // The footer says the thing that matters about the tab you are on, rather than one
+      // rule that is only relevant to two of the three.
+      foot:
+        chosen.key === 'done'
+          ? `<span class="ui-desc" style="font-size:10.5px">
+               ${done.length} shipped · ${money(earned)} earned · ${reputation} reputation.
+             </span>`
+          : `<span class="ui-desc" style="font-size:10.5px">
+               ${
+                 blocked
+                   ? `<b>${blocked}</b> of these need something from you. `
+                   : 'Nothing is blocked. '
+               }Anything nobody touches for ${SHELVE.afterIdleDays} days ends up on the shelf,
+               and the money spent on its parts goes with it.
+             </span>`,
     };
   }
 
@@ -2273,7 +2384,3 @@ export class UI {
   }
 }
 
-function partsWait(project: ProjectData, nowHours: number): number {
-  if (!project.partsOrdered) return project.leadDays * 24;
-  return Math.max(0, project.partsArriveAt - nowHours);
-}

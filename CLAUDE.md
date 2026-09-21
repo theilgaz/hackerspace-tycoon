@@ -422,6 +422,19 @@ Winning pays reputation. Two tuning notes worth keeping:
   raised so the prolific space stays the prolific one. **When a cost is removed, find what it
   was really limiting** — it was never survival, it was the speed the roster filled.
 
+- **A screenshot is the only way to check a screen.** Two things survived a clean typecheck
+  and a passing click suite: every unblocked progress bar was rendering bright green because
+  the "nothing is wrong" case had been given a colour class, and the panel's blocker badges
+  never appeared at all. **The second one was a real logic error** — the check asked whether
+  any *printed* part was outstanding, when what gates assembly is the bought bill of materials
+  (§4), so the blocker was invisible on every build whose parts arrive in a box. Driving the UI
+  to a state with one of each blocker and photographing it is what found both; neither would
+  have shown up in a test that only asks whether an element exists.
+
+- **A duplicated helper is a bug with a delay on it.** `partsWait` in `ui.ts` was a verbatim
+  copy of `partsEta` in `ProjectSystem`. Nothing was wrong with it yet, and nothing would have
+  been until either changed. It is gone; the panel imports the real one.
+
 - **A reward with no matching punishment is not a choice.** The claim system shipped its first
   measurement with `backfire: 3`, which read as reasonable and was not: the claim multipliers
   (0.7 / 1.0 / 1.55) simply outran the penalty, so the biggest claim was right almost
@@ -761,6 +774,24 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   its name and what it is for. Stations sit in two working walls with a clear aisle — furniture
   scattered over an open floor reads as clutter, a room reads as a workshop when the benches
   line up.
+- **The Projects panel is triage, not an inventory.** The question it answers is "what needs
+  me now?", so a row that is blocked says *why* in the row itself — about to be shelved, parts
+  not ordered, order in transit, prints outstanding, nobody on it — and **the progress bar
+  takes its colour from that**: red to act on, amber to wait on, the plain accent when nothing
+  is wrong. Colour is the signal, which is why an unblocked bar must stay neutral; a wall of
+  green says exactly as much as a wall of grey. Rows sort worst-first, then nearest to
+  shipping, so the top of the list is always the thing to look at.
+- **The three groups are tabs, not stacked sections.** With the shelf letting a player keep
+  twenty projects open, three sections in one column is a scroll, and an empty group used to
+  spend a heading, a sentence and two rules to say nothing. A tab with no rows is disabled and
+  shows its zero, and the panel falls through to a group with something in it rather than
+  stranding you on an empty one. The panel is `modal--fit` for the same reason — one tab of
+  three rows left half a fixed box empty — with a `min-height` floor so a short tab still
+  reads as a panel.
+- **Shipped work is a ledger, so it is a table** — the second time that rule has decided a
+  screen, after the leaderboard (§3c). You read *down* the payout column to see what paid, and
+  the footer totals what the space has earned and made its name on. Wrapping badges (`Q 60%`,
+  `2 tests`) could not be compared between two rows at all.
 - **The build menu is the spine of the UI.** Jobs, Projects, Ranking, Machines, People. A panel
   belongs here rather than in a permanent sidebar whenever you only touch it a few times a day.
   The clock sits alone in the top-left because it is the one thing glanced at constantly and it
