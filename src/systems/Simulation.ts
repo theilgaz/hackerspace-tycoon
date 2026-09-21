@@ -68,8 +68,15 @@ import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
 import type { SaveFile } from './SaveGame';
 import { ECONOMY, membershipFor, rentFor, type Bill, type BillLine } from '@/utils/economy';
-import { decayHype, hypePressure, projectSubject, react, spaceSubject } from '@/systems/HypeSystem';
-import { SUBREDDIT_MAP } from '@/utils/subreddits';
+import {
+  decayHype,
+  hypePressure,
+  novelty,
+  projectSubject,
+  react,
+  spaceSubject,
+} from '@/systems/HypeSystem';
+import { SUBREDDITS, SUBREDDIT_MAP, tasteMatch } from '@/utils/subreddits';
 import { PRINTER_MAP, PRINTERS, STARTING_PRINTER, resaleValue, type PrinterModel } from '@/utils/printers';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
 import { CALENDAR, awardsDay, clock, gameDate, money, uid } from '@/utils/format';
@@ -128,6 +135,9 @@ export class Simulation {
 
   /** Days of word of mouth banked toward the next person getting in touch (§3c). */
   private recruitClock = 0;
+
+  /** The last day the social media manager put something out. One a day, not one a tick. */
+  private socialDay = 0;
 
   /** The last thing you shipped, while it is still what people are talking about. */
   private recentShip: { tags: Tag[]; name: string; day: number } | null = null;
@@ -1664,7 +1674,7 @@ export class Simulation {
    * the reaction and sets a merit bar, and a room's skepticism decides how hard the fall is
    * when the work does not clear it.
    */
-  post(projectId: string, subredditId: string, claim: ClaimKey): boolean {
+  post(projectId: string, subredditId: string, claim: ClaimKey, by?: MemberEntity): boolean {
     const sub = SUBREDDIT_MAP[subredditId];
     if (!sub) return false;
     const project = projectId === SPACE_SUBJECT ? null : this.project(projectId);
@@ -1684,10 +1694,12 @@ export class Simulation {
     const already = posts.filter(
       (p) => p.projectId === projectId && p.subreddit === subredditId,
     ).length;
-    if (!this.chargeHours('post')) return false;
+    // A keyholder doing it is the entire point of the job: it is their hour, not yours.
+    if (!by && !this.chargeHours('post')) return false;
 
     const subject = project ? projectSubject(project) : this.spaceSubject();
     const name = project ? project.name : store.getState().identity?.name ?? 'the space';
+    void by;
     const reaction = react(subject, sub, claim, already);
     const entry: Post = {
       id: uid(),
@@ -1755,6 +1767,33 @@ export class Simulation {
           if (unordered && this.placeOrder(unordered)) {
             this.log(`${member.name} got the ${unordered.name} parts on order.`, 'good');
           }
+          break;
+        }
+        case 'social': {
+          // One safe post a day, and never a bold one: keeping the feeds warm is a chore,
+          // but claiming more than the work backs is a judgement call and that stays yours.
+          // Left alone, hype decays to nothing between the posts you remember to make.
+          if (this.socialDay === this.day) break;
+          const state = store.getState();
+          const subjects: { id: string; subject: ReturnType<typeof projectSubject> }[] = [
+            ...this.projects
+              .filter((p) => !p.shipped)
+              .map((p) => ({ id: p.id, subject: projectSubject(p) })),
+            { id: SPACE_SUBJECT, subject: this.spaceSubject() },
+          ].filter((x) => !state.posts.some((p) => p.projectId === x.id && p.day === this.day));
+          const best = subjects.sort((a, b) => b.subject.merit - a.subject.merit)[0];
+          if (!best) break;
+          // Best *unused* pairing, not simply the biggest room: novelty decays per outlet
+          // per build, so posting the same thing to the same feed every day is the one
+          // mistake a social media manager should never make.
+          const seen = (roomId: string) =>
+            state.posts.filter((p) => p.projectId === best.id && p.subreddit === roomId).length;
+          const room = [...SUBREDDITS].sort(
+            (a, b) =>
+              tasteMatch(best.subject.tags, b) * b.audience * novelty(seen(b.id)) -
+              tasteMatch(best.subject.tags, a) * a.audience * novelty(seen(a.id)),
+          )[0];
+          if (this.post(best.id, room.id, 'wip', member)) this.socialDay = this.day;
           break;
         }
         case 'manager': {

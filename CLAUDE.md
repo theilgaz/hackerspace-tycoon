@@ -606,6 +606,7 @@ Three jobs a member can hold on top of their build work, one holder each:
 | **Project Manager** | Starts something new when there are hands going spare |
 | **Printer Keeper** | Loads the printers back up before they run dry |
 | **Quartermaster** | Gets bills of materials on order so assembly is never waiting |
+| **Social Media Manager** | Keeps the feeds ticking over so attention never quite dies |
 
 Each one gets a row in the People panel that says **what it does**, with the holder picked
 from a list of everybody. The first version was one button that cycled through the roles,
@@ -725,7 +726,10 @@ already owns the capability.
 
 ## 6. Reddit & Hype — BUILT (`src/utils/subreddits.ts`, `src/systems/HypeSystem.ts`)
 
-Six subreddits are the publisher, each with `audience`, `tasteTags` and `skepticism`. Posting
+Eight outlets are the publisher, each with `audience`, `tasteTags` and `skepticism`. Six are
+subreddits; two are the space's own feeds and behave differently enough to be worth the
+entries — **Instagram** asks nothing except that the thing photograph well, and **X** is
+quick, generalist and merciless. Posting
 costs you an hour and asks three questions at once — **which build, which room, what you are
 claiming** — on one screen, because the interesting part is how they interact.
 
@@ -768,6 +772,16 @@ Three details that keep the verb honest:
 - **The panel previews the reaction before you commit.** Each claim card shows the upvotes it
   would actually get, and turns destructive when the room would turn on you. A claim you cannot
   evaluate before making it is a dice roll, not a decision.
+
+**The Social Media Manager keeps the floor under attention.** Hype decays 5% a day, so a
+space that only posts when the player remembers to spends most of its time at nothing. A
+keyholder puts out **one safe post a day** — always the modest claim, never a bold one,
+because claiming more than the work backs is a judgement call and that stays the player's.
+They pick the best *unused* outlet rather than the biggest one, since novelty decays per
+outlet per build and posting the same thing to the same feed daily is the one mistake the
+job should never make. Measured over twenty days: fifteen posts across five outlets and hype
+settling near 1,150, against the ~4,000 a careful player reaches by choosing their moments.
+A floor, not a replacement.
 
 **Does it pay for the hour?** `npm run hype-check` answers §13's rule directly, against an
 identical player who never posts. Over six seeds at 180 days: reputation +19%, crew +13%, cash

@@ -1047,7 +1047,7 @@ export class UI {
        <button class="bar-item ${this.openModal === 'reddit' ? 'active' : ''}" data-action="reddit-open"
          title="Put something in front of an audience — attention falls on its own">
          ${icon('flame', 'ui-icon bar-icon')}
-         <span class="bar-label">Reddit</span>
+         <span class="bar-label">Socials</span>
          ${state.hype >= 1 ? `<i class="pip">${Math.round(state.hype)}</i>` : ''}
        </button>`,
     );
@@ -1487,7 +1487,7 @@ export class UI {
       : `<p class="ui-desc">Nothing posted yet.</p>`;
 
     return {
-      head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>Reddit</b>
+      head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>The socials</b>
         <span class="ui-badge ui-badge--tone" style="--tone:var(--primary)"
           title="attention right now — it falls every day on its own">
           ${Math.round(state.hype)} hype
@@ -1595,6 +1595,14 @@ export class UI {
       const traits = (data.traits ?? [])
         .map((t) => `<span class="ui-badge" title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`)
         .join('');
+      // A greyed-out hire with no reason reads as a broken button. Say which gate is shut.
+      const cheapest = this.handlers.hireCost(id, 'part-time');
+      const blocked =
+        hoursLeft < VERB_HOURS.hire
+          ? `No hours left today — showing ${esc(data.name)} round takes ${hours(VERB_HOURS.hire)} of yours. Tomorrow.`
+          : !this.affordable(state, cheapest)
+            ? `${money(cheapest - state.cash - ECONOMY.overdraftLimit)} past the overdraft limit.`
+            : '';
       return `<div class="ui-card candidate">
         <div class="candidate__head">
           <span class="icon-chip" style="--tone:${profile?.accent ?? 'var(--muted-foreground)'}">
@@ -1617,6 +1625,7 @@ export class UI {
           <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="pass-applicant" data-id="${id}"
             title="Turn ${esc(data.name)} down. Free, but they will not ask again.">Pass</button>
         </div>
+        ${blocked ? `<div class="candidate__why">${blocked}</div>` : ''}
       </div>`;
     };
 
@@ -1664,13 +1673,19 @@ export class UI {
       } else if (role === 'printer') {
         score = skill('machining') * 0.8 + 0.2;
         why = has('nightOwl') ? 'night owl' : `machining ${data.skills.machining ?? 0}`;
-      } else {
+      } else if (role === 'quartermaster') {
         score = skill('docs') * 0.7 + skill('electronics') * 0.3;
         why = has('documenter') ? 'documenter' : `docs ${data.skills.docs ?? 0}`;
+      } else {
+        // Knowing what reads well is taste and writing, not a bench skill.
+        const breadth = Math.min(1, Object.keys(data.passions ?? {}).length / 4);
+        score = skill('docs') * 0.45 + skill('software') * 0.2 + breadth * 0.35;
+        why = has('documenter') ? 'writes it down' : breadth > 0.7 ? 'broad interests' : 'good eye';
       }
       if (has('mentor') && role === 'manager') score *= 1.25;
       if (has('nightOwl') && role === 'printer') score *= 1.2;
       if (has('documenter') && role === 'quartermaster') score *= 1.3;
+      if (has('documenter') && role === 'social') score *= 1.25;
       // Somebody who signs up and then stops turning up is nobody's keyholder.
       if (has('ghost')) score *= 0.4;
       return { score: Math.min(1, score), why };
@@ -1680,6 +1695,7 @@ export class UI {
       manager: 'clipboard',
       printer: 'printer',
       quartermaster: 'package',
+      social: 'flame',
     };
     const roles = Object.keys(ROLE_LABEL) as Role[];
     const openRole = this.roleOpen;

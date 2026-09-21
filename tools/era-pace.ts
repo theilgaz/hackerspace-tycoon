@@ -7,6 +7,9 @@ import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 import { partsPending } from '@/systems/ProjectSystem';
 import { ECONOMY } from '@/utils/economy';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
+import { ROLE_LABEL, type Role } from '@/game/types';
+
+const ROLES = Object.keys(ROLE_LABEL) as Role[];
 import { CLAIMS, SUBREDDITS, tasteMatch } from '@/utils/subreddits';
 import { merit } from '@/systems/HypeSystem';
 import { STAGE_STATION } from '@/machines/layout';
@@ -77,6 +80,14 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       store.getState().setCeremony(null);
       store.setState({ paused: false });
     }
+    // An engaged player hands out the standing jobs as soon as there is somebody to hand
+    // them to — that is what they are for.
+    for (const role of ROLES) {
+      if (sim.members.some((m) => m.role === role)) continue;
+      const free = sim.members.find((m) => !m.role);
+      if (free) sim.setRole(free.id, role);
+    }
+
     // Signing the lease is a decision now, so an engaged player makes it: take the next one
     // as soon as the name is there and the move is comfortably affordable.
     const lease = sim.nextLease();

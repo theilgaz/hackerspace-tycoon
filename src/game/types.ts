@@ -76,18 +76,20 @@ export interface Assignment {
  * still be the one buying filament. A role is acted on at the holder's **next availability**
  * — it is a person doing it, not a background rule, so it waits until they are in.
  */
-export type Role = 'manager' | 'printer' | 'quartermaster';
+export type Role = 'manager' | 'printer' | 'quartermaster' | 'social';
 
 export const ROLE_LABEL: Record<Role, string> = {
   manager: 'Project Manager',
   printer: 'Printer Keeper',
   quartermaster: 'Quartermaster',
+  social: 'Social Media Manager',
 };
 
 export const ROLE_BLURB: Record<Role, string> = {
   manager: 'Starts something new when there are hands going spare.',
   printer: 'Loads the printers back up before they run dry.',
   quartermaster: 'Gets the parts on order so assembly is never waiting.',
+  social: 'Keeps the feeds ticking over so attention never quite dies.',
 };
 
 export interface MemberSnapshot {

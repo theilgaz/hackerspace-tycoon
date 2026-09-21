@@ -840,6 +840,9 @@ button.primary { padding: 9px 12px; font-size: 12.5px; }
 /* A meta row that ends a card has nothing below it to provide the gap, so it brings its
    own — otherwise an offer's "₺1.800 up front · 6d left" sits on top of the next card. */
 .ui-row__meta:last-child { margin-bottom: 3px; }
+/* Same problem from the other side: on the crew step the proposer badge was followed straight
+   by the crew card, with the two borders touching. */
+.ui-row__meta + .ui-card { margin-top: 11px; }
 
 /* Toggleable person chips ------------------------------------------------ */
 
@@ -1774,7 +1777,8 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 /* --- keyholders (§3b) -----------------------------------------------------
    Three slots on one row rather than three full-width rows: it is a small decision made
    rarely, and it was taking a third of the panel to say so. */
-.keyholders { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+/* Four jobs: two rows of two rather than four squeezed onto one. */
+.keyholders { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .keyslot {
   display: flex;
   align-items: center;
@@ -1845,6 +1849,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .candidate__meta { font-size: 11px; color: var(--muted-foreground); }
 .candidate__actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .candidate__actions .ui-btn--ghost { margin-left: auto; }
+.candidate__why { font-size: 10.5px; color: var(--warning); }
 
 /* Candidates waiting: the People button says so in the accent, like a machine's alert. */
 .bar-item--news .bar-icon { color: var(--primary); }

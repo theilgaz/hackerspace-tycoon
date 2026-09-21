@@ -2,8 +2,13 @@ import type { ClaimKey, StageKey, Tag } from '@/game/types';
 import type { IconName } from '@/ui/icons';
 
 /**
- * The publisher (CLAUDE.md §6). Attention is not a single number you farm — it is six rooms
- * with different tastes and different patience, and choosing the room is the decision.
+ * The publisher (CLAUDE.md §6). Attention is not a single number you farm — it is eight
+ * rooms with different tastes and different patience, and choosing the room is the decision.
+ *
+ * Six are subreddits; two are the space's own social feeds, which behave differently enough
+ * to be worth the entries. Instagram is enormous and asks nothing of you except that the
+ * thing photograph well — it barely cares what the thing *is*. X is quick, generalist and
+ * merciless: the widest reach after Instagram and the least forgiving of a claim.
  *
  * The shape that makes that decision real is **audience traded against skepticism**: the
  * places that could make your name are the places that will call you out. A generalist room
@@ -84,6 +89,35 @@ export const SUBREDDITS: SubredditDef[] = [
     skepticism: 1,
   },
 ];
+
+/**
+ * The space's own feeds. They take a `floor` like the generalist subreddit does, because a
+ * hackerspace's Instagram will post anything — the question is only whether it looks good.
+ */
+export const SOCIAL_OUTLETS: SubredditDef[] = [
+  {
+    id: 'instagram',
+    name: 'Instagram',
+    blurb: 'Enormous and entirely uninterested in how it works. It has to photograph well.',
+    icon: 'flame',
+    audience: 1,
+    tasteTags: ['design', 'woodworking', 'food'],
+    skepticism: 0.2,
+    floor: 0.5,
+  },
+  {
+    id: 'x',
+    name: 'X',
+    blurb: 'Fast, generalist, merciless. The reach is real and so is the pile-on.',
+    icon: 'antenna',
+    audience: 0.9,
+    tasteTags: ['software', 'electronics', 'robotics'],
+    skepticism: 1.1,
+    floor: 0.4,
+  },
+];
+
+SUBREDDITS.push(...SOCIAL_OUTLETS);
 
 export const SUBREDDIT_MAP: Record<string, SubredditDef> = Object.fromEntries(
   SUBREDDITS.map((s) => [s.id, s]),
