@@ -10,7 +10,7 @@ import type {
 } from './types';
 import type { Ceremony } from '@/systems/RivalSystem';
 import type { Bill } from '@/utils/economy';
-import { START_CASH, eraDef } from '@/utils/constants';
+import { START_CASH } from '@/utils/constants';
 import { ECONOMY } from '@/utils/economy';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
 import { uid } from '@/utils/format';
@@ -89,6 +89,7 @@ export interface GameState {
   openApplicant: (id: string) => void;
   closeApplicant: (id: string) => void;
   ownMachine: (type: MachineType) => void;
+  disownMachine: (type: MachineType) => void;
   recordShipped: (hype: number, record: ShippedRecord) => void;
   recordReputation: (amount: number) => void;
   /** Bank a post's reaction: the post itself, the hype it moved, the reputation it cost. */
@@ -210,6 +211,8 @@ export const store = createStore<GameState>((set, get) => ({
   closeApplicant: (id) => set((s) => ({ applicants: s.applicants.filter((a) => a !== id) })),
   ownMachine: (type) =>
     set((s) => (s.ownedMachines.includes(type) ? s : { ownedMachines: [...s.ownedMachines, type] })),
+  disownMachine: (type) =>
+    set((s) => ({ ownedMachines: s.ownedMachines.filter((m) => m !== type) })),
 
   recordPost: (post, reputationDelta) =>
     set((s) => ({
@@ -220,19 +223,16 @@ export const store = createStore<GameState>((set, get) => ({
       reputation: Math.max(0, s.reputation + reputationDelta),
     })),
   setHype: (hype) => set({ hype }),
-  recordReputation: (amount) =>
-    set((s) => {
-      const reputation = s.reputation + amount;
-      const era = reputation >= eraDef(s.era).repToAdvance ? Math.min(3, s.era + 1) : s.era;
-      return { reputation, era };
-    }),
+  // Reputation unlocks the next lease; it no longer signs it. See `Simulation.signLease`.
+  recordReputation: (amount) => set((s) => ({ reputation: s.reputation + amount })),
 
   recordShipped: (hype, record) =>
     set((s) => {
       const shippedCount = s.shippedCount + 1;
       const reputation = s.reputation + hype;
-      // Minimal era progression: slots and catalog only (CLAUDE.md §8, Phase 6 completes it).
-      const era = reputation >= eraDef(s.era).repToAdvance ? Math.min(3, s.era + 1) : s.era;
-      return { shippedCount, reputation, era, shipped: [...s.shipped, record] };
+      // Shipping builds the name; it does not sign the lease. `Simulation.signLease` does,
+      // and only when the player says so — this was the *second* place that promoted you
+      // automatically, and the first fix looked like it had no effect at all because of it.
+      return { shippedCount, reputation, shipped: [...s.shipped, record] };
     }),
 }));

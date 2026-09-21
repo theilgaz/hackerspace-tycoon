@@ -72,6 +72,10 @@ export class Game {
       buyFilament: (machineId) => act(() => sim.buyFilament(machineId)),
       refillCost: (machineId) => sim.refillCost(machineId),
       buyPrinter: (modelId) => act(() => sim.buyPrinter(modelId)),
+      sellPrinter: (machineId) => act(() => sim.sellPrinter(machineId)),
+      signLease: () => act(() => sim.signLease()),
+      nextLease: () => sim.nextLease(),
+      resaleFor: (machineId) => sim.resaleFor(machineId),
       buyablePrinters: () => sim.buyablePrinters(),
       hire: (memberId, employment) => act(() => sim.hire(memberId, employment)),
       post: (projectId, subreddit, claim) => act(() => sim.post(projectId, subreddit, claim)),
@@ -183,6 +187,7 @@ export class Game {
       }
     }
 
+    this.view.setEra(state.era);
     this.view.update(state.runtime, dt);
     const over = this.scene.pick(this.pointer.x, this.pointer.y, this.view.pickables);
     if (over !== this.hovered) {

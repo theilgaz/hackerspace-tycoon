@@ -331,6 +331,13 @@ export interface EraDef {
    * project's hype, so ambition advances you and volume barely does.
    */
   repToAdvance: number;
+  /**
+   * What moving costs. **Signing the lease is the player's decision, not an automatic
+   * promotion**: a bigger space raises the rent and the reputation that unlocked it does not
+   * pay the removal van. Staying in the garage one more month to bank the cash is a real
+   * option, and it used to happen *to* you on a day you had no say in.
+   */
+  moveCost: number;
 }
 
 /**
@@ -345,9 +352,9 @@ export interface EraDef {
 export const ERAS: EraDef[] = [
   // Rescaled when the slot cap came off: throughput roughly quadrupled, and the old
   // 550/2600 put a committed player in Era 3 by about day 40.
-  { era: 1, name: 'The Garage', repToAdvance: 1800 },
-  { era: 2, name: 'Unit 4B', repToAdvance: 6000 },
-  { era: 3, name: 'The Warehouse', repToAdvance: Number.POSITIVE_INFINITY },
+  { era: 1, name: 'The Garage', repToAdvance: 1800, moveCost: 0 },
+  { era: 2, name: 'Unit 4B', repToAdvance: 6000, moveCost: 18000 },
+  { era: 3, name: 'The Warehouse', repToAdvance: Number.POSITIVE_INFINITY, moveCost: 52000 },
 ];
 
 export function eraDef(era: number): EraDef {

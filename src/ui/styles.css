@@ -1713,3 +1713,57 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   cursor: pointer;
 }
 .you-task:hover { background: color-mix(in srgb, var(--foreground) 6%, transparent); color: var(--foreground); }
+
+/* --- standing jobs (§3b) --------------------------------------------------
+   Three rows that say what each job is for. A role you have to discover by cycling a
+   button is a role nobody ever uses. */
+.jobs-board { display: flex; flex-direction: column; gap: 4px; }
+.job-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+}
+.job-row--held { border-color: color-mix(in srgb, var(--primary) 35%, transparent); }
+.job-row .ui-row__main { flex: 1; min-width: 0; }
+.job-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: -1px 0 4px;
+  padding: 9px 10px 10px;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 9px 9px;
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
+/* --- standing jobs (§3b) --------------------------------------------------
+   Three rows that say what each job is for, with the holder picked from a list. A role
+   you have to discover by cycling a button is a role nobody ever uses. */
+.jobs-board { display: flex; flex-direction: column; gap: 4px; }
+.job-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+}
+.job-row--held { border-color: color-mix(in srgb, var(--primary) 35%, transparent); }
+.job-row .ui-row__main { flex: 1; min-width: 0; }
+.job-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: -5px 0 4px;
+  padding: 11px 10px 10px;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 9px 9px;
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+}

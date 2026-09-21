@@ -6,6 +6,14 @@ import { MACHINE } from '@/utils/constants';
 const TILE = 1;
 
 /** Tile coordinates → world. The grid is centred on the origin. */
+/** One palette per lease, indexed by era (index 0 is unused so `era` reads directly). */
+const ERA_TONE = [
+  { floorLight: '#626b7c', floorDark: '#58606f', wall: '#3d4551' },
+  { floorLight: '#626b7c', floorDark: '#58606f', wall: '#3d4551' }, // the garage: cold concrete
+  { floorLight: '#6f6a63', floorDark: '#635e58', wall: '#4a4741' }, // Unit 4B: painted, warmer
+  { floorLight: '#8a8c90', floorDark: '#7e8085', wall: '#565c66' }, // the warehouse: poured floor
+];
+
 export function toWorld(x: number, y: number, height = 0): THREE.Vector3 {
   return new THREE.Vector3(
     (x - (GRID.width - 1) / 2) * TILE,
@@ -66,6 +74,10 @@ export class SpaceView {
   private people = new Map<string, THREE.Group>();
   private machineVisuals = new Map<string, MachineVisual>();
   private builtStations = new Set<string>();
+  /** Which lease the room is currently painted as. */
+  private era = 1;
+  private floorMats: THREE.MeshStandardMaterial[] = [];
+  private wallMat: THREE.MeshStandardMaterial | null = null;
   private stationNodes = new Map<string, THREE.Group>();
   private stationZones = new Map<string, THREE.Mesh>();
   private hovered: string | null = null;
@@ -78,9 +90,16 @@ export class SpaceView {
     this.syncStations();
   }
 
+  /**
+   * Each lease looks like itself. A move you paid ₺18,000 for should be visible the moment
+   * it happens, so the floor and the walls change with the era: a cold concrete garage, a
+   * warmer painted unit, then the pale poured floor of a proper warehouse.
+   */
   private buildFloor() {
-    const light = mat('#626b7c');
-    const dark = mat('#58606f');
+    const tone = ERA_TONE[this.era];
+    const light = mat(tone.floorLight);
+    const dark = mat(tone.floorDark);
+    this.floorMats = [light, dark];
     const geo = new THREE.BoxGeometry(TILE, 0.12, TILE);
     for (let y = 0; y < GRID.height; y += 1) {
       for (let x = 0; x < GRID.width; x += 1) {
@@ -93,7 +112,8 @@ export class SpaceView {
   }
 
   private buildWalls() {
-    const wallMat = mat('#3d4551');
+    const wallMat = mat(ERA_TONE[this.era].wall);
+    this.wallMat = wallMat;
     const h = 1.8;
     const back = new THREE.Mesh(new THREE.BoxGeometry(GRID.width * TILE + 0.3, h, 0.18), wallMat);
     back.position.copy(toWorld((GRID.width - 1) / 2, -0.6));
@@ -393,6 +413,17 @@ export class SpaceView {
     node.position.z = world.z;
     node.position.y = activity === 'walking' ? Math.abs(Math.sin(this.elapsed * 9)) * 0.07 : 0;
     node.rotation.y = activity === 'working' ? Math.sin(this.elapsed * 2.5) * 0.18 : 0;
+  }
+
+  /** Repaint the room when the lease changes; nothing else about the space moves. */
+  setEra(era: number) {
+    const next = Math.min(ERA_TONE.length, Math.max(1, era));
+    if (next === this.era) return;
+    this.era = next;
+    const tone = ERA_TONE[this.era];
+    this.floorMats[0]?.color.set(tone.floorLight);
+    this.floorMats[1]?.color.set(tone.floorDark);
+    this.wallMat?.color.set(tone.wall);
   }
 
   update(runtime: RuntimeSnapshot, dt: number) {

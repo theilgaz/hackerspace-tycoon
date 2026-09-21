@@ -25,6 +25,7 @@ import {
   MACHINE_LABEL,
   installStation,
   installedStations,
+  removeStation,
   type StationDef,
   resetStations,
   stationOfType,
@@ -52,7 +53,9 @@ import {
   TIME,
   VERB_HOURS,
   WORKDAY,
+  ERAS,
   eraDef,
+  type EraDef,
   isLunch,
   isWorkingDay,
   weeklyHoursFor,
@@ -66,7 +69,7 @@ import type { SaveFile } from './SaveGame';
 import { ECONOMY, membershipFor, rentFor, type Bill, type BillLine } from '@/utils/economy';
 import { decayHype, hypePressure, projectSubject, react, spaceSubject } from '@/systems/HypeSystem';
 import { SUBREDDIT_MAP } from '@/utils/subreddits';
-import { PRINTER_MAP, PRINTERS, STARTING_PRINTER, type PrinterModel } from '@/utils/printers';
+import { PRINTER_MAP, PRINTERS, STARTING_PRINTER, resaleValue, type PrinterModel } from '@/utils/printers';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
 import { CALENDAR, awardsDay, clock, gameDate, money, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
@@ -993,6 +996,78 @@ export class Simulation {
     store.getState().ownMachine('fdm');
     this.applyPerks();
     this.log(`${model.name} is on the bench and levelled. It arrived full.`, 'good');
+    this.publish();
+    return true;
+  }
+
+  /** The lease you could sign next, if the name is there and you can carry the cost. */
+  nextLease(): { era: number; def: EraDef; ready: boolean; afford: boolean } | null {
+    const state = store.getState();
+    if (state.era >= ERAS.length) return null;
+    const def = eraDef(state.era + 1);
+    return {
+      era: state.era + 1,
+      def,
+      ready: state.reputation >= eraDef(state.era).repToAdvance,
+      afford: state.cash - def.moveCost >= -ECONOMY.overdraftLimit,
+    };
+  }
+
+  /** Move up. The reputation opens the door; the removal van still has to be paid for. */
+  signLease(): boolean {
+    const next = this.nextLease();
+    if (!next || !next.ready) return false;
+    if (!store.getState().spend(next.def.moveCost)) {
+      this.log(`Even on the overdraft, moving to ${next.def.name} is out of reach.`, 'bad');
+      return false;
+    }
+    store.setState({ era: next.era });
+    this.log(
+      `You signed for ${next.def.name}. ${money(next.def.moveCost)} to move, and the rent goes up.`,
+      'good',
+    );
+    this.publish();
+    return true;
+  }
+
+  /** What this machine would fetch if you sold it. Zero for anything you cannot sell. */
+  resaleFor(machineId: string): number {
+    const machine = this.machines.find((m) => m.id === machineId);
+    if (!machine || machine.type !== 'fdm') return 0;
+    const model = PRINTER_MAP[machine.def.model ?? STARTING_PRINTER.id] ?? STARTING_PRINTER;
+    return resaleValue(model);
+  }
+
+  /**
+   * Sell a printer. Anything queued on it goes back to pending so another machine can pick
+   * it up — or so it sits there waiting, if you have just sold your last one, which the game
+   * allows on purpose: trading the A1 in to fund something quicker is a real decision and it
+   * should be possible to do it badly.
+   */
+  sellPrinter(machineId: string): boolean {
+    const index = this.machines.findIndex((m) => m.id === machineId);
+    if (index < 0) return false;
+    const machine = this.machines[index];
+    if (machine.type !== 'fdm') return false;
+    const value = this.resaleFor(machineId);
+
+    for (const job of [...machine.queue, ...(machine.current ? [machine.current] : [])]) {
+      const project = this.project(job.projectId);
+      const part = project?.parts.find((p) => p.id === job.partId);
+      if (part) part.status = 'pending';
+    }
+    machine.queue = [];
+    machine.current = null;
+
+    this.machines.splice(index, 1);
+    removeStation(machine.id);
+    if (!this.machines.some((m) => m.type === 'fdm')) store.getState().disownMachine('fdm');
+    store.getState().earn(value);
+    this.log(
+      `Sold the ${machine.label} for ${money(value)}.` +
+        (this.machines.some((m) => m.type === 'fdm') ? '' : ' Nothing left to print with.'),
+      'warn',
+    );
     this.publish();
     return true;
   }

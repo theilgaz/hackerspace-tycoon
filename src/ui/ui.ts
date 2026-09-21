@@ -13,7 +13,7 @@ import type {
   ShippedRecord,
 } from '@/game/types';
 import { ROLE_BLURB, ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
-import { CATALOG_MAP, catalogForEra, canBuild, missingMachines } from '@/utils/catalog';
+import { CATALOG_MAP, catalogForEra, missingMachines } from '@/utils/catalog';
 import {
   CATEGORY_ORDER,
   categoryAffinity,
@@ -33,6 +33,7 @@ import {
   TRAIT_LABEL,
   VERB_HOURS,
   eraDef,
+  type EraDef,
   weeklyHoursFor,
 } from '@/utils/constants';
 import { clock, dayName, hours, money, pct } from '@/utils/format';
@@ -43,6 +44,7 @@ import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import { DIFFICULTIES, type DifficultyKey } from '@/utils/difficulty';
 import { ECONOMY } from '@/utils/economy';
+import { MACHINE_LABEL } from '@/machines/layout';
 import { partsEta, partsPending, projectProgress } from '@/systems/ProjectSystem';
 import { SHELVE } from '@/utils/constants';
 
@@ -68,6 +70,10 @@ export interface UIHandlers {
   buyFilament(machineId?: string): void;
   refillCost(machineId?: string): number;
   buyPrinter(modelId: string): void;
+  sellPrinter(machineId: string): void;
+  signLease(): void;
+  nextLease(): { era: number; def: EraDef; ready: boolean; afford: boolean } | null;
+  resaleFor(machineId: string): number;
   buyablePrinters(): PrinterModel[];
   hire(memberId: string, employment: Employment): void;
   post(projectId: string, subreddit: string, claim: ClaimKey): void;
@@ -215,6 +221,9 @@ export class UI {
 
   /** Right-column panels the player has folded away. The log starts small on purpose. */
   private folded: { log: boolean; members: boolean } = { log: true, members: false };
+
+  /** Which standing job is showing its list of candidates. */
+  private roleOpen: Role | null = null;
 
   /** Which slice of the roster is on screen. */
   private peopleTab: 'all' | 'free' | 'on' | 'open' = 'all';
@@ -391,8 +400,13 @@ export class UI {
           this.openModal = 'projects';
           this.rerender();
           break;
+        case 'role-open':
+          this.roleOpen = (value || null) as Role | null;
+          this.rerender();
+          break;
         case 'set-role':
           if (id) h.setRole(id, (value || null) as Role | null);
+          this.roleOpen = null;
           this.rerender();
           break;
         case 'bench-open':
@@ -622,6 +636,14 @@ export class UI {
           break;
         case 'buy-printer':
           if (value) h.buyPrinter(value);
+          this.rerender();
+          break;
+        case 'sign-lease':
+          h.signLease();
+          this.rerender();
+          break;
+        case 'sell-printer':
+          if (id) h.sellPrinter(id);
           this.rerender();
           break;
       }
@@ -905,6 +927,15 @@ export class UI {
         </span>
         <div class="stat"><b style="font-size:12.5px">${esc(state.identity?.name ?? 'Your space')}</b>
           <span>${eraDef(state.era).name}</span></div>
+        ${(() => {
+          const lease = this.handlers.nextLease();
+          if (!lease?.ready) return '';
+          return `<button class="ui-btn ${lease.afford ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
+            data-action="sign-lease" ${lease.afford ? '' : 'disabled'}
+            title="Your name is big enough for ${esc(lease.def.name)}. The rent goes up with it.">
+            ${icon('building')}Move to ${esc(lease.def.name)} · ${money(lease.def.moveCost)}
+          </button>`;
+        })()}
       </div>
       <div class="sep"></div>
       <div class="stat"><b class="cash cash--${cashTone}">${money(state.cash)}</b><span>cash</span></div>
@@ -1505,19 +1536,9 @@ export class UI {
         </td>
         <td class="num">${m.employment === 'full-time' ? 'Full-time' : `Part-time · ${m.shift}s`}</td>
         <td class="num">${m.present ? 'in today' : 'away'}</td>
-        ${(() => {
-          // One button that cycles: none → the three jobs → none. A select is heavier than
-          // the decision deserves, and the roles are few enough to walk through.
-          const order: (Role | null)[] = [null, 'manager', 'printer', 'quartermaster'];
-          const next = order[(order.indexOf(m.role) + 1) % order.length];
-          return `<td class="num">
-            <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="set-role"
-              data-id="${m.id}" data-value="${next ?? ''}"
-              title="${m.role ? ROLE_BLURB[m.role] : 'No standing job — click to give them one'}">
-              ${m.role ? ROLE_LABEL[m.role] : '—'}
-            </button>
-          </td>`;
-        })()}
+        <td class="num" title="${m.role ? ROLE_BLURB[m.role] : ''}">
+          ${m.role ? ROLE_LABEL[m.role] : '—'}
+        </td>
         ${skillCell(m.id)}
         ${traitCell(m.id)}
         <td class="num">
@@ -1579,6 +1600,54 @@ export class UI {
         .join('')}
     </div>`;
 
+    // Three rows that say what each job is for. A role you have to discover by cycling a
+    // button is a role nobody ever uses — and "Quartermaster" tells you nothing on its own.
+    const roleIcon: Record<Role, IconName> = {
+      manager: 'clipboard',
+      printer: 'printer',
+      quartermaster: 'package',
+    };
+    const jobs = `<div class="jobs-board">
+      ${(Object.keys(ROLE_LABEL) as Role[])
+        .map((role) => {
+          const holder = members.find((m) => m.role === role);
+          const open = this.roleOpen === role;
+          return `<div class="job-row ${holder ? 'job-row--held' : ''}">
+            <span class="icon-chip" style="--tone:${holder ? 'var(--primary)' : 'var(--muted-foreground)'}">
+              ${icon(roleIcon[role], 'ui-icon ui-icon--lg')}
+            </span>
+            <span class="ui-row__main">
+              <span class="ui-title">${ROLE_LABEL[role]}</span>
+              <p class="ui-desc" style="margin:2px 0 0">${ROLE_BLURB[role]}</p>
+            </span>
+            <button class="ui-btn ${holder ? 'ui-btn--outline' : 'ui-btn--ghost'} ui-btn--sm"
+              data-action="role-open" data-value="${open ? '' : role}">
+              ${holder ? esc(holder.name) : 'nobody yet'}
+            </button>
+          </div>
+          ${
+            open
+              ? `<div class="job-pick">
+                  <button class="ui-toggle" aria-pressed="${!holder}"
+                    data-action="set-role" data-id="${holder?.id ?? ''}" data-value="">
+                    ${icon('x')}nobody
+                  </button>
+                  ${members
+                    .map(
+                      (m) => `<button class="ui-toggle" aria-pressed="${m.role === role}"
+                        data-action="set-role" data-id="${m.id}" data-value="${role}"
+                        title="${m.role && m.role !== role ? `currently ${ROLE_LABEL[m.role]}` : ''}">
+                        ${icon(m.role === role ? 'check' : 'plus')}${esc(m.name)}
+                      </button>`,
+                    )
+                    .join('')}
+                </div>`
+              : ''
+          }`;
+        })
+        .join('')}
+    </div>`;
+
     const rows =
       this.peopleTab === 'free'
         ? free.map(memberRow)
@@ -1595,6 +1664,7 @@ export class UI {
     return {
       head: `<div class="modal-head">${icon('users', 'ui-icon ui-icon--lg')}<b>People</b></div>`,
       content:
+        (members.length ? jobs + `<hr class="ui-sep" />` : '') +
         chips +
         (rows.length
           ? `<table class="rank-table">
@@ -1909,10 +1979,11 @@ export class UI {
 
   /** Projects the space could start right now: era-visible, buildable, not already running. */
   private availableDefs(state: GameState): ProjectDef[] {
+    // Kit you do not own no longer hides a project — the card says what it needs instead.
+    // A catalogue that silently shrinks when you sell a printer is a catalogue that looks
+    // broken, and "go and buy one" is a perfectly good thing for a job board to tell you.
     const active = new Set(state.runtime.projects.map((p) => p.defId));
-    return catalogForEra(state.era).filter(
-      (def) => canBuild(def, state.ownedMachines) && !active.has(def.id),
-    );
+    return catalogForEra(state.era).filter((def) => !active.has(def.id));
   }
 
   private offerMeta(entry: BacklogEntry, state: GameState): string {
@@ -1965,7 +2036,14 @@ export class UI {
           ${this.statBadges(def)}
         </span>
         ${entry ? this.offerMeta(entry, state) : ''}
-        ${missing.length ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning);margin-top:6px">needs ${missing.join(', ')}</span>` : ''}
+        ${
+          missing.length
+            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning);margin-top:6px"
+                 title="Buy or build one and this opens up">
+                 ${icon('printer')}needs ${missing.map((t) => MACHINE_LABEL[t]).join(' + ')} — buy one first
+               </span>`
+            : ''
+        }
       </span>
       <span class="ui-row__chevron">${icon('chevronRight')}</span>
     </button>`;
@@ -2530,7 +2608,16 @@ export class UI {
                ${icon('cog')}Level the bed
              </button>`
           : ''
-      }`;
+      }
+      ${(() => {
+        const resale = this.handlers.resaleFor(machine.id);
+        if (!resale) return '';
+        return `<button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="sell-printer"
+          data-id="${machine.id}"
+          title="Anything queued on it goes back to pending. Selling your last one is allowed.">
+          ${icon('coins')}Sell · ${money(resale)}
+        </button>`;
+      })()}`;
 
     const queue = machine.queue.length
       ? machine.queue

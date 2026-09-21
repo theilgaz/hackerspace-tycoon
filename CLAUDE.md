@@ -485,6 +485,13 @@ Winning pays reputation. Two tuning notes worth keeping:
   so the bar button underneath was covered and the click did nothing at all. Dismissing bills
   and ceremonies now lives in the `openPanel` helper, so no future check has to remember.
 
+- **When a fix has no effect, look for the second copy of the thing you fixed.** Making the
+  lease a decision meant stopping reputation from promoting the player automatically. Done —
+  and the campaign output came back *byte-identical*, cash included, even with the move cost
+  temporarily set to ₺500,000. There were two places that advanced the era: `recordReputation`
+  and `recordShipped`. Shipping had been doing the promotion all along. Identical output after
+  a real change is never luck; chase it.
+
 - **A metric that cannot move is a broken metric.** `era-pace` at three difficulties produced
   identical output three runs running, because the sweep script rebuilt `difficulty.ts` from
   its own defaults each time and the values under test were never written. The numbers were
@@ -580,6 +587,16 @@ queue moves. Three details, each of which was a bug waiting to happen:
 "word is out — waiting on reputation" when the clock is full and nobody qualifies. A pace the
 player cannot see reads as the applicant list being broken — §13's rule about invisible gates.
 
+### Selling a printer
+
+You can sell one back at 55% of list. Anything queued on it goes to `pending` so another
+machine picks it up — or so it waits, if you have just sold your last one, **which is
+allowed**: trading the A1 in to fund something quicker is a real decision and it has to be
+possible to do it badly. With no printer, projects that need one stay in the Jobs list rather
+than vanishing from it, disabled and saying *needs FDM Printer — buy one first*. A catalogue
+that silently shrinks looks broken; "go and buy one" is a perfectly good thing for a job board
+to say.
+
 ### Standing jobs (`Role`)
 
 Three jobs a member can hold on top of their build work, one holder each:
@@ -589,6 +606,11 @@ Three jobs a member can hold on top of their build work, one holder each:
 | **Project Manager** | Starts something new when there are hands going spare |
 | **Printer Keeper** | Loads the printers back up before they run dry |
 | **Quartermaster** | Gets bills of materials on order so assembly is never waiting |
+
+Each one gets a row in the People panel that says **what it does**, with the holder picked
+from a list of everybody. The first version was one button that cycled through the roles,
+which meant "Quartermaster" had to be decoded by trial — a role you have to discover by
+cycling is a role nobody uses.
 
 **A role acts at its holder's next availability, not as a background rule.** Somebody who is
 away, or walking across the room, is not watching the filament — which is the whole point:
@@ -836,8 +858,14 @@ to save money. The button stays, its meaning is inverted, and the People panel s
 | 2 — Unit 4B | ~15×12, 3-phase | CNC, laser cutter, welding bay, certifications | 20 members + break even for 3 months |
 | 3 — The Warehouse | large, multi-room | Mill/lathe, motorcycle-scale projects, grants | Front page of r/all |
 
-Each era raises rent and unlocks project scale. Eras gate content and pacing; the milestone is a
-checkpoint, not an instant transition — the player chooses when to sign the next lease.
+Each era raises rent and unlocks project scale. **The player signs the lease; reputation only
+unlocks it.** Moving costs ₺18,000 to Unit 4B and ₺52,000 to the Warehouse, and the rent goes
+up with the space — so staying in the garage one more month to bank the cash is a real option.
+It used to happen *to* you on a day you had no say in.
+
+**Each lease looks like itself.** The floor and walls repaint on the move: cold concrete in the
+garage, warmer paint in Unit 4B, a pale poured floor in the Warehouse. A move you paid for
+should be visible the moment it happens.
 
 **Implemented so far:** eras gate the catalog and advance on **cumulative reputation** (1800,
 then 6000) — the sum of the hype of everything shipped.

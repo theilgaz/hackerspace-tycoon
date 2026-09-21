@@ -74,6 +74,17 @@ export const PRINTER_MAP: Record<string, PrinterModel> = Object.fromEntries(
 
 export const STARTING_PRINTER = PRINTERS[0];
 
+/**
+ * What a printer fetches second-hand. Well under what you paid, because selling the A1 to
+ * fund something quicker should be a real trade rather than a free upgrade path — and
+ * because a machine that has been running jobs is a used machine.
+ */
+export const RESALE = 0.55;
+
+export function resaleValue(model: PrinterModel): number {
+  return Math.round(model.price * RESALE);
+}
+
 /** What a model costs to fill from empty, at the going rate for a spool. */
 export function fillCost(model: PrinterModel, spoolCost: number, spoolGrams: number): number {
   return Math.round((model.capacity / spoolGrams) * spoolCost);

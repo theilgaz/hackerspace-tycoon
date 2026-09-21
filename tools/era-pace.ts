@@ -77,6 +77,11 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       store.getState().setCeremony(null);
       store.setState({ paused: false });
     }
+    // Signing the lease is a decision now, so an engaged player makes it: take the next one
+    // as soon as the name is there and the move is comfortably affordable.
+    const lease = sim.nextLease();
+    if (lease?.ready && spendable() >= lease.def.moveCost * 1.15) sim.signLease();
+
     // Only start something there are free hands *and* parts money for. Pitching buys the bill
     // of materials there and then, so an unfunded pitch is cash poured into a project that
     // then sits at assembly — and the cash it burns is the cash that would have hired somebody.

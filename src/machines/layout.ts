@@ -110,6 +110,16 @@ export function installStation(
   return def;
 }
 
+/** Take a machine off the floor — its slot goes back in the pool. */
+export function removeStation(id: string): boolean {
+  const index = STATIONS.findIndex((s) => s.id === id);
+  if (index < 0) return false;
+  const [def] = STATIONS.splice(index, 1);
+  delete STATION_MAP[id];
+  BLOCKED.delete(`${def.tile.x},${def.tile.y}`);
+  return true;
+}
+
 /** Machines added by tool projects, so a save can put them back. */
 export function installedStations(): {
   id: string;
