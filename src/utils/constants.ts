@@ -273,14 +273,18 @@ export const TEST = {
  */
 export const PLAYER = {
   name: 'You',
-  /** Hours available on a full-energy day. */
-  baseHours: 7,
-  minHours: 3,
+  /**
+   * Hours on a full-energy day. The three numbers below are a set: a day settles at
+   * `energyRestore / energyDrain` hours, so twelve rested hours sustain about eleven. Change
+   * one and the equilibrium moves — check it before assuming the budget is what it says.
+   */
+  baseHours: 12,
+  minHours: 4,
   /** Energy per hour of work; restored overnight. Working flat out shrinks tomorrow. */
-  energyDrain: 7,
-  energyRestore: 42,
-  /** Below this you are burnt out: shorter days until you back off. */
-  burnoutEnergy: 30,
+  energyDrain: 5,
+  energyRestore: 54,
+  /** Below this you are burnt out. Kept low enough that a normal long day is not "burnt out". */
+  burnoutEnergy: 20,
   /** You are there whenever you like — nights included. The hour budget is the real limit. */
   startHour: 0,
   walkSpeed: 22,

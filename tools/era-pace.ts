@@ -56,14 +56,19 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       store.getState().setCeremony(null);
       store.setState({ paused: false });
     }
-    // Only start something there are actually free hands for.
+    // Only start something there are free hands *and* parts money for. Pitching buys the bill
+    // of materials there and then, so an unfunded pitch is cash poured into a project that
+    // then sits at assembly — and the cash it burns is the cash that would have hired somebody.
+    const funded = (id: string) => spendable() >= CATALOG_MAP[id].bomCost;
     if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
       const offer = state.backlog[0];
       const pick = (id: string) =>
         sim.members.filter((m) => !m.team).sort((a, b) => b.passionMatch(CATALOG_MAP[id].tags) - a.passionMatch(CATALOG_MAP[id].tags)).slice(0, CATALOG_MAP[id].teamSize).map((m) => m.id);
-      if (offer) sim.pitch(offer.defId, offer.id, pick(offer.defId));
+      // An offer we cannot fund must not block the catalog behind it, or a single expensive
+      // offer sitting at the head of the backlog idles the whole space until it expires.
+      if (offer && funded(offer.defId)) sim.pitch(offer.defId, offer.id, pick(offer.defId));
       else {
-        const def = catalogForEra(state.era).find((d) => canBuild(d, state.ownedMachines) && !sim.projects.some((p) => p.defId === d.id));
+        const def = catalogForEra(state.era).find((d) => canBuild(d, state.ownedMachines) && !sim.projects.some((p) => p.defId === d.id) && funded(d.id));
         if (def) sim.pitch(def.id, undefined, pick(def.id));
       }
     }

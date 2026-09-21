@@ -19,11 +19,13 @@ export interface RivalDef {
   /** Reputation needed to attract each additional member. */
   repPerMember: number;
   /**
-   * Reputation at which their shipping pace would double. Set effectively out of reach on
-   * purpose: the rivals grow **linearly** and the player compounds, because that is the only
-   * shape that satisfies both ends at once — a field strong enough to take most of the first
-   * awards night, and a back half where a full roster pulls clear. Making them compound too
-   * meant either the first night was a walkover or the final table was.
+   * Reputation at which their shipping pace would double. It was once out of reach, making the
+   * field effectively linear; a twelve-hour owner then reached Era 3 around day 95 instead of
+   * 135 and finished at three times the field. Compounding on the *back* half is what fixes
+   * that without touching the opening: at day-90 reputation this is worth about a third more
+   * pace, and it only really bites over the following hundred days, which is exactly the
+   * stretch the player was running away with. Lowering it further makes the first awards
+   * night a walkover, so check both ends before moving it.
    */
   paceGrowth: number;
 }
@@ -50,7 +52,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 4200,
     cashPerDay: 90,
     repPerMember: 340,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
   {
     id: 'london-hackspace',
@@ -66,7 +68,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 1500,
     cashPerDay: 170,
     repPerMember: 180,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
   {
     id: 'konya',
@@ -82,7 +84,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 1700,
     cashPerDay: 130,
     repPerMember: 250,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
   {
     id: 'tokyo',
@@ -98,7 +100,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 900,
     cashPerDay: 90,
     repPerMember: 200,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
   {
     id: 'garaj',
@@ -114,7 +116,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 800,
     cashPerDay: 150,
     repPerMember: 300,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
   {
     id: 'noisebridge',
@@ -130,7 +132,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 500,
     cashPerDay: 25,
     repPerMember: 190,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
   {
     id: 'nyc-resistor',
@@ -146,7 +148,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 2200,
     cashPerDay: 180,
     repPerMember: 300,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
   {
     id: 'metalab',
@@ -162,7 +164,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 2400,
     cashPerDay: 110,
     repPerMember: 260,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
   {
     id: 'dallas',
@@ -182,7 +184,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 1100,
     cashPerDay: 150,
     repPerMember: 170,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
   {
     id: 'xinchejian',
@@ -198,7 +200,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 950,
     cashPerDay: 120,
     repPerMember: 280,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
   {
     id: 'hacdc',
@@ -214,7 +216,7 @@ export const RIVALS: RivalDef[] = [
     cashPerProject: 1600,
     cashPerDay: 140,
     repPerMember: 270,
-    paceGrowth: 100000,
+    paceGrowth: 4500,
   },
 ];
 

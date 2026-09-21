@@ -182,10 +182,17 @@ whose attendance is guaranteed.
 
 The counterweight is the hour budget:
 
-- You get roughly 7 hours a day, scaled by energy. Working flat out drains energy, which
-  shrinks *tomorrow's* budget — overwork is a decision with a delayed bill, not an immediate one.
-- **Every management verb spends the same pool**: pitching a project costs 2h, a bounty 1h,
-  ordering parts 1h, expediting 1h, re-pitching 1h, going out for filament 0.5h.
+- You get **twelve hours on a rested day**, scaled by energy. Working flat out drains energy,
+  which shrinks *tomorrow's* budget — overwork is a decision with a delayed bill, not an
+  immediate one.
+- `baseHours`, `energyDrain` and `energyRestore` are one setting, not three. A day settles at
+  `energyRestore / energyDrain` hours, so the twelve-hour owner sustains about eleven and only
+  reaches twelve after backing off. Move one number and the other two have to follow, or the
+  budget stops being what it says — and `burnoutEnergy` has to stay below the evening trough of
+  a normal long day, otherwise "burnt out" fires every afternoon and means nothing.
+- **Every management verb spends the same pool**: a bounty 1h, ordering parts 1h, expediting 1h,
+  re-pitching 1h, going out for filament 0.5h. Pitching is free — waiting on your own hours to
+  *start* something was pure friction, and the money it commits is the real cost.
 - So each hour spent doing the CAD yourself is an hour not spent recruiting the person who
   would have done it faster. That trade is the daily decision the game is built around.
 - You never drift, and you take no passion penalty — it is your space, you work on what needs
@@ -314,8 +321,14 @@ Winning pays reputation. Two tuning notes worth keeping:
   everybody. It was capped at 40 first, which made one of the four awards decoration.
 - `npm run era-pace [seeds]` prints the first awards night, the day each era arrives, and the
   final standings. Targets: an engaged player takes **one or two of four** on the first night
-  (currently 10 of 32 across eight runs, ranging 0-3), finishes **first overall** by day 220
-  without finishing at twice the field, and no single rival wins two categories every time.
+  (currently 15 of 32 across eight runs), finishes **first overall** by day 220 without
+  finishing at twice the field (currently 1.50×, ranging 1.33-1.65), and no single rival wins
+  two categories every time.
+- **A category nobody else can win is as dead as one you cannot.** Space of the Year goes to
+  the player in eight runs out of eight, and Biggest Crew does too once the roster fills, since
+  it caps at you plus fifteen against Dallas's fifteen. The *count* is on target and year one
+  is a real contest on the other two, but those two categories are currently decoration.
+  Unresolved, and it predates the twelve-hour day rather than being caused by it.
 - **Tune the awards from computed values, not by nudging.** Lowering whichever space happened
   to be winning Deepest Pockets simply handed it to the next one along, four times in a row.
   Work out every rival's day-90 balance from `startCash + 90 × cashPerDay + projects ×
@@ -346,6 +359,24 @@ Winning pays reputation. Two tuning notes worth keeping:
   wages landed on the player alone, and the first awards night fell from 10 of 32 to 0. The rival
   curve had to come down about 30% to compensate. Any future cost added to the player needs the
   same check.
+
+- **Doubling the owner's day fixed the pacing and broke the table.** Going from seven hours to
+  twelve nearly doubled the player's personal output, and era pacing — which had quietly drifted
+  to Era 3 around day 135 — landed back on its documented day 80-110. The cost was at the far
+  end: the player finished at three times the field. The fix was *not* a blanket rival buff,
+  which would have made the first awards night a walkover; it was giving the rivals the
+  compounding the design doc already claimed they had (`paceGrowth` was 100000, i.e. linear).
+  Compounding bites late, so it closed the day-220 gap from 2.97× to 1.50× and left the opening
+  alone. **A change to labour supply moves the back half hardest; look there first.**
+
+- **A harness bug looks exactly like a balance problem.** Two of them in one session, both
+  found only because a single seed disagreed with the other seven. First, the autoplayer sank
+  its opening cash into bills of materials for projects it had nobody to crew and then could
+  never afford to hire — one member for 116 days. Second, once pitching was gated on being able
+  to fund the parts, an unaffordable offer at the head of the backlog stopped the autoplayer
+  falling through to the catalog at all: ten idle people and ₺7,000 in the bank for forty-five
+  days. Both read as the economy being brutal. **When one seed is half the others, suspect the
+  autoplayer before the balance** — and trace the day-by-day state rather than tuning.
 
 - **Over-hiring is what the wage bill is for.** Six of six harness runs were evicted while the
   autoplayer hired whenever it could afford the induction fee. Teaching it to hire only when the
@@ -530,7 +561,7 @@ then 6000) — the sum of the hype of everything shipped.
 Reputation rather than a project count, because three weekend builds otherwise unlocked Era 2 by
 day six; ambition should advance you and volume should barely move the needle. The thresholds
 were rescaled when the slot cap came off — throughput roughly quadrupled. `npm run era-pace`
-measures it: Era 2 lands around day 40 and Era 3 around day 80-110. The space itself grows in Phase 4, and the real milestones — member count,
+measures it: Era 2 lands around day 33-59 and Era 3 around day 87-121. The space itself grows in Phase 4, and the real milestones — member count,
 break-even, front page — arrive with Phases 3 and 5.
 
 ## 9. Failure (selected: real, hard failure)
