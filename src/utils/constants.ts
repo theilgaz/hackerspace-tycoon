@@ -393,6 +393,10 @@ export const HYPE = {
   recruitSpeedUp: 1.35,
   /** At full pressure, this many extra of the public are paying to use the place. */
   extraMembers: 30,
+  /** Reputation at which a post about the space itself can back any claim. */
+  spaceMeritAt: 4000,
+  /** A photo of the place is always worth a look, but it is never the finished thing. */
+  spaceInterest: 0.7,
   /** At full pressure, sponsors call this many times as often. */
   sponsorSpeedUp: 2.5,
 };

@@ -33,7 +33,7 @@ const STARTING_STATIONS: StationDef[] = [
   { id: 'bench', type: 'bench', label: 'Solder Bench', tile: { x: 0, y: 2 }, stand: { x: 1, y: 2 } },
   { id: 'assembly', type: 'assembly', label: 'Assembly Table', tile: { x: 0, y: 4 }, stand: { x: 1, y: 4 } },
   // The sofa sits at an angle facing the room: nobody puts a sofa nose-first into a wall.
-  { id: 'lounge', type: 'lounge', label: 'Sofa & Kettle', tile: { x: 1, y: 6 }, stand: { x: 2, y: 7 } },
+  { id: 'lounge', type: 'lounge', label: 'Sofa & Kettle', tile: { x: 1, y: 6 }, stand: { x: 2, y: 6 } },
 ];
 
 /**

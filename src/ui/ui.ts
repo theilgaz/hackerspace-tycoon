@@ -12,6 +12,7 @@ import type {
   ClaimKey,
   ShippedRecord,
 } from '@/game/types';
+import { SPACE_SUBJECT } from '@/game/types';
 import { CATALOG_MAP, catalogForEra, canBuild, missingMachines } from '@/utils/catalog';
 import {
   CATEGORY_ORDER,
@@ -36,7 +37,7 @@ import {
 } from '@/utils/constants';
 import { clock, dayName, hours, money, pct } from '@/utils/format';
 import { CLAIMS, SUBREDDITS, SUBREDDIT_MAP, tasteMatch } from '@/utils/subreddits';
-import { merit, react } from '@/systems/HypeSystem';
+import { merit, projectSubject, react, type Subject } from '@/systems/HypeSystem';
 import type { PrinterModel } from '@/utils/printers';
 import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
@@ -70,6 +71,8 @@ export interface UIHandlers {
   buyablePrinters(): PrinterModel[];
   hire(memberId: string, employment: Employment): void;
   post(projectId: string, subreddit: string, claim: ClaimKey): void;
+  /** What a post about the space itself is judged on — the same one the sim will use. */
+  spaceSubject(): Subject;
   hireCost(memberId: string, employment: Employment): number;
   canHireFullTime(memberId: string): boolean;
   begin(name: string, logo: number, difficulty: DifficultyKey): void;
@@ -207,9 +210,8 @@ export class UI {
   private peopleTab: 'all' | 'free' | 'on' | 'open' = 'all';
 
   /** What the composer is pointed at. Three decisions, and the claim is the one with teeth. */
-  private reddit: { projectId: string | null; subreddit: string; claim: ClaimKey } = {
+  private reddit: { projectId: string | null; claim: ClaimKey } = {
     projectId: null,
-    subreddit: SUBREDDITS[0].id,
     claim: 'wip',
   };
   /** Start screen state; the sim is not running yet so nothing clobbers it. */
@@ -406,38 +408,31 @@ export class UI {
           break;
         case 'reddit-open': {
           this.openModal = 'reddit';
-          // Point it at the build most worth showing, in the room most likely to care —
-          // the same answer the player would reach, so the panel opens ready to post.
-          const open = (this.lastState?.runtime.projects ?? []).filter((p) => !p.shipped);
-          const best = [...open].sort((a, b) => merit(b) - merit(a))[0];
-          if (best) {
-            this.reddit.projectId = best.id;
-            this.reddit.subreddit = [...SUBREDDITS].sort(
-              (a, b) => tasteMatch(best.tags, b) * b.audience - tasteMatch(best.tags, a) * a.audience,
-            )[0].id;
-          }
+          // Open on the build most worth showing that has not already gone up today; the
+          // space is the fallback, and it is always a legitimate thing to post about.
+          const state = this.lastState;
+          const fresh = (id: string) =>
+            !state?.posts.some((p) => p.projectId === id && p.day === state.day);
+          const best = (state?.runtime.projects ?? [])
+            .filter((p) => !p.shipped && fresh(p.id))
+            .sort((a, b) => merit(b) - merit(a))[0];
+          this.reddit.projectId = best?.id ?? SPACE_SUBJECT;
           this.rerender();
           break;
         }
         case 'reddit-project':
-          this.reddit.projectId = id ?? null;
-          this.rerender();
-          break;
-        case 'reddit-sub':
-          this.reddit.subreddit = value ?? SUBREDDITS[0].id;
+          this.reddit.projectId = id ?? SPACE_SUBJECT;
           this.rerender();
           break;
         case 'reddit-claim':
           this.reddit.claim = (value as ClaimKey) ?? 'wip';
           this.rerender();
           break;
-        case 'reddit-post': {
-          const open = (this.lastState?.runtime.projects ?? []).filter((p) => !p.shipped);
-          const target = open.find((p) => p.id === this.reddit.projectId) ?? open[0];
-          if (target) h.post(target.id, this.reddit.subreddit, this.reddit.claim);
+        case 'reddit-post':
+          // The room *is* the button, so the click carries everything the post needs.
+          if (value) h.post(this.reddit.projectId ?? SPACE_SUBJECT, value, this.reddit.claim);
           this.rerender();
           break;
-        }
         case 'jobs-close':
           this.openModal = null;
           this.rerender();
@@ -1182,86 +1177,75 @@ export class UI {
   // --- Reddit: attention, and what you claimed to get it -------------------
 
   /**
-   * The composer and the feed (§6). Three decisions on one screen — which build, which room,
-   * what you are claiming — because each list is short, and splitting them across wizard
-   * steps would hide the one thing that makes the choice interesting: the same claim is safe
-   * in one room and a reputation event in another, which you can only see side by side.
+   * The composer and the feed (§6), and deliberately shallow: **the room is the button**.
+   * It used to ask three questions down a long screen and then make you find a Post button
+   * at the bottom, which is a lot of ceremony for a verb you use several times a day. Pick
+   * what you are talking about, pick how loudly, then click a room — and each room card
+   * shows the reaction it would actually give, so the choice between a big sceptical room
+   * and a small warm one is made where it is made.
    */
   private redditBody(state: GameState): { head: string; content: string; foot: string } {
     const open = state.runtime.projects.filter((p) => !p.shipped);
-    const selected = open.find((p) => p.id === this.reddit.projectId) ?? open[0] ?? null;
     const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
-    const sub = SUBREDDIT_MAP[this.reddit.subreddit];
+    const postedToday = (id: string) => state.posts.some((p) => p.projectId === id && p.day === state.day);
 
-    const builds = open.length
-      ? `<div class="row wrap" style="gap:5px">
-          ${open
-            .map((p) => {
-              const on = selected?.id === p.id;
-              return `<button class="ui-toggle" aria-pressed="${on}"
-                data-action="reddit-project" data-id="${p.id}"
-                title="${esc(stageLabel(p.category, p.stage))} · quality ${pct(p.quality)}">
-                ${icon(on ? 'check' : 'plus')}${esc(p.name)}
-                <span class="ui-toggle__pct">${pct(merit(p))}</span>
-              </button>`;
-            })
-            .join('')}
-        </div>`
-      : `<p class="ui-desc">Nothing on the bench. Pitch something before you go looking for an audience.</p>`;
+    const subjects: { id: string; label: string; sub: ReturnType<typeof projectSubject> }[] = [
+      {
+        id: SPACE_SUBJECT,
+        label: 'The space',
+        // Straight from the sim: a preview built from different tags is a preview that lies.
+        sub: this.handlers.spaceSubject(),
+      },
+      ...open.map((p) => ({ id: p.id, label: p.name, sub: projectSubject(p) })),
+    ];
+    const chosen = subjects.find((x) => x.id === this.reddit.projectId) ?? subjects[0];
 
-    // Every room is scored against the selected build, so the trade between a big room and a
-    // sceptical one is on screen rather than something to hold in your head.
+    const subjectChips = `<div class="ui-segmented" style="margin-bottom:11px;flex-wrap:wrap">
+      ${subjects
+        .map(
+          (x) => `<button data-action="reddit-project" data-id="${x.id}"
+            aria-pressed="${x.id === chosen.id}" ${postedToday(x.id) ? 'disabled' : ''}
+            title="${postedToday(x.id) ? 'Already posted today' : `${pct(x.sub.merit)} of a claim`}">
+            ${esc(x.label)}<span class="seg-count">${pct(x.sub.merit)}</span>
+          </button>`,
+        )
+        .join('')}
+    </div>`;
+
+    const claimChips = `<div class="ui-segmented" style="margin-bottom:11px">
+      ${CLAIMS.map(
+        (claim) => `<button data-action="reddit-claim" data-value="${claim.key}"
+          aria-pressed="${claim.key === this.reddit.claim}" title="${esc(claim.blurb)}">
+          ${esc(claim.label)}
+        </button>`,
+      ).join('')}
+    </div>`;
+
+    const blocked = postedToday(chosen.id);
     const rooms = `<div class="ui-grid ui-grid--3">
       ${SUBREDDITS.map((room) => {
-        const on = room.id === this.reddit.subreddit;
-        const taste = selected ? tasteMatch(selected.tags, room) : 0;
-        return `<button class="ui-option ${on ? 'on' : ''}" data-action="reddit-sub" data-value="${room.id}"
-          style="--tone:var(--primary)">
+        const already = state.posts.filter(
+          (p) => p.projectId === chosen.id && p.subreddit === room.id,
+        ).length;
+        const preview = react(chosen.sub, room, this.reddit.claim, already);
+        const bad = preview.burned;
+        const can = !blocked && hoursLeft >= VERB_HOURS.post;
+        return `<button class="ui-option" data-action="reddit-post" data-value="${room.id}"
+          ${can ? '' : 'disabled'} style="--tone:${bad ? 'var(--destructive)' : 'var(--primary)'}"
+          title="${esc(room.blurb)}">
           <div class="ui-option__head">
             <span class="icon-chip">${icon(room.icon, 'ui-icon ui-icon--lg')}</span>
             <span class="ui-title">${esc(room.name)}</span>
-            ${on ? `<span class="diff-tick">${icon('check')}</span>` : ''}
           </div>
-          <span class="ui-option__desc ui-clamp-3">${esc(room.blurb)}</span>
           <span class="ui-row__meta" style="margin:0">
-            <span class="ui-badge ui-badge--tone" title="how much this room cares">
-              ${icon('flame')}${pct(taste)}
+            <span class="ui-badge ui-badge--tone"
+              style="--tone:var(--${bad ? 'destructive' : 'success'})">
+              ${icon('arrowUp')}${preview.upvotes}
             </span>
-            <span class="ui-badge" title="how hard they come down on a claim you cannot back">
-              ${icon('effort')}${pct(room.skepticism)}
+            <span class="ui-badge" title="how much this room cares">
+              ${icon('flame')}${pct(tasteMatch(chosen.sub.tags, room))}
             </span>
-          </span>
-        </button>`;
-      }).join('')}
-    </div>`;
-
-    const claims = `<div class="ui-grid ui-grid--3">
-      ${CLAIMS.map((claim) => {
-        const on = claim.key === this.reddit.claim;
-        // The reaction itself, not an adjective. This is the only place a player can find out
-        // that a boast is about to backfire *before* making it, which is what makes the claim
-        // a decision rather than a dice roll.
-        const preview =
-          selected && sub
-            ? react(
-                selected,
-                sub,
-                claim.key,
-                state.posts.filter((p) => p.projectId === selected.id && p.subreddit === sub.id)
-                  .length,
-              )
-            : null;
-        const bad = preview?.burned ?? false;
-        const tone = bad ? 'var(--destructive)' : 'var(--success)';
-        return `<button class="ui-option ${on ? 'on' : ''}" data-action="reddit-claim" data-value="${claim.key}"
-          style="--tone:${tone}">
-          <div class="ui-option__head">
-            <span class="ui-title">${esc(claim.label)}</span>
-            ${on ? `<span class="diff-tick">${icon('check')}</span>` : ''}
-          </div>
-          <span class="ui-option__desc ui-clamp-3">${esc(claim.blurb)}</span>
-          <span class="ui-badge ui-badge--tone" style="--tone:${tone}">
-            ${icon('arrowUp')}${preview ? preview.upvotes : '—'}${bad ? ' · they turn' : ''}
+            ${bad ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--destructive)">they turn</span>` : ''}
           </span>
         </button>`;
       }).join('')}
@@ -1270,7 +1254,7 @@ export class UI {
     const feed = state.posts.length
       ? [...state.posts]
           .reverse()
-          .slice(0, 8)
+          .slice(0, 6)
           .map(
             (post) => `<div class="ui-row" style="cursor:default">
               <span class="icon-chip" style="--tone:${post.burned ? 'var(--destructive)' : 'var(--success)'}">
@@ -1289,7 +1273,6 @@ export class UI {
           .join('')
       : `<p class="ui-desc">Nothing posted yet.</p>`;
 
-    const canPost = Boolean(selected) && hoursLeft >= VERB_HOURS.post;
     return {
       head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>Reddit</b>
         <span class="ui-badge ui-badge--tone" style="--tone:var(--primary)"
@@ -1297,24 +1280,22 @@ export class UI {
           ${Math.round(state.hype)} hype
         </span></div>`,
       content: `
-        <div class="ui-label" style="margin-bottom:9px">Which build</div>
-        ${builds}
-        <hr class="ui-sep" />
-        <div class="ui-label" style="margin-bottom:9px">Which room</div>
+        <div class="ui-label" style="margin-bottom:9px">What are you posting about</div>
+        ${subjectChips}
+        <div class="ui-label" style="margin-bottom:9px">How loudly</div>
+        ${claimChips}
+        <div class="ui-label" style="margin-bottom:9px">
+          ${blocked ? 'Already posted today — pick something else' : 'Pick a room and it goes up'}
+        </div>
         ${rooms}
-        <hr class="ui-sep" />
-        <div class="ui-label" style="margin-bottom:9px">What you are claiming</div>
-        ${claims}
         <hr class="ui-sep" />
         <div class="ui-label" style="margin-bottom:9px">What came back</div>
         ${feed}
       `,
       foot: `<span class="ui-desc" style="font-size:10.5px">
-          Attention falls every day whether you post or not.
-        </span>
-        <button class="ui-btn ui-btn--primary" data-action="reddit-post" ${canPost ? '' : 'disabled'}>
-          ${icon('arrowUp')}Post it · ${hours(VERB_HOURS.post)}
-        </button>`,
+          One post per thing per day, ${hours(VERB_HOURS.post)} of yours each — and attention
+          falls every day whether you post or not.
+        </span>`,
     };
   }
 

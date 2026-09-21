@@ -75,6 +75,7 @@ export class Game {
       buyablePrinters: () => sim.buyablePrinters(),
       hire: (memberId, employment) => act(() => sim.hire(memberId, employment)),
       post: (projectId, subreddit, claim) => act(() => sim.post(projectId, subreddit, claim)),
+      spaceSubject: () => sim.spaceSubject(),
       hireCost: (memberId, employment) => sim.hireCost(memberId, employment),
       canHireFullTime: (memberId) => sim.canHireFullTime(memberId),
       begin: (name, logo, difficulty) => {

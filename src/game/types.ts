@@ -210,6 +210,9 @@ export type BacklogSource = 'catalog' | 'member' | 'sponsor' | 'trending';
 /** How loudly you said it (§6). The claim is the decision; the room judges it. */
 export type ClaimKey = 'wip' | 'works' | 'bold';
 
+/** The projectId a post carries when it is about the space rather than a build. */
+export const SPACE_SUBJECT = '__space__';
+
 /** One thing you put in front of Reddit, and what came back. */
 export interface Post {
   id: string;

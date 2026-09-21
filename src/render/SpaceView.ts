@@ -132,7 +132,11 @@ export class SpaceView {
       // angle that points the front of the model at its stand tile. The sign was inverted
       // and only the sofa could show it — every other station is symmetric enough to look
       // the same either way, which is why a bench facing its own wall went unnoticed.
-      const yaw = dx || dy ? Math.atan2(dx, dy) : 0;
+      // Snapped to quarter turns: the room is drawn isometrically, so anything at 45° stops
+      // reading as part of the grid and starts looking like a box lying on top of it. A
+      // station may only ever face along an axis, whatever its stand tile happens to be.
+      const quarter = Math.PI / 2;
+      const yaw = dx || dy ? Math.round(Math.atan2(dx, dy) / quarter) * quarter : 0;
       zone.rotation.y = yaw;
       zone.position.copy(toWorld(def.tile.x + dx * 0.5, def.tile.y + dy * 0.5, 0.012));
       this.group.add(zone);

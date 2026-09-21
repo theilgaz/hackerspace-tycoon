@@ -58,12 +58,13 @@ import {
   weeklyHoursFor,
 } from '@/utils/constants';
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
+import { SPACE_SUBJECT } from '@/game/types';
 import { RIVAL_MAP } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
 import type { SaveFile } from './SaveGame';
 import { ECONOMY, membershipFor, rentFor, type Bill, type BillLine } from '@/utils/economy';
-import { decayHype, hypePressure, react } from '@/systems/HypeSystem';
+import { decayHype, hypePressure, projectSubject, react, spaceSubject } from '@/systems/HypeSystem';
 import { SUBREDDIT_MAP } from '@/utils/subreddits';
 import { PRINTER_MAP, PRINTERS, STARTING_PRINTER, type PrinterModel } from '@/utils/printers';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
@@ -1543,6 +1544,21 @@ export class Simulation {
     return ready.length ? { data: ready[0] } : null;
   }
 
+  /**
+   * What the space itself is known for: the tags of everything it has shipped, commonest
+   * first. A post about the place lands in the room that recognises the work.
+   */
+  spaceSubject() {
+    const counts = new Map<Tag, number>();
+    for (const record of store.getState().shipped) {
+      for (const tag of CATALOG_MAP[record.defId]?.tags ?? []) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    const tags = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([tag]) => tag);
+    return spaceSubject(store.getState().reputation, tags.length ? tags : ['software']);
+  }
+
   /** §5 — what you just shipped is what the next person through the door cared about. */
   private recruit(project: ProjectData) {
     this.recentShip = { tags: [...project.tags], name: project.name, day: this.day };
@@ -1555,21 +1571,36 @@ export class Simulation {
    * when the work does not clear it.
    */
   post(projectId: string, subredditId: string, claim: ClaimKey): boolean {
-    const project = this.project(projectId);
     const sub = SUBREDDIT_MAP[subredditId];
-    if (!project || !sub || project.shipped) return false;
-    const already = store
-      .getState()
-      .posts.filter((p) => p.projectId === projectId && p.subreddit === subredditId).length;
+    if (!sub) return false;
+    const project = projectId === SPACE_SUBJECT ? null : this.project(projectId);
+    if (projectId !== SPACE_SUBJECT && (!project || project.shipped)) return false;
+
+    // One post per subject per day. Posting the same thing three times before lunch is not
+    // a strategy anybody should be rewarded for finding, and the hour cost alone did not
+    // stop it once the day grew to eighteen.
+    const posts = store.getState().posts;
+    if (posts.some((p) => p.projectId === projectId && p.day === this.day)) {
+      this.log(
+        project ? `${project.name} has already been posted today.` : `The space was posted today.`,
+        'warn',
+      );
+      return false;
+    }
+    const already = posts.filter(
+      (p) => p.projectId === projectId && p.subreddit === subredditId,
+    ).length;
     if (!this.chargeHours('post')) return false;
 
-    const reaction = react(project, sub, claim, already);
+    const subject = project ? projectSubject(project) : this.spaceSubject();
+    const name = project ? project.name : store.getState().identity?.name ?? 'the space';
+    const reaction = react(subject, sub, claim, already);
     const entry: Post = {
       id: uid(),
       projectId,
-      projectName: project.name,
+      projectName: name,
       subreddit: subredditId,
-      stage: project.stage,
+      stage: project?.stage ?? 'release',
       claim,
       upvotes: reaction.upvotes,
       hype: reaction.hype,
@@ -1580,8 +1611,8 @@ export class Simulation {
     store.getState().recordPost(entry, reaction.reputationHit);
     this.log(
       reaction.burned
-        ? `${sub.name} turned on the ${project.name} post — ${reaction.upvotes} and a pile-on.`
-        : `${project.name} did ${reaction.upvotes} on ${sub.name}.`,
+        ? `${sub.name} turned on the ${name} post — ${reaction.upvotes} and a pile-on.`
+        : `${name} did ${reaction.upvotes} on ${sub.name}.`,
       reaction.burned ? 'bad' : 'good',
     );
     this.publish();

@@ -1,4 +1,4 @@
-import type { ClaimKey, ProjectData, StageKey } from '@/game/types';
+import type { ClaimKey, ProjectData, StageKey, Tag } from '@/game/types';
 import { STAGE_ORDER } from '@/utils/constants';
 import { HYPE } from '@/utils/constants';
 import { CLAIM_MAP, STAGE_INTEREST, tasteMatch, type SubredditDef } from '@/utils/subreddits';
@@ -20,6 +20,19 @@ export interface Reaction {
 }
 
 /**
+ * What a post is *about*. A build is the usual answer, but the space itself is a subject too
+ * — an open day, a tour, a photo of the bench at two in the morning — and a room judges both
+ * the same way, so both arrive here in the same shape.
+ */
+export interface Subject {
+  tags: Tag[];
+  /** 0-1: what the thing actually justifies claiming. */
+  merit: number;
+  /** 0-1: how interesting it is to look at right now. */
+  interest: number;
+}
+
+/**
  * What the work actually justifies, 0-1. Quality is most of it, but how far through the
  * pipeline you are matters too: a beautifully specified idea is still an idea, and the room
  * can tell the difference between a render and a photograph.
@@ -27,6 +40,24 @@ export interface Reaction {
 export function merit(project: ProjectData): number {
   const reached = STAGE_ORDER.indexOf(project.stage) / (STAGE_ORDER.length - 1);
   return project.quality * HYPE.meritFromQuality + reached * (1 - HYPE.meritFromQuality);
+}
+
+export function projectSubject(project: ProjectData): Subject {
+  return { tags: project.tags, merit: merit(project), interest: STAGE_INTEREST[project.stage] };
+}
+
+/**
+ * The space as a subject. There is no build to judge, so what backs the claim is the name
+ * you have already made — which is why a brand-new garage saying "look at this place" gets
+ * the reception it deserves, and why the post is worth making once you have something to
+ * show for yourselves.
+ */
+export function spaceSubject(reputation: number, tags: Tag[]): Subject {
+  return {
+    tags,
+    merit: Math.min(1, reputation / HYPE.spaceMeritAt),
+    interest: HYPE.spaceInterest,
+  };
 }
 
 /**
@@ -44,15 +75,15 @@ export function novelty(postsAlready: number): number {
  * r/homeassistant is cheap; the same words in r/programming are a reputation event.
  */
 export function react(
-  project: ProjectData,
+  subject: Subject,
   sub: SubredditDef,
   claim: ClaimKey,
   postsAlready: number,
 ): Reaction {
   const def = CLAIM_MAP[claim];
-  const taste = tasteMatch(project.tags, sub);
-  const interest = STAGE_INTEREST[project.stage];
-  const earned = merit(project);
+  const taste = tasteMatch(subject.tags, sub);
+  const interest = subject.interest;
+  const earned = subject.merit;
   const overreach = Math.max(0, def.ask - earned);
   const verdict = Math.max(
     -HYPE.worstVerdict,
@@ -66,7 +97,7 @@ export function react(
     upvotes,
     hype: Math.round(upvotes * HYPE.hypePerUpvote),
     reputationHit: burned ? Math.round(upvotes * HYPE.reputationPerBurn) : 0,
-    comment: commentFor({ taste, interest, verdict, overreach, burned, claim, sub, project }),
+    comment: commentFor({ taste, interest, verdict, overreach, burned, sub }),
     burned,
   };
 }
@@ -81,13 +112,11 @@ function commentFor(ctx: {
   verdict: number;
   overreach: number;
   burned: boolean;
-  claim: ClaimKey;
   sub: SubredditDef;
-  project: ProjectData;
 }): string {
-  const { taste, interest, burned, overreach, sub, project } = ctx;
+  const { taste, interest, burned, overreach, sub } = ctx;
   if (burned) {
-    if (overreach > 0.5) return `"Bold words for something that is still at ${project.stage}."`;
+    if (overreach > 0.5) return `"Bold words for something this unfinished."`;
     return `"This is a remix of a design that has been on Thingiverse for years."`;
   }
   if (taste <= 0.4) return `"Neat, but what is this doing in ${sub.name}?"`;
