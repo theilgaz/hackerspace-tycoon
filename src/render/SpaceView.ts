@@ -130,8 +130,13 @@ export class SpaceView {
     this.group.add(left);
   }
 
-  /** Stations can appear mid-game when a tool project ships. */
+  /** Stations can appear mid-game when a tool project ships, and go again when one is sold. */
   private syncStations() {
+    // This only ever added: selling a printer took it out of the layout and the sim, but its
+    // model stayed on the floor for good, still lit and still hoverable.
+    for (const id of [...this.builtStations]) {
+      if (!STATIONS.some((s) => s.id === id)) this.removeStationNode(id);
+    }
     for (const def of STATIONS) {
       if (this.builtStations.has(def.id)) continue;
       this.builtStations.add(def.id);
@@ -170,6 +175,23 @@ export class SpaceView {
       this.stationNodes.set(def.id, node);
       this.stationZones.set(def.id, zone);
     }
+  }
+
+  private removeStationNode(id: string) {
+    for (const object of [this.stationNodes.get(id), this.stationZones.get(id)]) {
+      if (!object) continue;
+      this.group.remove(object);
+      object.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        child.geometry.dispose();
+        for (const material of [child.material].flat()) material.dispose();
+      });
+    }
+    this.stationNodes.delete(id);
+    this.stationZones.delete(id);
+    this.machineVisuals.delete(id);
+    this.builtStations.delete(id);
+    if (this.hovered === id) this.hovered = null;
   }
 
   /** Objects the camera can pick against for hover. */

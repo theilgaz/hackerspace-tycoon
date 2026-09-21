@@ -15,6 +15,12 @@ export interface PrinterModel {
   blurb: string;
   /** Zero for the one you start with. */
   price: number;
+  /**
+   * What it is worth on the open market, when that is not what you paid. Only the starting
+   * printer needs it: it was free to you, but it is still an A1, and a zero here hid its Sell
+   * button — so the "trade the A1 in" decision the resale rules exist for was impossible.
+   */
+  worth?: number;
   /** Grams it holds. The bigger ones take a stack of spools rather than one. */
   capacity: number;
   /** Multiplier on how fast a job advances. */
@@ -31,6 +37,7 @@ export const PRINTERS: PrinterModel[] = [
     name: 'A1 Mini Combo',
     blurb: 'Small bed, four colours, endlessly patient. It got the space started.',
     price: 0,
+    worth: 4500,
     capacity: 1000,
     speed: 1,
     reliability: 1,
@@ -82,7 +89,7 @@ export const STARTING_PRINTER = PRINTERS[0];
 export const RESALE = 0.55;
 
 export function resaleValue(model: PrinterModel): number {
-  return Math.round(model.price * RESALE);
+  return Math.round((model.worth ?? model.price) * RESALE);
 }
 
 /** What a model costs to fill from empty, at the going rate for a spool. */
