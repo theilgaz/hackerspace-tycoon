@@ -12,6 +12,8 @@ export interface StationDef {
   tile: Tile;
   /** Tile a member stands on to use it. */
   stand: Tile;
+  /** For printers: which model is sitting there. Drives capacity, speed and reliability. */
+  model?: string;
 }
 
 /**
@@ -27,25 +29,34 @@ export interface StationDef {
  */
 const STARTING_STATIONS: StationDef[] = [
   { id: 'cad-desk', type: 'cad-desk', label: 'CAD Desk', tile: { x: 1, y: 0 }, stand: { x: 1, y: 1 } },
-  { id: 'printer-1', type: 'fdm', label: 'A1 Mini Combo', tile: { x: 3, y: 0 }, stand: { x: 3, y: 1 } },
+  { id: 'printer-1', type: 'fdm', label: 'A1 Mini Combo', model: 'a1-mini', tile: { x: 3, y: 0 }, stand: { x: 3, y: 1 } },
   { id: 'bench', type: 'bench', label: 'Solder Bench', tile: { x: 0, y: 2 }, stand: { x: 1, y: 2 } },
   { id: 'assembly', type: 'assembly', label: 'Assembly Table', tile: { x: 0, y: 4 }, stand: { x: 1, y: 4 } },
   { id: 'lounge', type: 'lounge', label: 'Sofa & Kettle', tile: { x: 0, y: 6 }, stand: { x: 1, y: 6 } },
 ];
 
 /**
- * Where a bought or built machine lands. They carry on along the same two walls rather than
- * landing wherever there is room, so the space stays legible however much kit you buy — and
- * the back wall fills first, because that is where the printers live.
+ * Where new kit lands. Machines carry on along the same two walls rather than appearing
+ * wherever there is room, and **printers and tools get separate walls on purpose**: they
+ * used to share one pool, so a player who bought four printers filled the floor and the
+ * CNC they had spent three weeks building had nowhere to go. It logged a warning and was
+ * gone. Three slots each is also the cap on both — the back wall holds four printers in
+ * total, and the left wall has exactly enough room for the CNC, the reflow oven and the
+ * dry box.
  */
-const EXPANSION_SLOTS: { tile: Tile; stand: Tile }[] = [
+const PRINTER_SLOTS: { tile: Tile; stand: Tile }[] = [
   { tile: { x: 4, y: 0 }, stand: { x: 4, y: 1 } },
   { tile: { x: 2, y: 0 }, stand: { x: 2, y: 1 } },
   { tile: { x: 5, y: 0 }, stand: { x: 5, y: 1 } },
+];
+
+const TOOL_SLOTS: { tile: Tile; stand: Tile }[] = [
   { tile: { x: 0, y: 3 }, stand: { x: 1, y: 3 } },
   { tile: { x: 0, y: 5 }, stand: { x: 1, y: 5 } },
   { tile: { x: 0, y: 1 }, stand: { x: 1, y: 1 } },
 ];
+
+const slotsFor = (type: MachineType) => (type === 'fdm' ? PRINTER_SLOTS : TOOL_SLOTS);
 
 export const MACHINE_LABEL: Record<MachineType, string> = {
   fdm: 'FDM Printer',
@@ -66,12 +77,30 @@ export const STATION_MAP: Record<string, StationDef> = Object.fromEntries(
 
 const BLOCKED = new Set(STATIONS.map((s) => `${s.tile.x},${s.tile.y}`));
 
-/** Install a newly built machine into the next free expansion slot. */
-export function installStation(type: MachineType, id: string): StationDef | null {
+/** How many more of this kind of machine the space has room for. */
+export function freeSlots(type: MachineType = 'fdm'): number {
   const used = new Set(STATIONS.map((s) => `${s.tile.x},${s.tile.y}`));
-  const slot = EXPANSION_SLOTS.find((s) => !used.has(`${s.tile.x},${s.tile.y}`));
+  return slotsFor(type).filter((s) => !used.has(`${s.tile.x},${s.tile.y}`)).length;
+}
+
+/** Install a newly built or bought machine into the next free expansion slot. */
+export function installStation(
+  type: MachineType,
+  id: string,
+  model?: string,
+  label?: string,
+): StationDef | null {
+  const used = new Set(STATIONS.map((s) => `${s.tile.x},${s.tile.y}`));
+  const slot = slotsFor(type).find((s) => !used.has(`${s.tile.x},${s.tile.y}`));
   if (!slot) return null;
-  const def: StationDef = { id, type, label: MACHINE_LABEL[type], tile: slot.tile, stand: slot.stand };
+  const def: StationDef = {
+    id,
+    type,
+    label: label ?? MACHINE_LABEL[type],
+    model,
+    tile: slot.tile,
+    stand: slot.stand,
+  };
   STATIONS.push(def);
   STATION_MAP[id] = def;
   BLOCKED.add(`${def.tile.x},${def.tile.y}`);
@@ -79,9 +108,19 @@ export function installStation(type: MachineType, id: string): StationDef | null
 }
 
 /** Machines added by tool projects, so a save can put them back. */
-export function installedStations(): { id: string; type: MachineType }[] {
+export function installedStations(): {
+  id: string;
+  type: MachineType;
+  model?: string;
+  label?: string;
+}[] {
   const starting = new Set(STARTING_STATIONS.map((s) => s.id));
-  return STATIONS.filter((s) => !starting.has(s.id)).map((s) => ({ id: s.id, type: s.type }));
+  return STATIONS.filter((s) => !starting.has(s.id)).map((s) => ({
+    id: s.id,
+    type: s.type,
+    model: s.model,
+    label: s.label,
+  }));
 }
 
 /** Test hooks need the space back at its starting state between headless runs. */

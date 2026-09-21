@@ -38,6 +38,7 @@ import {
 import { clock, dayName, hours, money, pct } from '@/utils/format';
 import { CLAIMS, SUBREDDITS, SUBREDDIT_MAP, tasteMatch } from '@/utils/subreddits';
 import { merit, react } from '@/systems/HypeSystem';
+import type { PrinterModel } from '@/utils/printers';
 import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import { DIFFICULTIES, type DifficultyKey } from '@/utils/difficulty';
@@ -64,7 +65,10 @@ export interface UIHandlers {
   queuePart(projectId: string, partId: string): void;
   moveJob(machineId: string, jobId: string, dir: -1 | 1): void;
   cancelJob(machineId: string, jobId: string): void;
-  buyFilament(): void;
+  buyFilament(machineId?: string): void;
+  refillCost(machineId?: string): number;
+  buyPrinter(modelId: string): void;
+  buyablePrinters(): PrinterModel[];
   hire(memberId: string, employment: Employment): void;
   post(projectId: string, subreddit: string, claim: ClaimKey): void;
   hireCost(memberId: string, employment: Employment): number;
@@ -542,7 +546,12 @@ export class UI {
           if (id && id2) h.cancelJob(id, id2);
           break;
         case 'filament':
-          h.buyFilament();
+          h.buyFilament(id || undefined);
+          this.rerender();
+          break;
+        case 'buy-printer':
+          if (value) h.buyPrinter(value);
+          this.rerender();
           break;
       }
     });
@@ -2211,11 +2220,45 @@ export class UI {
     const machines = state.runtime.machines;
     const running = machines.filter((m) => m.current).length;
     const queued = machines.reduce((n, m) => n + m.queue.length, 0);
-    const content = machines.length
-      ? `<div class="ui-grid machine-grid">
-          ${machines.map((m) => this.machineCard(m, state)).join('')}
-        </div>`
-      : `<p class="ui-desc">Nothing on the floor yet.</p>`;
+    const forSale = this.handlers.buyablePrinters();
+    const shop = forSale.length
+      ? `<hr class="ui-sep" />
+         <div class="ui-label" style="margin-bottom:9px">Buy a printer</div>
+         <div class="ui-grid ui-grid--3">
+           ${forSale
+             .map((model) => {
+               const afford = state.cash >= model.price;
+               return `<button class="ui-option" data-action="buy-printer" data-value="${model.id}"
+                 ${afford ? '' : 'disabled'} style="--tone:var(--primary)">
+                 <div class="ui-option__head">
+                   <span class="icon-chip">${icon('printer', 'ui-icon ui-icon--lg')}</span>
+                   <span class="ui-title">${esc(model.name)}</span>
+                 </div>
+                 <span class="ui-option__desc ui-clamp-3">${esc(model.blurb)}</span>
+                 <span class="ui-row__meta" style="margin:0">
+                   <span class="ui-badge" title="how fast it prints">
+                     ${icon('effort')}${Math.round(model.speed * 100)}%
+                   </span>
+                   <span class="ui-badge" title="how much filament it holds">
+                     ${icon('package')}${model.capacity / 1000}kg
+                   </span>
+                   <span class="ui-badge ui-badge--tone"
+                     style="--tone:var(--${afford ? 'success' : 'destructive'})">
+                     ${icon('coins')}${money(model.price)}
+                   </span>
+                 </span>
+               </button>`;
+             })
+             .join('')}
+         </div>`
+      : '';
+
+    const content =
+      (machines.length
+        ? `<div class="ui-grid machine-grid">
+            ${machines.map((m) => this.machineCard(m, state)).join('')}
+          </div>`
+        : `<p class="ui-desc">Nothing on the floor yet.</p>`) + shop;
     return {
       head: `<div class="modal-head">${icon('printer', 'ui-icon ui-icon--lg')}<b>The shop floor</b>
         <span class="ui-badge${running ? ' ui-badge--accent' : ''}">${running} running</span>
@@ -2223,7 +2266,8 @@ export class UI {
       </div>`,
       content,
       foot: `<span class="ui-desc" style="font-size:10.5px">
-        Jobs run on the clock, not on attendance — a 22-hour print carries on through an empty space.
+        Jobs run on the clock, not on attendance — a 22-hour print carries on through an empty
+        space — and a part goes to whichever printer has the shortest queue.
       </span>`,
     };
   }
@@ -2268,10 +2312,11 @@ export class UI {
           : ''
       }`;
 
-    const actions = machine.consumableMax > 0
-      ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="filament"
-           ${state.cash >= FILAMENT.spoolCost ? '' : 'disabled'}>
-           ${icon('package')}Buy spool · ${money(FILAMENT.spoolCost)} · ${VERB_HOURS.filament}h
+    const refill = machine.consumableMax > 0 ? this.handlers.refillCost(machine.id) : 0;
+    const actions = refill
+      ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="filament" data-id="${machine.id}"
+           ${state.cash >= refill ? '' : 'disabled'}>
+           ${icon('package')}Fill up · ${money(refill)} · ${VERB_HOURS.filament}h
          </button>`
       : '';
 

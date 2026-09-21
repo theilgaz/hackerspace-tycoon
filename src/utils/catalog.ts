@@ -329,7 +329,7 @@ const CATALOG_DATA: Draft[] = [
     tier: 'large',
     teamSize: 4,
     blurb: 'Five inches of carbon and regret. Everyone in the space has an opinion about it.',
-    work: { concept: 28, cad: 95, simulation: 45, assembly: 83, iterate: 31, release: 45 },
+    work: { concept: 31, cad: 106, simulation: 50, assembly: 93, iterate: 35, release: 50 },
     parts: [
       fdm('Frame Plate', 11, 180),
       ...repeat(4, (i) => fdm(`Arm ${['FL', 'FR', 'RL', 'RR'][i - 1]}`, 5, 75)),

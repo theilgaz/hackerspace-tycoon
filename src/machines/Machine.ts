@@ -41,14 +41,20 @@ export class Machine {
   operatorSkill = 0;
   /** Kit the space owns that changes the odds, e.g. a filament dry box. */
   failureModifier = 1;
+  /** How fast this particular machine works. A better printer is a faster printer. */
+  speed = 1;
+  /** The machine's own contribution to failure odds, separate from the space's kit. */
+  reliability = 1;
 
-  constructor(def: StationDef, consumableMax = 0) {
+  constructor(def: StationDef, consumableMax = 0, opts: { speed?: number; reliability?: number } = {}) {
     this.def = def;
     this.id = def.id;
     this.type = def.type;
     this.label = def.label;
     this.consumableMax = consumableMax;
     this.consumable = consumableMax;
+    this.speed = opts.speed ?? 1;
+    this.reliability = opts.reliability ?? 1;
   }
 
   get running(): boolean {
@@ -84,7 +90,15 @@ export class Machine {
     const operatorTerm = Math.pow(MACHINE.operatorSkillFactor, Math.max(0, this.operatorSkill - 1));
     // Longer jobs are riskier in absolute terms, which is the whole point of the 11-hour print.
     const lengthTerm = 0.75 + job.hoursRequired / 16;
-    return Math.min(0.9, MACHINE.baseJobFailure * calibrationTerm * operatorTerm * lengthTerm * this.failureModifier);
+    return Math.min(
+      0.9,
+      MACHINE.baseJobFailure *
+        calibrationTerm *
+        operatorTerm *
+        lengthTerm *
+        this.failureModifier *
+        this.reliability,
+    );
   }
 
   /** True when the machine physically cannot start work: nothing left to make it from. */
@@ -105,7 +119,9 @@ export class Machine {
     }
 
     const job = this.current;
-    const step = Math.min(dt, job.hoursRequired - job.progress);
+    // A quicker machine covers more of the job per sim-hour; the job's hours are what it
+    // would take on the machine the space started with.
+    const step = Math.min(dt * this.speed, job.hoursRequired - job.progress);
 
     // Consumable draw is proportional to progress; running dry kills the job.
     if (this.consumableMax > 0) {

@@ -21,8 +21,11 @@ import {
   DOOR,
   IDLE_TILES,
   STATIONS,
+  freeSlots,
+  MACHINE_LABEL,
   installStation,
   installedStations,
+  type StationDef,
   resetStations,
   stationOfType,
 } from '@/machines/layout';
@@ -61,6 +64,7 @@ import type { SaveFile } from './SaveGame';
 import { ECONOMY, membershipFor, rentFor, type Bill, type BillLine } from '@/utils/economy';
 import { decayHype, hypePressure, react } from '@/systems/HypeSystem';
 import { SUBREDDIT_MAP } from '@/utils/subreddits';
+import { PRINTER_MAP, PRINTERS, STARTING_PRINTER, type PrinterModel } from '@/utils/printers';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
 import { clock, money, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
@@ -126,7 +130,7 @@ export class Simulation {
     resetStations();
     for (const def of STATIONS) {
       if (!FAB_MACHINES.includes(def.type)) continue;
-      this.machines.push(new Machine(def, def.type === 'fdm' ? FILAMENT.spoolGrams : 0));
+      this.machines.push(this.makeMachine(def));
     }
     // Day one's crew: the fixed roster, topped up from the front of the applicant ladder to
     // whatever the difficulty says. Taking them in reputation order means an easy start is
@@ -161,8 +165,14 @@ export class Simulation {
     return (this.day - 1) * TIME.hoursPerDay + this.time;
   }
 
+  /** The printer worth standing next to: the one running, else the one drifting furthest. */
   get printer(): Machine {
-    return this.machines.find((m) => m.type === 'fdm')!;
+    const all = this.machines.filter((m) => m.type === 'fdm');
+    return (
+      all.find((m) => m.running && m.calibration < MACHINE.calibrationWarning) ??
+      [...all].sort((a, b) => a.calibration - b.calibration)[0] ??
+      all[0]
+    );
   }
 
   /** Owned kit that changes how the machines behave. */
@@ -175,7 +185,15 @@ export class Simulation {
   }
 
   machineFor(type: MachineType): Machine | undefined {
-    return this.machines.find((m) => m.type === type);
+    const all = this.machines.filter((m) => m.type === type);
+    if (all.length <= 1) return all[0];
+    // Shortest queue first, and never a starved machine while a fed one is free — otherwise
+    // buying a second printer does nothing but sit there.
+    return [...all].sort(
+      (a, b) =>
+        Number(a.starved) - Number(b.starved) ||
+        a.queue.length + (a.running ? 1 : 0) - (b.queue.length + (b.running ? 1 : 0)),
+    )[0];
   }
 
   project(id: string): ProjectData | undefined {
@@ -934,15 +952,65 @@ export class Simulation {
     }
   }
 
+  /** A printer's physical character — capacity, speed, how often it lets you down. */
+  private makeMachine(def: StationDef): Machine {
+    if (def.type !== 'fdm') return new Machine(def, 0);
+    const model = PRINTER_MAP[def.model ?? STARTING_PRINTER.id] ?? STARTING_PRINTER;
+    return new Machine(def, model.capacity, { speed: model.speed, reliability: model.reliability });
+  }
+
+  /** Printers you could buy right now: era-gated, and only while there is floor for them. */
+  buyablePrinters(): PrinterModel[] {
+    if (!freeSlots()) return [];
+    const era = store.getState().era;
+    return PRINTERS.filter((m) => m.price > 0 && m.era <= era);
+  }
+
+  /**
+   * Buy a printer. Two cheap machines print two things at once and one dear machine prints
+   * one thing quickly — which of those the space needs is the decision, and the floor space
+   * is what stops the answer being "both, forever".
+   */
+  buyPrinter(modelId: string): boolean {
+    const model = PRINTER_MAP[modelId];
+    if (!model || model.price <= 0) return false;
+    if (model.era > store.getState().era) {
+      this.log(`Nobody will ship a ${model.name} to a garage.`, 'warn');
+      return false;
+    }
+    if (store.getState().cash < model.price) {
+      this.log(`Not enough cash for a ${model.name}.`, 'bad');
+      return false;
+    }
+    const def = installStation('fdm', `fdm-${uid()}`, model.id, model.name);
+    if (!def) {
+      this.log(`No room on the floor for another printer.`, 'warn');
+      return false;
+    }
+    store.getState().spend(model.price);
+    this.machines.push(this.makeMachine(def));
+    store.getState().ownMachine('fdm');
+    this.applyPerks();
+    this.log(`${model.name} is on the bench and levelled. It arrived full.`, 'good');
+    this.publish();
+    return true;
+  }
+
   installMachine(type: MachineType) {
+    // Building the same tool twice does not get you two of them: the space already owns the
+    // capability, and a second one would eat a slot the CNC still needs. Printers are the
+    // exception and they are bought, not built.
+    if (this.machines.some((m) => m.type === type) || stationOfType(type)) {
+      this.log(`A second ${MACHINE_LABEL[type]} — the first one still works. It goes in the store.`, 'info');
+      store.getState().ownMachine(type);
+      return;
+    }
     const def = installStation(type, `${type}-${this.machines.length + 1}`);
     if (!def) {
       this.log(`No room left for the new machine. It lives in the corridor.`, 'warn');
       return;
     }
-    if (FAB_MACHINES.includes(type)) {
-      this.machines.push(new Machine(def, type === 'fdm' ? FILAMENT.spoolGrams : 0));
-    }
+    if (FAB_MACHINES.includes(type)) this.machines.push(this.makeMachine(def));
     store.getState().ownMachine(type);
     this.applyPerks();
     this.log(`${def.label} is up and running. New things are possible.`, 'good');
@@ -1018,10 +1086,8 @@ export class Simulation {
     // Tool-built machines live in a module-level list, so put them back before anything
     // tries to look one up.
     for (const station of data.installedStations) {
-      const def = installStation(station.type, station.id);
-      if (def && FAB_MACHINES.includes(station.type)) {
-        this.machines.push(new Machine(def, station.type === 'fdm' ? FILAMENT.spoolGrams : 0));
-      }
+      const def = installStation(station.type, station.id, station.model, station.label);
+      if (def && FAB_MACHINES.includes(station.type)) this.machines.push(this.makeMachine(def));
     }
     this.applyPerks();
 
@@ -1739,15 +1805,31 @@ export class Simulation {
     if (part) part.status = 'pending';
   }
 
-  buyFilament(): boolean {
-    if (store.getState().cash < FILAMENT.spoolCost) {
-      this.log(`Not enough cash for filament.`, 'bad');
+  /** What filling this machine from where it is would cost. */
+  refillCost(machineId?: string): number {
+    const machine = machineId ? this.machines.find((m) => m.id === machineId) : this.printer;
+    if (!machine || machine.consumableMax <= 0) return 0;
+    const short = machine.consumableMax - machine.consumable;
+    return Math.ceil(short / FILAMENT.spoolGrams) * FILAMENT.spoolCost;
+  }
+
+  /**
+   * Fill a printer up rather than adding one fixed spool: the larger models hold a stack of
+   * them, and topping a four-kilo machine up 1000g at a time is busywork, not a decision.
+   */
+  buyFilament(machineId?: string): boolean {
+    const machine = machineId ? this.machines.find((m) => m.id === machineId) : this.printer;
+    if (!machine || machine.consumableMax <= 0) return false;
+    const cost = this.refillCost(machine.id);
+    if (cost <= 0) return false;
+    if (store.getState().cash < cost) {
+      this.log(`Not enough cash to fill the ${machine.label}.`, 'bad');
       return false;
     }
     if (!this.chargeHours('filament')) return false;
-    store.getState().spend(FILAMENT.spoolCost);
-    this.printer.refill(FILAMENT.spoolGrams);
-    this.log(`New spool loaded.`, 'good');
+    store.getState().spend(cost);
+    machine.refill(machine.consumableMax);
+    this.log(`${machine.label} loaded up.`, 'good');
     return true;
   }
 

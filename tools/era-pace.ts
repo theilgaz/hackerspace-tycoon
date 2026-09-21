@@ -87,7 +87,16 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
         if (c) sim.inviteMember(p.id, c.id);
       }
     }
-    if (sim.printer.consumable < FILAMENT.lowWarning && spendable() >= FILAMENT.spoolCost) sim.buyFilament();
+    for (const machine of sim.machines) {
+      if (machine.consumableMax > 0 && machine.consumable < FILAMENT.lowWarning) {
+        if (spendable() >= sim.refillCost(machine.id)) sim.buyFilament(machine.id);
+      }
+    }
+    // An engaged player buys a printer once one is clearly affordable — the best they can
+    // get, since a better printer is simply better and the floor space is the real limit.
+    const shop = sim.buyablePrinters();
+    const pick = [...shop].sort((a, b) => b.price - a.price).find((m) => spendable() >= m.price * 3);
+    if (pick) sim.buyPrinter(pick.id);
     // Take on anybody who is interested and affordable — the roster is the constraint.
     for (const id of [...store.getState().applicants]) {
       // Take the biggest contract that is comfortably affordable.
@@ -166,6 +175,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   rows.push(
     `  seed ${seed}: era2 day ${arrived[2] ?? '—'}, era3 day ${arrived[3] ?? '—'}, ` +
       `shipped ${store.getState().shippedCount}, rep ${store.getState().reputation}, ` +
+      `printers ${sim.machines.filter((m) => m.type === 'fdm').map((m) => m.label).join('+') || 'none'}, ` +
       `cash ₺${Math.round(store.getState().cash)}, filament ${Math.round(sim.printer.consumable)}g\n` +
       `           open: ${stuck.join(', ') || 'none'}`,
   );

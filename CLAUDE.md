@@ -422,6 +422,23 @@ Winning pays reputation. Two tuning notes worth keeping:
   raised so the prolific space stays the prolific one. **When a cost is removed, find what it
   was really limiting** — it was never survival, it was the speed the roster filled.
 
+- **When two things share a pool, one of them eventually starves the other.** Bought printers
+  and machines built by tool projects took slots from the same list. Nothing was wrong until a
+  player could buy four printers, at which point the CNC from a three-week build arrived to a
+  full floor, logged one warning line and vanished. The harness found it because the autoplayer
+  buys as much as it can afford — **give an autoplayer the new verb and let it overuse it.**
+
+- **Reverting a sabotage with `git checkout <file>` throws away everything else uncommitted in
+  that file.** Temporarily breaking a feature to watch its assertion fail is the right habit;
+  undoing it with a checkout cost a whole finished feature that had not been committed yet.
+  Copy the file aside first, or edit the sabotage back out the same way it went in.
+
+- **A project that keeps landing on its tier boundary wants margin, not another nudge.** The
+  FPV Drone has crossed the 10-day line three times in two sessions, each time because an
+  unrelated change shifted the RNG stream, and each time it got a small bump. A build whose
+  length is mostly machine hours and lead time will wobble; give it a decisive margin once
+  rather than treating it as a new finding every time.
+
 - **A screenshot is the only way to check a screen.** Two things survived a clean typecheck
   and a passing click suite: every unblocked progress bar was rendering bright green because
   the "nothing is wrong" case had been given a colour class, and the panel's blocker badges
@@ -605,6 +622,35 @@ Job { id, projectId, partName, machineType, hoursRequired, material, materialCos
 
 Machine types: FDM printer · resin printer · laser cutter · CNC router · mill/lathe · soldering
 bench · welding bay · electronics bench · assembly table.
+
+### Buying printers (`src/utils/printers.ts`)
+
+The space starts on the smallest printer in the catalogue on purpose, so the first thing the
+shop floor asks is whether a second one is worth more than the project you would spend the
+money on instead. Four models, era-gated, each better on all three axes at once — capacity,
+speed, reliability — because buying kit is an investment decision, not a puzzle:
+
+| | Price | Holds | Speed | Fails | From |
+|---|---|---|---|---|---|
+| A1 Mini Combo | — | 1kg | 100% | ×1.00 | you start with it |
+| P2S | 9,000 | 4kg | 135% | ×0.85 | Era 1 |
+| X1C | 19,000 | 4kg | 160% | ×0.62 | Era 2 |
+| H2S | 33,000 | 8kg | 185% | ×0.55 | Era 3 |
+
+**What makes it a decision is the floor, not the spec sheet.** Two cheap machines print two
+things at once and one dear machine prints one thing quickly, and the back wall holds four
+printers in total. A part goes to whichever printer has the shortest queue and never to a
+starved one while a fed one is free — without that, a second printer just stands there.
+
+**Filament fills the machine rather than adding a spool.** Topping a four-kilo printer up a
+kilo at a time is busywork, not a decision, so the button says what filling it costs from
+where it is.
+
+**Printers and tools get separate walls**, and this was a real bug before it was a rule: they
+shared one pool of slots, so a player who bought four printers filled the floor and the CNC
+they had spent three weeks building had nowhere to go — it logged a warning and was gone.
+Three slots each. Building the same tool twice no longer takes a second slot either; the space
+already owns the capability.
 
 ## 6. Reddit & Hype — BUILT (`src/utils/subreddits.ts`, `src/systems/HypeSystem.ts`)
 

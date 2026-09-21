@@ -399,6 +399,23 @@ await check('Projects: the filter narrows one list', async () => {
   return ok;
 });
 
+await check('Machines: buying a printer puts one on the floor', async () => {
+  await evaluate(`(() => { __store.getState().earn(60000); __game.sim.publish(); })()`);
+  await openPanel('machines-open');
+  const before = await evaluate(`__game.sim.machines.filter((m) => m.type === 'fdm').length`);
+  await evaluate(`document.querySelector('#modal .modal-body').scrollTop = 99999`);
+  await click('#modal [data-action="buy-printer"]:not([disabled])');
+  const after = JSON.parse(
+    await evaluate(`(() => { const fdm = __game.sim.machines.filter((m) => m.type === 'fdm');
+      return JSON.stringify({ n: fdm.length, cap: Math.max(...fdm.map((m) => m.consumableMax)),
+                              full: fdm.every((m) => m.consumable > 0) }); })()`),
+  );
+  // It arrives, it arrives full, and it holds more than the one kilo the space started with.
+  const ok = after.n === before + 1 && after.cap > 1000 && after.full;
+  if (!ok) console.log(`      printers ${before} -> ${after.n}, capacity ${after.cap}, full ${after.full}`);
+  return ok;
+});
+
 await check('Reddit: a post lands and moves hype', async () => {
   await openPanel('reddit-open');
   // Pick the sceptical room and the biggest claim on purpose: the post should still land,
