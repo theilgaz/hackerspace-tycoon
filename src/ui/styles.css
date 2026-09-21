@@ -571,6 +571,15 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 .modal footer { border-bottom: none; border-top: 1px solid var(--line); }
 .modal .modal-body { flex: 1; min-height: 0; padding: 13px 14px; overflow-y: auto; }
 .modal--fit { height: auto; max-height: min(660px, calc(100vh - 80px)); }
+/* Tables need room to keep a column readable; the wizard stays at its fixed 680. */
+.modal--wide { width: min(940px, calc(100vw - 48px)); }
+/* A table cell that is carrying a warning rather than a number. */
+.rank-table td.note { padding: 0 7px; font-size: 11px; white-space: nowrap; text-align: right; }
+.rank-table td.note.warn { color: var(--warning); }
+.rank-table td.note.bad { color: var(--destructive); }
+.rank-table td.wide { max-width: 210px; overflow: hidden; text-overflow: ellipsis; }
+.rank-table .cell-bar { display: flex; align-items: center; gap: 7px; min-width: 96px; }
+.rank-table .cell-bar .bar { flex: 1; }
 /* A content-sized panel still needs a floor, or a tab holding one row reads as a broken box. */
 .modal--fit .modal-body { min-height: 180px; }
 /* header and footer keep their height so only the body scrolls */

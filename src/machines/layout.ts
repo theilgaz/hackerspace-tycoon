@@ -50,10 +50,12 @@ const PRINTER_SLOTS: { tile: Tile; stand: Tile }[] = [
   { tile: { x: 5, y: 0 }, stand: { x: 5, y: 1 } },
 ];
 
+// Tools line the open right-hand side rather than squeezing in between the benches. Six
+// stations along one wall in consecutive rows read as a pile, and it left half the floor bare.
 const TOOL_SLOTS: { tile: Tile; stand: Tile }[] = [
-  { tile: { x: 0, y: 3 }, stand: { x: 1, y: 3 } },
-  { tile: { x: 0, y: 5 }, stand: { x: 1, y: 5 } },
-  { tile: { x: 0, y: 1 }, stand: { x: 1, y: 1 } },
+  { tile: { x: 5, y: 2 }, stand: { x: 4, y: 2 } },
+  { tile: { x: 5, y: 4 }, stand: { x: 4, y: 4 } },
+  { tile: { x: 5, y: 6 }, stand: { x: 4, y: 6 } },
 ];
 
 const slotsFor = (type: MachineType) => (type === 'fdm' ? PRINTER_SLOTS : TOOL_SLOTS);

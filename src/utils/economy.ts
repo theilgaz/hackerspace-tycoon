@@ -35,8 +35,17 @@ export const ECONOMY = {
   maxMembership: 80,
   duesPerMember: 320,
 
-  /** Miss this many bills in a row and the lease is gone. */
-  missesBeforeEviction: 2,
+  /**
+   * **You are allowed to go under.** A hackerspace runs on an overdraft and a promise, so
+   * nothing is refused while the balance is above this — order the parts, take the person on,
+   * buy the printer. What kills a run is staying under: get back to zero within
+   * `overdraftDays` or the bank closes the account and the landlord changes the locks.
+   *
+   * This replaced "miss two bills and you are out", which refused actions at exactly the
+   * moment a player needed to spend their way out of trouble.
+   */
+  overdraftLimit: 30000,
+  overdraftDays: 60,
 };
 
 export function rentFor(era: number): number {

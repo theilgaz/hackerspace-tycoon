@@ -31,7 +31,6 @@ import {
   TRAIT_BLURB,
   TRAIT_LABEL,
   VERB_HOURS,
-  WORKDAY,
   eraDef,
   weeklyHoursFor,
 } from '@/utils/constants';
@@ -134,15 +133,7 @@ type JobStep = 'category' | 'project' | 'crew';
 type RankKey = 'projectsThisYear' | 'projects' | 'members' | 'cash' | 'reputationThisYear' | 'reputation';
 
 /** The clock face of somebody's contract, e.g. "09:00-14:00". */
-function shiftSpan(member: MemberSnapshot): string {
-  const span =
-    member.employment === 'full-time'
-      ? WORKDAY.shifts['full-time']
-      : member.shift === 'afternoon'
-        ? WORKDAY.shifts.afternoon
-        : WORKDAY.shifts.morning;
-  return `${String(span.start).padStart(2, '0')}:00-${String(span.end).padStart(2, '0')}:00`;
-}
+
 
 /** Narrow enough to keep six numeric columns comparable at a glance. */
 function compactMoney(value: number): string {
@@ -249,6 +240,15 @@ export class UI {
    * cancels in-flight clicks and drops hover/tooltips — and the clock alone would
    * otherwise rebuild every panel sixty times a second.
    */
+  /**
+   * Can the space wear this? The overdraft is the whole point (§7a), so a button greys out
+   * only when the spend would take the balance past the floor — not merely when cash is thin,
+   * which is exactly the moment a player needs to spend their way out of trouble.
+   */
+  private affordable(state: GameState, cost: number): boolean {
+    return state.cash - cost >= -ECONOMY.overdraftLimit;
+  }
+
   private setHTML(el: HTMLElement, key: string, html: string) {
     if (this.htmlCache.get(key) === html) return;
     this.htmlCache.set(key, html);
@@ -1160,7 +1160,12 @@ export class UI {
       this.modal,
       'modal',
       `<div class="modal-backdrop" data-action="jobs-close">
-        <div class="modal ${this.openModal === 'machines' || this.openModal === 'projects' ? 'modal--fit' : ''}" data-action="noop">
+        <div class="modal ${
+          this.openModal === 'machines' || this.openModal === 'projects' || this.openModal === 'people'
+            ? 'modal--fit'
+            : ''
+        } ${this.openModal === 'projects' || this.openModal === 'people' ? 'modal--wide' : ''}"
+          data-action="noop">
           <header>
             ${body.head}
             <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="jobs-close">
@@ -1316,85 +1321,62 @@ export class UI {
   // --- People: who is here, and who could be ------------------------------
 
   /**
-   * The same question the Projects panel asks, pointed at people: **who needs me now?**
-   * Somebody unallocated is the answer almost every time — they still pay dues and still
-   * turn up, and their hours are simply going nowhere — so a free member is called out the
-   * way a blocked project is, in warning tone, and sorted to the top.
-   *
-   * One list with chips rather than stacked sections, and the applicants live in it as
-   * another state rather than below the fold: hiring is the other thing you come here to do.
+   * The roster as a table, for the same reason as the projects one: you read down the Doing
+   * column to find the hours going nowhere. Somebody unallocated still pays dues and still
+   * turns up, so a free member is the row you came here to act on — called out in warning
+   * tone and sorted to the top, with applicants in the same table as another state rather
+   * than in a section below the fold.
    */
   private peopleBody(state: GameState): { head: string; content: string; foot: string } {
     const members = state.runtime.members;
     const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
 
-    /** One row shape for everybody, member or applicant, so the list scans as one column. */
-    const person = (id: string, name: string, trailing: string, note: string, meta: string) => {
+    const nameCell = (id: string, name: string) => {
       const data = MEMBER_DATA[id];
       const top = topCategories(data?.passions ?? {}, 1)[0];
       const profile = top ? profileOf(top.category) : null;
-      return `<div class="ui-row" style="cursor:default">
-        <span class="icon-chip" style="--tone:${profile?.accent ?? 'var(--muted-foreground)'}">
-          ${profile ? icon(CATEGORY_ICON[top!.category], 'ui-icon ui-icon--lg') : icon('users', 'ui-icon ui-icon--lg')}
+      return `<td class="space-cell">
+        <span class="space-dot" style="--tone:${profile?.accent ?? 'var(--muted-foreground)'}">
+          ${profile ? icon(CATEGORY_ICON[top!.category]) : icon('users')}
         </span>
-        <span class="ui-row__main">
-          <span class="row between" style="gap:8px">
-            <span class="ui-title">${name}</span>
-            ${trailing}
-          </span>
-          <p class="ui-desc" style="margin:3px 0 0">${note}</p>
-          <span class="ui-row__meta">
-            ${meta}
-            ${topCategories(data?.passions ?? {})
-              .map(({ category, score }) => {
-                const pr = profileOf(category);
-                return `<span class="ui-badge ui-badge--tone" style="--tone:${pr.accent}">
-                  ${icon(CATEGORY_ICON[category])}${pr.label} ${pct(score)}</span>`;
-              })
-              .join('')}
-            ${(data?.traits ?? [])
-              .map((t) => `<span class="ui-badge" title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`)
-              .join('')}
-          </span>
-        </span>
-      </div>`;
+        <span class="space-name">${esc(name)}</span>
+      </td>`;
+    };
+    const skillCell = (id: string) => {
+      const data = MEMBER_DATA[id];
+      return `<td class="num wide">
+        ${topCategories(data?.passions ?? {}, 2)
+          .map(({ category, score }) => `${profileOf(category).label} ${pct(score)}`)
+          .join(' · ')}
+      </td>`;
+    };
+    const traitCell = (id: string) => {
+      const traits = MEMBER_DATA[id]?.traits ?? [];
+      return `<td class="num">${
+        traits.length
+          ? traits.map((t) => `<span title="${TRAIT_BLURB[t]}">${TRAIT_LABEL[t]}</span>`).join(', ')
+          : '—'
+      }</td>`;
     };
 
     const memberRow = (m: MemberSnapshot) => {
-      const data = MEMBER_DATA[m.id];
       const project = m.team ? state.runtime.projects.find((x) => x.id === m.team) : null;
-      const free = !project;
-      const trailing = `<span class="row" style="gap:5px">
-        ${
-          free
-            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">
-                 ${icon('users')}free
-               </span>`
-            : m.present
-              ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">in today</span>`
-              : `<span class="ui-badge">away</span>`
-        }
-        <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="let-go" data-id="${m.id}"
-          title="Ask ${esc(m.name)} to leave — the space loses ${money(ECONOMY.crewDues)} a month in dues">
-          ${icon('x')}
-        </button>
-      </span>`;
-      return person(
-        m.id,
-        m.name,
-        trailing,
-        project
-          ? `On ${esc(project.name)}`
-          : 'Nothing allocated — their hours are going nowhere.',
-        // The shift window is only worth saying when it is not the obvious one.
-        `<span class="ui-badge ui-badge--tone"
-           style="--tone:${m.employment === 'full-time' ? 'var(--primary)' : 'var(--warning)'}"
-           title="${m.weeklyHours}h a week">
-           ${icon('clock')}${m.employment === 'full-time' ? 'Full-time' : `Part-time · ${m.shift}s`}
-         </span>
-         ${m.employment === 'full-time' ? '' : `<span class="ui-badge">${shiftSpan(m)}</span>`}
-         ${data?.traits?.length ? '' : ''}`,
-      );
+      return `<tr>
+        ${nameCell(m.id, m.name)}
+        <td class="note ${project ? '' : 'warn'}">
+          ${project ? esc(project.name) : 'nothing allocated'}
+        </td>
+        <td class="num">${m.employment === 'full-time' ? 'Full-time' : `Part-time · ${m.shift}s`}</td>
+        <td class="num">${m.present ? 'in today' : 'away'}</td>
+        ${skillCell(m.id)}
+        ${traitCell(m.id)}
+        <td class="num">
+          <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="let-go" data-id="${m.id}"
+            title="Ask ${esc(m.name)} to leave — the space loses ${money(ECONOMY.crewDues)} a month in dues">
+            ${icon('x')}
+          </button>
+        </td>
+      </tr>`;
     };
 
     const applicantRow = (id: string) => {
@@ -1403,29 +1385,28 @@ export class UI {
       const canFull = this.handlers.canHireFullTime(id);
       const offer = (employment: Employment, label: string) => {
         const cost = this.handlers.hireCost(id, employment);
-        const ok = state.cash >= cost && hoursLeft >= VERB_HOURS.hire;
+        const ok = this.affordable(state, cost) && hoursLeft >= VERB_HOURS.hire;
         return `<button class="ui-btn ${employment === 'full-time' ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
           data-action="hire" data-id="${id}" data-value="${employment}" ${ok ? '' : 'disabled'}
           title="${weeklyHoursFor(employment)}h a week · pays ${money(ECONOMY.crewDues)} a month in dues">
-          ${label} · ${money(cost)}
-        </button>`;
+          ${label}</button>`;
       };
-      return person(
-        id,
-        data.name,
-        `<span class="row" style="gap:5px">
-           ${canFull ? offer('full-time', 'Full-time') : ''}
-           ${offer('part-time', 'Part-time')}
-         </span>`,
-        canFull
-          ? 'Interested in joining.'
-          : 'Has a day job — a part-time shift is all they can give you.',
-        `<span class="ui-badge">${icon('clock')}wants ~${data.commitment}h/wk</span>
-         <span class="ui-badge">prefers ${data.prefers ?? 'morning'}s</span>`,
-      );
+      return `<tr>
+        ${nameCell(id, data.name)}
+        <td class="note">interested</td>
+        <td class="num">${canFull ? 'either' : 'part-time only'}</td>
+        <td class="num">~${data.commitment}h/wk</td>
+        ${skillCell(id)}
+        ${traitCell(id)}
+        <td class="num">
+          <span class="row" style="gap:5px;justify-content:flex-end">
+            ${canFull ? offer('full-time', money(this.handlers.hireCost(id, 'full-time'))) : ''}
+            ${offer('part-time', money(this.handlers.hireCost(id, 'part-time')))}
+          </span>
+        </td>
+      </tr>`;
     };
 
-    // Free hands first: that is the row you came here to do something about.
     const free = members.filter((m) => !m.team);
     const busy = members.filter((m) => m.team);
     const open = state.applicants;
@@ -1465,7 +1446,13 @@ export class UI {
       content:
         chips +
         (rows.length
-          ? rows.join('')
+          ? `<table class="rank-table">
+              <thead><tr>
+                <th class="space-head">Person</th><th>Doing</th><th>Contract</th><th>Today</th>
+                <th>Good at</th><th>Trait</th><th></th>
+              </tr></thead>
+              <tbody>${rows.join('')}</tbody>
+            </table>`
           : `<p class="ui-desc">Nobody here. Ship something and word gets around.</p>`),
       foot: `<span class="ui-desc" style="font-size:10.5px">
           ${
@@ -1935,7 +1922,7 @@ export class UI {
     const waiting = partsEta(project, nowHours);
     let sourcing = '';
     if (!project.partsOrdered) {
-      const affordable = state.cash >= project.bomCost;
+      const affordable = this.affordable(state, project.bomCost);
       sourcing = `<div class="sourcing ${project.stage === 'assembly' ? 'urgent' : ''}">
         <span>Parts not ordered · ${project.leadDays}d lead</span>
         <button class="tiny" data-action="order" data-id="${project.id}" ${affordable ? '' : 'disabled'}>
@@ -1946,7 +1933,7 @@ export class UI {
       const cost = this.handlers.expediteCost(project.id);
       sourcing = `<div class="sourcing ${project.stage === 'assembly' ? 'urgent' : ''}">
         <span>Parts arrive in ${(waiting / 24).toFixed(1)}d</span>
-        <button class="tiny" data-action="expedite" data-id="${project.id}" ${state.cash >= cost ? '' : 'disabled'}>
+        <button class="tiny" data-action="expedite" data-id="${project.id}" ${this.affordable(state, cost) ? '' : 'disabled'}>
           Expedite ${money(cost)}
         </button>
       </div>`;
@@ -2032,7 +2019,7 @@ export class UI {
           Re-pitch ${VERB_HOURS.repitch}h
         </button>
         <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="bounty" data-id="${project.id}"
-          ${canBounty && state.cash >= bountyCost && afford('bounty') ? '' : 'disabled'}>
+          ${canBounty && this.affordable(state, bountyCost) && afford('bounty') ? '' : 'disabled'}>
           Bounty ${money(bountyCost)}
         </button>
         ${project.stage === 'simulation' ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="skip-sim" data-id="${project.id}">Skip sim</button>` : ''}
@@ -2227,9 +2214,11 @@ export class UI {
          <div class="ui-grid ui-grid--3">
            ${forSale
              .map((model) => {
-               const afford = state.cash >= model.price;
+               const locked = model.era > state.era;
+               const afford = !locked && this.affordable(state, model.price);
                return `<button class="ui-option" data-action="buy-printer" data-value="${model.id}"
-                 ${afford ? '' : 'disabled'} style="--tone:var(--primary)">
+                 ${afford ? '' : 'disabled'} style="--tone:var(--primary)"
+                 title="${locked ? `Nobody ships one of these to ${eraDef(state.era).name}` : ''}">
                  <div class="ui-option__head">
                    <span class="icon-chip">${icon('printer', 'ui-icon ui-icon--lg')}</span>
                    <span class="ui-title">${esc(model.name)}</span>
@@ -2242,6 +2231,13 @@ export class UI {
                    <span class="ui-badge" title="how much filament it holds">
                      ${icon('package')}${model.capacity / 1000}kg
                    </span>
+                   ${
+                     locked
+                       ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">
+                            ${icon('clock')}era ${model.era}
+                          </span>`
+                       : ''
+                   }
                    <span class="ui-badge ui-badge--tone"
                      style="--tone:var(--${afford ? 'success' : 'destructive'})">
                      ${icon('coins')}${money(model.price)}
@@ -2315,7 +2311,7 @@ export class UI {
     const refill = machine.consumableMax > 0 ? this.handlers.refillCost(machine.id) : 0;
     const actions = refill
       ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="filament" data-id="${machine.id}"
-           ${state.cash >= refill ? '' : 'disabled'}>
+           ${this.affordable(state, refill) ? '' : 'disabled'}>
            ${icon('package')}Fill up · ${money(refill)} · ${VERB_HOURS.filament}h
          </button>`
       : '';
@@ -2366,16 +2362,12 @@ export class UI {
   // --- projects: everything on, waiting, and done ---------------------------
 
   /**
-   * Triage, not an inventory. The question this panel answers is "what needs me now?", so
-   * anything blocked says *why* in the row itself and the progress bar takes its colour from
-   * that — a run of amber bars is readable at a glance in a way a column of identical rows
-   * never was.
-   *
-   * **One list, marked rather than tabbed.** Tabs made you leave the thing you were looking
-   * at to check the other thing; a filter narrows what is already in front of you, and All is
-   * the default so the panel opens on the whole picture. Every row is the same three lines —
-   * title, bar, badges — whether it is running or shipped, so the list scans as one column
-   * rather than two shapes stacked.
+   * Triage as a table. The question is still "what needs me now?", but a table answers it
+   * better than a stack of cards for the same reason the leaderboard is one (§3c): you read
+   * *down* a column. Every project shares one row shape, running or shipped, so Needs can be
+   * scanned in a single pass and Paid compared between two rows that are nowhere near each
+   * other. Colour stays rare and meaningful — it appears in the Needs column and the bar,
+   * and nowhere else.
    */
   private projectsBody(state: GameState): { head: string; content: string; foot: string } {
     const active = state.runtime.projects;
@@ -2387,62 +2379,42 @@ export class UI {
     const blocker = (project: ProjectData, crew: number) => {
       if (project.idleDays >= SHELVE.warnAfterIdleDays) {
         const left = SHELVE.afterIdleDays - project.idleDays;
-        return { text: `shelved in ${left}d`, icon: 'clock' as const, tone: 'bad' as const };
+        return { text: `shelved in ${left}d`, tone: 'bad' as const };
       }
       if (project.stage === 'assembly' && partsPending(project, nowHours)) {
-        // The bought bill of materials, which is what actually gates assembly (§4) — not the
-        // printed parts. Conflating the two hid this blocker on any build whose parts all
-        // arrive in a box.
+        // The bought bill of materials is what gates assembly (§4), not the printed parts.
         if (!project.partsOrdered) {
-          return {
-            text: `parts not ordered · ${money(project.bomCost)}`,
-            icon: 'package' as const,
-            tone: 'bad' as const,
-          };
+          return { text: `parts not ordered · ${money(project.bomCost)}`, tone: 'bad' as const };
         }
-        const days = Math.ceil(partsEta(project, nowHours) / 24);
-        return { text: `parts in ${days}d`, icon: 'package' as const, tone: 'warn' as const };
-      }
-      const unprinted = project.parts.filter((part) => part.status !== 'done').length;
-      if (project.stage === 'assembly' && unprinted) {
         return {
-          text: `${unprinted} still to print`,
-          icon: 'printer' as const,
+          text: `parts in ${Math.ceil(partsEta(project, nowHours) / 24)}d`,
           tone: 'warn' as const,
         };
       }
-      if (!crew) return { text: 'nobody on it', icon: 'users' as const, tone: 'warn' as const };
+      const unprinted = project.parts.filter((part) => part.status !== 'done').length;
+      if (project.stage === 'assembly' && unprinted) {
+        return { text: `${unprinted} still to print`, tone: 'warn' as const };
+      }
+      if (!crew) return { text: 'nobody on it', tone: 'warn' as const };
       return null;
     };
     const stopFor = (p: ProjectData) => blocker(p, p.team.length + (mine(p) ? 1 : 0));
 
-    /**
-     * One row, two states. Holding running and shipped work to the same three lines is what
-     * makes All a useful default — a mixed list you can read straight down.
-     */
-    const row = (opts: {
-      accent: string;
-      glyph: IconName;
-      name: string;
-      right: string;
-      ratio: number;
-      tone: string;
-      badges: string;
-    }) => `<div class="ui-row" style="cursor:default">
-        <span class="icon-chip" style="--tone:${opts.accent}">
-          ${icon(opts.glyph, 'ui-icon ui-icon--lg')}
-        </span>
-        <span class="ui-row__main">
-          <span class="row between" style="gap:8px">
-            <span class="ui-title">${esc(opts.name)}</span>
-            ${opts.right}
+    const nameCell = (category: ProjectCategory, name: string) => {
+      const profile = profileOf(category);
+      return `<td class="space-cell">
+        <span class="space-dot" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[category])}</span>
+        <span class="space-name">${esc(name)}</span>
+      </td>`;
+    };
+    const barCell = (ratio: number, tone: string) => `<td>
+        <span class="cell-bar">
+          <span class="bar ${tone}"><i style="width:${(ratio * 100).toFixed(1)}%"></i></span>
+          <span class="mono" style="font-size:10.5px;color:var(--muted-foreground)">
+            ${Math.round(ratio * 100)}%
           </span>
-          <div class="bar ${opts.tone}" style="margin:6px 0 7px">
-            <i style="width:${(opts.ratio * 100).toFixed(1)}%"></i>
-          </div>
-          <span class="ui-row__meta">${opts.badges}</span>
         </span>
-      </div>`;
+      </td>`;
 
     const activeRow = (project: ProjectData) => {
       const overall = projectProgress(project);
@@ -2450,55 +2422,25 @@ export class UI {
         .map((id) => state.runtime.members.find((m) => m.id === id)?.name)
         .filter(Boolean);
       if (mine(project)) crew.unshift('you');
-      const profile = profileOf(project.category);
       const stop = blocker(project, crew.length);
-      return row({
-        accent: profile.accent,
-        glyph: CATEGORY_ICON[project.category],
-        name: project.name,
-        right: `<span class="mono" style="font-size:11px;color:var(--muted-foreground)">
-            ${Math.round(overall.ratio * 100)}%
-          </span>`,
-        ratio: overall.ratio,
-        tone: stop?.tone ?? '',
-        badges: `<span class="ui-badge ui-badge--tone" style="--tone:${profile.accent}">
-            ${stageLabel(project.category, project.stage)}
-          </span>
-          ${crew.length ? `<span class="ui-badge">${icon('users')}${esc(crew.join(', '))}</span>` : ''}
-          ${
-            stop
-              ? `<span class="ui-badge ui-badge--tone"
-                   style="--tone:var(--${stop.tone === 'bad' ? 'destructive' : 'warning'})">
-                   ${icon(stop.icon)}${esc(stop.text)}
-                 </span>`
-              : ''
-          }`,
-      });
+      return `<tr>
+        ${nameCell(project.category, project.name)}
+        <td class="num">${stageLabel(project.category, project.stage)}</td>
+        ${barCell(overall.ratio, stop?.tone ?? '')}
+        <td class="note ${stop?.tone ?? ''}">${stop ? esc(stop.text) : '—'}</td>
+        <td class="num wide">${crew.length ? esc(crew.join(', ')) : '—'}</td>
+        <td class="num">—</td>
+      </tr>`;
     };
 
-    const doneRow = (record: ShippedRecord) => {
-      const profile = profileOf(record.category);
-      return row({
-        accent: profile.accent,
-        glyph: CATEGORY_ICON[record.category],
-        name: record.name,
-        right: `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">
-            ${icon('check')}day ${record.day}
-          </span>`,
-        ratio: 1,
-        tone: 'good',
-        badges: `<span class="ui-badge">${icon('clock')}${record.days}d</span>
-          <span class="ui-badge">${icon('effort')}${pct(record.quality)}</span>
-          <span class="ui-badge">${icon('flame')}${record.hype} rep</span>
-          ${
-            record.payout
-              ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">
-                   ${icon('coins')}${money(record.payout)}
-                 </span>`
-              : `<span class="ui-badge">${icon('coins')}you keep it</span>`
-          }`,
-      });
-    };
+    const doneRow = (record: ShippedRecord) => `<tr>
+        ${nameCell(record.category, record.name)}
+        <td class="num">shipped d${record.day}</td>
+        ${barCell(1, 'good')}
+        <td class="note">${record.hype} rep · ${pct(record.quality)}</td>
+        <td class="num wide">${record.days}d</td>
+        <td class="num">${record.payout ? money(record.payout) : 'you keep it'}</td>
+      </tr>`;
 
     // Blocked first, then whatever is nearest to shipping: the two reasons to look.
     const urgency = (p: ProjectData) => {
@@ -2540,7 +2482,13 @@ export class UI {
       content:
         chips +
         (rows.length
-          ? rows.join('')
+          ? `<table class="rank-table">
+              <thead><tr>
+                <th class="space-head">Project</th><th>Stage</th><th>Progress</th>
+                <th>Needs</th><th>Crew</th><th>Paid</th>
+              </tr></thead>
+              <tbody>${rows.join('')}</tbody>
+            </table>`
           : `<p class="ui-desc">Nothing here yet. Open <b>Jobs</b> and pitch something.</p>`),
       foot: `<span class="ui-desc" style="font-size:10.5px">
           ${

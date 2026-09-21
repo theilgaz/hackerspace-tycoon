@@ -123,12 +123,19 @@ export class SpaceView {
         new THREE.BoxGeometry(TILE * 0.96, 0.02, TILE * 1.94),
         new THREE.MeshStandardMaterial({ color: tone, flatShading: true, transparent: true, opacity: 0.14 }),
       );
-      const facing = def.stand.y > def.tile.y ? 0.5 : -0.5;
-      zone.position.copy(toWorld(def.tile.x, def.tile.y + facing, 0.012));
+      // Everything is modelled facing +y. Turn it toward whoever stands at it, and run the
+      // bay the same way — it used to always point along -y, so a station against the left
+      // wall faced away from its own user and its bay lay across its neighbour's.
+      const dx = def.stand.x - def.tile.x;
+      const dy = def.stand.y - def.tile.y;
+      const yaw = dx > 0 ? -Math.PI / 2 : dx < 0 ? Math.PI / 2 : dy < 0 ? Math.PI : 0;
+      zone.rotation.y = yaw;
+      zone.position.copy(toWorld(def.tile.x + dx * 0.5, def.tile.y + dy * 0.5, 0.012));
       this.group.add(zone);
 
       const node = new THREE.Group();
       node.position.copy(toWorld(def.tile.x, def.tile.y));
+      node.rotation.y = yaw;
       node.add(this.buildStation(def));
       node.userData.stationId = def.id;
       this.group.add(node);

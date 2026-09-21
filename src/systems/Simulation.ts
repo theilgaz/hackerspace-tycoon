@@ -222,6 +222,7 @@ export class Simulation {
       this.runBilling();
       this.checkAwards();
       store.getState().setHype(decayHype(store.getState().hype));
+      this.checkSolvency();
       this.tickRecruiting();
       this.planDay();
       this.player.startDay();
@@ -962,8 +963,9 @@ export class Simulation {
   /** Printers you could buy right now: era-gated, and only while there is floor for them. */
   buyablePrinters(): PrinterModel[] {
     if (!freeSlots()) return [];
-    const era = store.getState().era;
-    return PRINTERS.filter((m) => m.price > 0 && m.era <= era);
+    // Everything you could ever own, including what the era does not allow yet — a machine
+    // you cannot see is a machine you cannot plan for, and the H2S is worth wanting.
+    return PRINTERS.filter((m) => m.price > 0);
   }
 
   /**
@@ -978,8 +980,8 @@ export class Simulation {
       this.log(`Nobody will ship a ${model.name} to a garage.`, 'warn');
       return false;
     }
-    if (store.getState().cash < model.price) {
-      this.log(`Not enough cash for a ${model.name}.`, 'bad');
+    if (!store.getState().spend(model.price)) {
+      this.log(`Even on the overdraft, a ${model.name} is out of reach.`, 'bad');
       return false;
     }
     const def = installStation('fdm', `fdm-${uid()}`, model.id, model.name);
@@ -987,7 +989,6 @@ export class Simulation {
       this.log(`No room on the floor for another printer.`, 'warn');
       return false;
     }
-    store.getState().spend(model.price);
     this.machines.push(this.makeMachine(def));
     store.getState().ownMachine('fdm');
     this.applyPerks();
@@ -1208,6 +1209,50 @@ export class Simulation {
     return entity;
   }
 
+  /**
+   * The overdraft clock (§7a). Being under is allowed and is often the right move — the money
+   * you owe is usually parts on a project that will pay for them. Staying under is what ends
+   * the run, and so is going deeper than the floor, which is the one thing no amount of time
+   * recovers from.
+   */
+  private checkSolvency() {
+    const state = store.getState();
+    if (state.cash >= 0) {
+      if (state.overdraftSince !== null) {
+        store.setState({ overdraftSince: null });
+        this.log(`Back in the black.`, 'good');
+      }
+      return;
+    }
+    if (state.overdraftSince === null) {
+      store.setState({ overdraftSince: this.day });
+      this.log(
+        `The balance is under. You have ${ECONOMY.overdraftDays} days to get it back above zero.`,
+        'warn',
+      );
+      return;
+    }
+    if (state.cash < -ECONOMY.overdraftLimit) {
+      store.getState().endRun(
+        `The overdraft ran out at ${money(Math.abs(state.cash))} down. The bank pulled the lease.`,
+        this.day,
+      );
+      return;
+    }
+    const daysUnder = this.day - state.overdraftSince;
+    if (daysUnder >= ECONOMY.overdraftDays) {
+      store.getState().endRun(
+        `Two months in the red and no way back. The landlord changed the locks.`,
+        this.day,
+      );
+      return;
+    }
+    const left = ECONOMY.overdraftDays - daysUnder;
+    if (left === 30 || left === 14 || left <= 7) {
+      this.log(`${left} days to get the balance back above zero.`, left <= 7 ? 'bad' : 'warn');
+    }
+  }
+
   /** Paying members of the public — the passive income a reputation earns you. */
   get membership(): number {
     // Hype behaves like reputation you have not earned yet: it brings the public in while it
@@ -1283,9 +1328,11 @@ export class Simulation {
     const cashDelta = dues - rent - utilities;
     const balanceBefore = state.cash;
     const shortfall = Math.max(0, -(balanceBefore + cashDelta));
-    const balanceAfter = Math.max(0, balanceBefore + cashDelta);
+    const balanceAfter = balanceBefore + cashDelta;
     const missesInARow = shortfall > 0 ? state.missedBills + 1 : 0;
-    const evicted = missesInARow >= ECONOMY.missesBeforeEviction;
+    // Eviction is the overdraft clock's job now (§7a), not this line's: a bill you cannot
+    // cover puts you under, and staying under is what ends the run.
+    const evicted = false;
 
     store.setState({ cash: balanceAfter });
     const bill: Bill = {
@@ -1304,15 +1351,9 @@ export class Simulation {
     this.machineHoursThisMonth = 0;
     this.incomeThisMonth = 0;
 
-    if (evicted) {
-      store.getState().endRun(
-        `Rent went unpaid twice. The lease is gone and so is the space.`,
-        this.day,
-      );
-      this.log(`Evicted on day ${this.day}.`, 'bad');
-    } else if (shortfall > 0) {
+    if (shortfall > 0) {
       this.log(
-        `Could not cover the bill — short by ${money(shortfall)}. Miss the next one and you are out.`,
+        `Could not cover the bill — ${money(shortfall)} short. It goes on the overdraft.`,
         'bad',
       );
     } else {
@@ -1541,12 +1582,11 @@ export class Simulation {
       return false;
     }
     const cost = this.hireCost(id, employment);
-    if (store.getState().cash < cost) {
-      this.log(`Not enough cash to take ${data.name} on.`, 'bad');
+    if (!this.chargeHours('hire')) return false;
+    if (!store.getState().spend(cost)) {
+      this.log(`Even on the overdraft, taking ${data.name} on is out of reach.`, 'bad');
       return false;
     }
-    if (!this.chargeHours('hire')) return false;
-    store.getState().spend(cost);
     store.getState().closeApplicant(id);
     const member = this.joinMember(data);
     member.employment = employment;
@@ -1685,12 +1725,11 @@ export class Simulation {
     const project = this.project(projectId);
     if (!project || project.bounties.includes(project.stage)) return false;
     const cost = this.bountyCost(projectId);
-    if (store.getState().cash < cost) {
-      this.log(`Not enough cash for a bounty.`, 'bad');
+    if (!this.chargeHours('bounty')) return false;
+    if (!store.getState().spend(cost)) {
+      this.log(`Even on the overdraft, that bounty is out of reach.`, 'bad');
       return false;
     }
-    if (!this.chargeHours('bounty')) return false;
-    store.getState().spend(cost);
     project.bounties.push(project.stage);
     for (const m of this.members) {
       m.interest = Math.min(1.4, m.interest + DRIFT.bountyInterest);
@@ -1709,8 +1748,9 @@ export class Simulation {
    */
   private placeOrder(project: ProjectData): boolean {
     if (project.partsOrdered) return true;
-    if (store.getState().cash < project.bomCost) return false;
-    store.getState().spend(project.bomCost);
+    // No separate affordability test: `spend` refuses only below the overdraft floor, and
+    // a project whose parts were never ordered is a project that can never be assembled.
+    if (!store.getState().spend(project.bomCost)) return false;
     project.partsOrdered = true;
     project.partsArriveAt = this.totalHours + project.leadDays * TIME.hoursPerDay;
     return true;
@@ -1723,12 +1763,11 @@ export class Simulation {
   orderParts(projectId: string): boolean {
     const project = this.project(projectId);
     if (!project || project.partsOrdered) return false;
-    if (store.getState().cash < project.bomCost) {
-      this.log(`Not enough cash for the ${project.name} bill of materials.`, 'bad');
+    if (!this.chargeHours('order')) return false;
+    if (!this.placeOrder(project)) {
+      this.log(`Even on the overdraft, the ${project.name} parts are out of reach.`, 'bad');
       return false;
     }
-    if (!this.chargeHours('order')) return false;
-    this.placeOrder(project);
     this.log(`Ordered parts for ${project.name}. ${project.leadDays} days out.`, 'info');
     return true;
   }
@@ -1744,12 +1783,11 @@ export class Simulation {
     const remaining = project.partsArriveAt - this.totalHours;
     if (remaining <= 0) return false;
     const cost = expediteCost(project, this.totalHours);
-    if (store.getState().cash < cost) {
-      this.log(`Not enough cash to expedite.`, 'bad');
+    if (!this.chargeHours('expedite')) return false;
+    if (!store.getState().spend(cost)) {
+      this.log(`Even on the overdraft, expediting is out of reach.`, 'bad');
       return false;
     }
-    if (!this.chargeHours('expedite')) return false;
-    store.getState().spend(cost);
     project.partsArriveAt = this.totalHours + remaining * SOURCING.expediteFactor;
     this.log(`Paid to expedite the ${project.name} order.`, 'good');
     return true;
@@ -1822,12 +1860,11 @@ export class Simulation {
     if (!machine || machine.consumableMax <= 0) return false;
     const cost = this.refillCost(machine.id);
     if (cost <= 0) return false;
-    if (store.getState().cash < cost) {
-      this.log(`Not enough cash to fill the ${machine.label}.`, 'bad');
+    if (!this.chargeHours('filament')) return false;
+    if (!store.getState().spend(cost)) {
+      this.log(`Even on the overdraft, filament for the ${machine.label} is out of reach.`, 'bad');
       return false;
     }
-    if (!this.chargeHours('filament')) return false;
-    store.getState().spend(cost);
     machine.refill(machine.consumableMax);
     this.log(`${machine.label} loaded up.`, 'good');
     return true;

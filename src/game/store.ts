@@ -11,6 +11,7 @@ import type {
 import type { Ceremony } from '@/systems/RivalSystem';
 import type { Bill } from '@/utils/economy';
 import { START_CASH, eraDef } from '@/utils/constants';
+import { ECONOMY } from '@/utils/economy';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
 import { uid } from '@/utils/format';
 
@@ -31,8 +32,10 @@ export interface GameState {
   /** Set when the monthly bill lands; cleared when the player dismisses it. */
   bill: Bill | null;
   bills: Bill[];
-  /** Consecutive bills you could not cover. Two and the lease is gone. */
+  /** Consecutive bills you could not cover. Kept for the statement; it no longer evicts. */
   missedBills: number;
+  /** The day the balance first went under, or null while it is in the black. */
+  overdraftSince: number | null;
   /** Why the run ended, if it has. */
   gameOver: { reason: string; day: number } | null;
   /** Day 1, 2, 3 ... */
@@ -112,6 +115,7 @@ export const store = createStore<GameState>((set, get) => ({
   bill: null,
   bills: [],
   missedBills: 0,
+  overdraftSince: null,
   gameOver: null,
   day: 1,
   simTime: 9,
@@ -157,13 +161,13 @@ export const store = createStore<GameState>((set, get) => ({
     const {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      backlog, log, hype, posts,
+      backlog, log, hype, posts, overdraftSince,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      backlog, log, hype, posts,
+      backlog, log, hype, posts, overdraftSince,
     };
   },
 
@@ -176,7 +180,9 @@ export const store = createStore<GameState>((set, get) => ({
   setRuntime: (runtime) => set({ runtime }),
 
   spend: (amount) => {
-    if (get().cash < amount) return false;
+    // The overdraft is the point: an action is refused only when it would take the space
+    // past the floor, not merely because the balance is thin.
+    if (get().cash - amount < -ECONOMY.overdraftLimit) return false;
     set((s) => ({ cash: s.cash - amount }));
     return true;
   },

@@ -149,6 +149,29 @@ async function openPanel(action) {
 }
 const openWizard = () => openPanel('jobs-open');
 
+/**
+ * Make sure there is something in flight and an hour to spend on it. Earlier checks run
+ * tens of thousands of ticks, which can ship everything that was open — after which any
+ * check about a running project fails for reasons that have nothing to do with the feature.
+ */
+async function ensureWorkInFlight() {
+  await evaluate(`
+    (() => {
+      const sim = window.__game.sim;
+      const st = __store.getState();
+      st.earn(40000);
+      sim.player.hoursLeft = 8;
+      for (let i = 0; sim.projects.filter((p) => !p.shipped).length < 2 && i < 6; i += 1) {
+        const offer = __store.getState().backlog[0];
+        if (offer) sim.pitch(offer.defId, offer.id, []);
+        else break;
+      }
+      sim.publish();
+      return sim.projects.length;
+    })()
+  `);
+}
+
 const results = [];
 const check = async (name, fn) => {
   const ok = await fn();
@@ -378,8 +401,9 @@ await check('Jobs: best-fit ranks the catalogue for whoever is free', async () =
 });
 
 await check('Projects: the filter narrows one list', async () => {
+  await ensureWorkInFlight();
   await openPanel('projects-open');
-  const count = () => evaluate(`document.querySelectorAll('#modal .ui-row').length`);
+  const count = () => evaluate(`document.querySelectorAll('#modal .rank-table tbody tr').length`);
   const totals = JSON.parse(
     await evaluate(`JSON.stringify({ done: __store.getState().shipped.length,
                                      open: __store.getState().runtime.projects.length })`),
@@ -417,6 +441,7 @@ await check('Machines: buying a printer puts one on the floor', async () => {
 });
 
 await check('Reddit: a post lands and moves hype', async () => {
+  await ensureWorkInFlight();
   await openPanel('reddit-open');
   // Pick the sceptical room and the biggest claim on purpose: the post should still land,
   // and whether it lands well or badly is the game's business, not this check's.
@@ -436,6 +461,27 @@ await check('Reddit: a post lands and moves hype', async () => {
   // The hour must actually be spent, or the verb is free and the whole trade is fake.
   const ok = b.posts === a.posts + 1 && b.hours < a.hours;
   if (!ok) console.log(`      posts ${a.posts} -> ${b.posts}, hours ${a.hours} -> ${b.hours}`);
+  return ok;
+});
+
+await check('the overdraft ends a run two ways, and not before', async () => {
+  const rollDay = `(() => { const sim = window.__game.sim; const d = sim.day;
+      while (sim.day === d) sim.tick(0.05, 4); return !!__store.getState().gameOver; })()`;
+  // Under, but inside both limits: the run carries on. This is the half that matters —
+  // an overdraft that kills you the moment you use it is not an overdraft.
+  await evaluate(`__store.setState({ cash: -12000, overdraftSince: null, gameOver: null })`);
+  const survivesUnder = !(await evaluate(rollDay));
+  // Past the floor.
+  await evaluate(`__store.setState({ cash: -45000, overdraftSince: __store.getState().day, gameOver: null })`);
+  const diesOnFloor = await evaluate(rollDay);
+  // Under for too long.
+  await evaluate(
+    `__store.setState({ cash: -500, overdraftSince: __store.getState().day - 61, gameOver: null })`,
+  );
+  const diesOnTime = await evaluate(rollDay);
+  await evaluate(`__store.setState({ cash: 40000, overdraftSince: null, gameOver: null })`);
+  const ok = survivesUnder && diesOnFloor && diesOnTime;
+  if (!ok) console.log(`      under ${survivesUnder}, floor ${diesOnFloor}, time ${diesOnTime}`);
   return ok;
 });
 

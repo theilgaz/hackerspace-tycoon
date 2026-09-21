@@ -637,6 +637,10 @@ speed, reliability — because buying kit is an investment decision, not a puzzl
 | X1C | 19,000 | 4kg | 160% | ×0.62 | Era 2 |
 | H2S | 33,000 | 8kg | 185% | ×0.55 | Era 3 |
 
+The shop lists **every** model including the ones the era does not allow yet, greyed with the
+era they need. A machine you cannot see is a machine you cannot plan for, and the H2S is worth
+wanting.
+
 **What makes it a decision is the floor, not the spec sheet.** Two cheap machines print two
 things at once and one dear machine prints one thing quickly, and the back wall holds four
 printers in total. A part goes to whichever printer has the shortest queue and never to a
@@ -762,8 +766,18 @@ is permanently profitable, so nothing stops you taking the whole town on but the
 of doing it — about four months of their dues. Get this wrong and the space is full by day
 sixty and wins every award; see §13.
 
-Miss a bill and you get a warning; miss two in a row and you are evicted and the run is over,
-with a post-mortem of what you shipped, who was on the books and the one people remember.
+**You are allowed to go under, and that is the mechanic.** A hackerspace runs on an overdraft
+and a promise, so *nothing* is refused while the balance is above **−₺30,000** — order the
+parts, take the person on, buy the printer. What ends a run is staying under: get back above
+zero within **60 days**, or go past the floor, and the lease is gone with a post-mortem of what
+you shipped and who was on the books.
+
+This replaced "miss two bills in a row". That rule refused actions at exactly the moment a
+player needed to spend their way out of trouble, which is backwards — the money you owe is
+usually parts on a project that will pay for them. **Every spend goes through
+`store.spend()`**, which is the only place the floor is enforced; a local `cash < cost` test
+re-imposes the old rule quietly and fills the log with "not enough cash" while the balance is
+a few thousand under. There were five of them.
 
 **Asking somebody to leave** used to be the lever that answered a bill you could not pay.
 It now makes the bill *worse* — you lose their dues — so it is a way to free a seat, not a way
@@ -815,11 +829,21 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
 - **Art:** clean low-poly, flat-shaded, no textures. Procedural geometry first; glTF assets later
   only where silhouette demands it. Readability over fidelity — a machine's state (idle / running /
   failed / needs calibration) must be legible at a glance from the iso camera.
+- **Stations face whoever uses them.** Everything is modelled facing +y and the node is turned
+  toward its stand tile, with the painted bay running the same way. The bay used to always
+  point along −y, so a bench against the left wall faced away from its own user and its bay lay
+  across its neighbour's — six stations in a row read as a pile. Tools line the open right-hand
+  side rather than squeezing in between the benches.
 - **UI:** HTML/CSS overlay panels. The 3D scene is observational, but it is pickable: a
   raycast per frame lights the floor bay under whichever station the cursor is over and shows
   its name and what it is for. Stations sit in two working walls with a clear aisle — furniture
   scattered over an open floor reads as clutter, a room reads as a workshop when the benches
   line up.
+- **Projects and People are tables**, like the leaderboard — the third and fourth screens that
+  rule has decided (§3c). You read *down* the Needs column to find what is blocked and down
+  Paid to see what the work was worth; a stack of cards with wrapping badges cannot be compared
+  between two rows that are nowhere near each other. Filter chips narrow one list rather than
+  tabs swapping between several, and All is the default.
 - **The Projects panel is triage, not an inventory.** The question it answers is "what needs
   me now?", so a row that is blocked says *why* in the row itself — about to be shelved, parts
   not ordered, order in transit, prints outstanding, nobody on it — and **the progress bar
