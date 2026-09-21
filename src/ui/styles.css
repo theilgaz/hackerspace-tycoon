@@ -1863,3 +1863,12 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
    the modal instead of scrolling sideways. */
 .standings-table td.num { padding: 0 5px; }
 .standings-table thead th button { padding-left: 5px; padding-right: 5px; }
+
+/* A sealed envelope: the category is announced, the winner is not. */
+.trophy--sealed { opacity: 0.45; }
+.trophy--sealed .trophy-cup { color: var(--subtle-foreground); }
+.trophy--open { animation: trophy-open 320ms ease-out; }
+@keyframes trophy-open {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}

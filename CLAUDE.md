@@ -452,6 +452,17 @@ Winning pays reputation. Two tuning notes worth keeping:
   length is mostly machine hours and lead time will wobble; give it a decisive margin once
   rather than treating it as a new finding every time.
 
+- **A keyboard shortcut must stand down while somebody is typing.** Space paused the game
+  and called `preventDefault` on a global listener, so a hackerspace could not be given a
+  name with a space in it — and 1/2/3 setting the speed meant it could not have a number
+  either. Guard every global key handler on the focused element.
+
+- **Replacing a method by slicing between two anchors deletes whatever sits between them.**
+  Rewriting `renderCeremony` by cutting from it to `renderModal` took `rankingBody`,
+  `trophyRoom` and `renderBill` with it, and the only reason it was caught is that the
+  compiler noticed two now-unused imports. Slice to the *end of the method you mean*, not to
+  the start of some later one.
+
 - **A screenshot is the only way to check a screen.** Two things survived a clean typecheck
   and a passing click suite: every unblocked progress bar was rendering bright green because
   the "nothing is wrong" case had been given a colour class, and the panel's blocker badges

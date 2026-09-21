@@ -160,11 +160,7 @@ type RankKey =
 
 
 /** Narrow enough to keep six numeric columns comparable at a glance. */
-function compactMoney(value: number): string {
-  if (Math.abs(value) >= 1_000_000) return `₺${(value / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(value) >= 1000) return `₺${(value / 1000).toFixed(1)}k`;
-  return `₺${Math.round(value)}`;
-}
+
 type SizeFilter = 'any' | 'solo' | 'small' | 'big';
 
 /**
@@ -229,6 +225,11 @@ export class UI {
 
   /** Which build on the bench is open. One at a time; the rest are a line each. */
   private benchOpen: string | null = null;
+
+  /** How many envelopes of the current ceremony have been opened, and which ceremony. */
+  private revealed = 0;
+  private revealKey: number | null = null;
+  private revealTimer = 0;
 
   /** Standings, or the shelf of everything you have won. */
   private rankTab: 'table' | 'trophies' = 'table';
@@ -472,6 +473,15 @@ export class UI {
           if (id) h.letGo(id);
           this.rerender();
           break;
+        case 'reveal-next':
+          this.revealNext();
+          break;
+        case 'reveal-all': {
+          window.clearTimeout(this.revealTimer);
+          this.revealed = this.lastState?.ceremony?.awards.length ?? 0;
+          this.rerender();
+          break;
+        }
         case 'ceremony-close':
           h.dismissCeremony();
           this.rerender();
@@ -1066,10 +1076,28 @@ export class UI {
   // --- the Jobs wizard ------------------------------------------------------
 
   /** The awards night takes the screen until it is dismissed. */
+  /**
+   * Awards night, read out one envelope at a time. A list of seven results that all appear
+   * at once is a table; handing them over one by one is the only thing that makes it a
+   * ceremony — and the two skips mean nobody sits through it who does not want to.
+   */
   private renderCeremony(state: GameState): boolean {
     const ceremony = state.ceremony;
-    if (!ceremony) return false;
-    const won = ceremony.awards.filter((a) => a.playerWon).length;
+    if (!ceremony) {
+      this.stopReveal();
+      return false;
+    }
+    // A new ceremony starts closed; the same one carries on from where it got to.
+    if (this.revealKey !== ceremony.year) {
+      this.revealKey = ceremony.year;
+      this.revealed = 0;
+      this.scheduleReveal();
+    }
+
+    const total = ceremony.awards.length;
+    const done = this.revealed >= total;
+    const won = ceremony.awards.filter((a, i) => a.playerWon && i < this.revealed).length;
+
     this.setHTML(
       this.modal,
       'modal',
@@ -1086,30 +1114,48 @@ export class UI {
               <div class="stage-curtain stage-curtain--right"></div>
               <div class="stage-floor">
                 ${ceremony.awards
-                  .map(
-                    (award) => `<div class="trophy ${award.playerWon ? 'trophy--ours' : ''}"
+                  .map((award, index) => {
+                    if (index >= this.revealed) {
+                      return `<div class="trophy trophy--sealed">
+                        <span class="trophy-cup">${icon('trophy', 'ui-icon')}</span>
+                        <span class="trophy-award">${esc(award.category)}</span>
+                        <span class="trophy-winner">&nbsp;</span>
+                      </div>`;
+                    }
+                    return `<div class="trophy trophy--open ${award.playerWon ? 'trophy--ours' : ''}"
                       title="${esc(award.blurb)} — ${esc(award.value)}">
                       <span class="trophy-cup">${icon('trophy', 'ui-icon')}</span>
                       <span class="trophy-award">${esc(award.category)}</span>
                       <span class="trophy-winner">${esc(award.winnerName)}</span>
                       <span class="trophy-value">${esc(award.value)}</span>
-                    </div>`,
-                  )
+                    </div>`;
+                  })
                   .join('')}
               </div>
             </div>
             <p class="ui-desc" style="margin:14px 0 0;text-align:center">
               ${
-                won
-                  ? `You took <b>${won}</b> of ${ceremony.awards.length}${ceremony.reputationGained ? `, and ${ceremony.reputationGained} reputation with them` : ''}.`
-                  : `Nothing for us this year. Somebody else had a better one.`
+                done
+                  ? won
+                    ? `You took <b>${won}</b> of ${total}${ceremony.reputationGained ? `, and ${ceremony.reputationGained} reputation with them` : ''}.`
+                    : `Nothing for us this year. Somebody else had a better one.`
+                  : `Envelope ${Math.min(this.revealed + 1, total)} of ${total}.`
               }
             </p>
           </div>
           <footer>
-            <button class="ui-btn ui-btn--primary ui-btn--block" data-action="ceremony-close">
-              Back to work
-            </button>
+            ${
+              done
+                ? `<button class="ui-btn ui-btn--primary ui-btn--block" data-action="ceremony-close">
+                     Back to work
+                   </button>`
+                : `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="reveal-next">
+                     Next
+                   </button>
+                   <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="reveal-all">
+                     Skip all
+                   </button>`
+            }
           </footer>
         </div>
       </div>`,
@@ -1117,14 +1163,25 @@ export class UI {
     return true;
   }
 
-  // --- ranking --------------------------------------------------------------
+  /** Hand over the next envelope in a moment, unless something skips ahead first. */
+  private scheduleReveal() {
+    window.clearTimeout(this.revealTimer);
+    this.revealTimer = window.setTimeout(() => this.revealNext(), 1100);
+  }
 
-  /**
-   * A table, not a list of cards. The whole point of this panel is comparison, and cards
-   * with wrapping badges give you nothing to read down. Every column is sortable, and the
-   * four that decide an award are marked, because "who is going to beat me to Deepest
-   * Pockets" is the actual question being asked here.
-   */
+  private revealNext() {
+    const total = this.lastState?.ceremony?.awards.length ?? 0;
+    if (this.revealed >= total) return;
+    this.revealed += 1;
+    if (this.revealed < total) this.scheduleReveal();
+    this.rerender();
+  }
+
+  private stopReveal() {
+    window.clearTimeout(this.revealTimer);
+    this.revealKey = null;
+  }
+
   private rankingBody(state: GameState): { head: string; content: string; foot: string } {
     const season = state.runtime.season;
     const daysLeft = season.length - season.dayOfYear;
@@ -1141,70 +1198,20 @@ export class UI {
         key: 'projectsThisYear',
         label: 'Ships',
         title: 'Shipped this year',
-        award: 'Most Projects',
         value: (r) => r.projectsThisYear,
         format: (r) => String(r.projectsThisYear),
       },
       {
-        key: 'projects',
-        label: 'All',
-        title: 'Shipped all time',
-        value: (r) => r.projects,
-        format: (r) => String(r.projects),
-      },
-      {
         key: 'members',
         label: 'Crew',
-        title: 'People',
-        award: 'Biggest Crew',
+        title: 'People on the books',
         value: (r) => r.members,
         format: (r) => String(r.members),
       },
       {
-        key: 'cash',
-        label: 'Cash',
-        title: 'Balance',
-        award: 'Deepest Pockets',
-        value: (r) => r.cash,
-        format: (r) => compactMoney(r.cash),
-      },
-      {
-        key: 'reputationThisYear',
-        label: 'Rep yr',
-        title: 'Reputation earned this year',
-        award: 'Space of the Year',
-        value: (r) => r.reputationThisYear,
-        format: (r) => r.reputationThisYear.toLocaleString('tr-TR'),
-      },
-      {
-        key: 'growthThisYear',
-        label: 'Rise',
-        title: 'Reputation earned this year, as a share of what it started with',
-        award: 'Rising Star',
-        value: (r) => r.growthThisYear,
-        format: (r) => `${r.growthThisYear}%`,
-      },
-      {
-        key: 'upvotesThisYear',
-        label: 'Votes',
-        title: 'Upvotes this year',
-        award: "People's Choice",
-        value: (r) => r.upvotesThisYear,
-        format: (r) =>
-          r.upvotesThisYear >= 10000 ? `${Math.round(r.upvotesThisYear / 1000)}k` : r.upvotesThisYear.toLocaleString('tr-TR'),
-      },
-      {
-        key: 'bestBuild',
-        label: 'Best',
-        title: 'Hype from the best single build this year',
-        award: 'Best Project',
-        value: (r) => r.bestBuild?.score ?? 0,
-        format: (r) => (r.bestBuild ? String(r.bestBuild.score) : '—'),
-      },
-      {
         key: 'reputation',
-        label: 'Rep',
-        title: 'Reputation all time',
+        label: 'Reputation',
+        title: 'Reputation all time — this is the ranking',
         value: (r) => r.reputation,
         format: (r) => r.reputation.toLocaleString('tr-TR'),
       },
@@ -1258,7 +1265,7 @@ export class UI {
       .join('');
 
     return {
-      head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>The other spaces</b>
+      head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>Ranking</b>
         <span class="ui-badge">${season.year}</span>
         <span class="ui-badge${daysLeft <= 10 ? ' ui-badge--accent' : ''}">${daysLeft}d to the awards</span>
       </div>`,
@@ -1281,8 +1288,8 @@ export class UI {
               <tbody>${body}</tbody>
             </table>`),
       foot: `<span class="ui-desc" style="font-size:10.5px">
-        <b class="award-key">◆</b> decides an award, judged on the year just gone — so a quiet year
-        costs you even while you are ahead overall.
+        Ranked on reputation, all time. The awards are judged on the year just gone, which is
+        a different question — a quiet year costs you even while you are ahead here.
       </span>`,
     };
   }

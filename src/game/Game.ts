@@ -164,6 +164,13 @@ export class Game {
 
   private bindKeys() {
     window.addEventListener('keydown', (event) => {
+      // Never while somebody is typing. Space paused the game and swallowed the keypress,
+      // so a hackerspace could not be given a name with a space in it — and 1/2/3 meant it
+      // could not have a number in it either.
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName ?? '')) {
+        return;
+      }
       if (event.code === 'Space') {
         event.preventDefault();
         store.getState().togglePause();
