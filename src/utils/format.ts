@@ -1,3 +1,5 @@
+import { localeData, num } from '@/i18n/locale';
+
 let counter = 0;
 export function uid(prefix = 'id'): string {
   counter += 1;
@@ -5,7 +7,7 @@ export function uid(prefix = 'id'): string {
 }
 
 export function money(value: number): string {
-  return `₺${Math.round(value).toLocaleString('tr-TR')}`;
+  return `₺${num(Math.round(value))}`;
 }
 
 /** Sim hours → "14:20" style clock within a day. */
@@ -16,17 +18,16 @@ export function clock(simHours: number): string {
 }
 
 export function hours(value: number): string {
-  return value >= 10 ? `${Math.round(value)}h` : `${value.toFixed(1)}h`;
+  const unit = localeData().hourUnit;
+  return value >= 10 ? `${Math.round(value)}${unit}` : `${num(value, 1)}${unit}`;
 }
 
 export function pct(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-export const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
-
 export function dayName(day: number): string {
-  return DAY_NAMES[(day - 1) % 7];
+  return localeData().days[(day - 1) % 7];
 }
 
 // --- The calendar (§3c) ------------------------------------------------------
@@ -44,11 +45,6 @@ export const CALENDAR = {
   awardsMonth: 10,
 };
 
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
 const DAYS_PER_MONTH = CALENDAR.daysPerYear / 12;
 
 /** Day 1 is 1 January 2026. */
@@ -62,7 +58,7 @@ export function gameDate(day: number): { year: number; month: number; dayOfMonth
 }
 
 export function monthName(month: number): string {
-  return MONTHS[Math.min(11, Math.max(0, month - 1))];
+  return localeData().months[Math.min(11, Math.max(0, month - 1))];
 }
 
 /** "12 Mar 2026" — short enough for the top bar. */

@@ -59,7 +59,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -151,6 +151,15 @@ function migrate(file: SaveFile): SaveFile {
   }
   if (!store.stationPlacements || typeof store.stationPlacements !== 'object') {
     store.stationPlacements = {};
+  }
+
+  // v8 — an awards night now records where the whole field stood, which is what a space's
+  // own screen charts. An older night cannot be reconstructed from anything in the file, so
+  // it keeps no table and the chart simply starts at the first one that has one.
+  if (Array.isArray(store.ceremonies)) {
+    for (const ceremony of store.ceremonies as { standings?: unknown }[]) {
+      if (!Array.isArray(ceremony.standings)) ceremony.standings = [];
+    }
   }
 
   file.version = SAVE_VERSION;

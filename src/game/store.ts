@@ -15,6 +15,7 @@ import { START_CASH } from '@/utils/constants';
 import { ECONOMY } from '@/utils/economy';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
 import { uid } from '@/utils/format';
+import { sameText, setLocale as setI18nLocale, type Locale, type Text } from '@/i18n';
 
 const MAX_LOG = 140;
 
@@ -38,7 +39,7 @@ export interface GameState {
   /** The day the balance first went under, or null while it is in the black. */
   overdraftSince: number | null;
   /** Why the run ended, if it has. */
-  gameOver: { reason: string; day: number } | null;
+  gameOver: { reason: Text; day: number } | null;
   /** Day 1, 2, 3 ... */
   day: number;
   /** Hour within the day, 0-24. */
@@ -86,11 +87,18 @@ export interface GameState {
   backlog: BacklogEntry[];
   runtime: RuntimeSnapshot;
   log: LogEntry[];
+  /**
+   * The language on screen (CLAUDE.md §11). A preference, not run state: never saved with
+   * the run — `i18n/preference.ts` keeps it — and it lives here only so that switching
+   * re-renders every panel.
+   */
+  locale: Locale;
+  setLocale: (locale: Locale) => void;
 
   begin: (identity: Identity, difficulty: DifficultyKey) => void;
   setCeremony: (ceremony: Ceremony | null) => void;
   setBill: (bill: Bill | null) => void;
-  endRun: (reason: string, day: number) => void;
+  endRun: (reason: Text, day: number) => void;
   /** Everything worth saving, minus the functions and the rebuildable runtime snapshot. */
   snapshot: () => Record<string, unknown>;
   hydrate: (data: Record<string, unknown>) => void;
@@ -101,7 +109,7 @@ export interface GameState {
   setRuntime: (runtime: RuntimeSnapshot) => void;
   spend: (amount: number) => boolean;
   earn: (amount: number) => void;
-  pushLog: (text: string, kind?: LogEntry['kind']) => void;
+  pushLog: (text: Text, kind?: LogEntry['kind']) => void;
 
   setBacklog: (backlog: BacklogEntry[]) => void;
   addOffer: (entry: BacklogEntry) => void;
@@ -167,6 +175,11 @@ export const store = createStore<GameState>((set, get) => ({
   posts: [],
   runtime: emptyRuntime(),
   log: [],
+  locale: 'en',
+  setLocale: (locale) => {
+    setI18nLocale(locale);
+    set({ locale });
+  },
 
   begin: (identity, difficulty) =>
     set({
@@ -230,7 +243,7 @@ export const store = createStore<GameState>((set, get) => ({
     const head = log[0];
     // A repeated message means a condition persists, not that something happened again.
     // Collapse it instead of flooding — "parts haven't arrived" once fired every tick.
-    if (head && head.text === text) {
+    if (head && sameText(head.text, text)) {
       const merged: LogEntry = { ...head, repeats: (head.repeats ?? 1) + 1, day, time: simTime };
       set({ log: [merged, ...log.slice(1)] });
       return;

@@ -322,7 +322,10 @@ export const RIVALS: RivalDef[] = [
     id: 'ctrl-alt-defeat',
     name: 'Ctrl+Alt+Defeat',
     blurb: 'Four people, a Discord server of thousands, and a build log longer than any build.',
-    // People's Choice: barely ships, but everything it does ship gets posted everywhere.
+    // Best Project: it barely ships, but it posts everything it does ship everywhere, so the
+    // one build a year that works arrives louder than anybody else's. It used to be aimed at
+    // People's Choice, which is the award that went when the night was cut to five — an
+    // underdog without a category it can sneak is just a space at the bottom of the table.
     icon: 'gamepad',
     colour: '#ff7eb6',
     startMembers: 3,
@@ -335,6 +338,12 @@ export const RIVALS: RivalDef[] = [
     repPerMember: 400,
     paceGrowth: 4500,
     online: 4.5,
+    // Rare and enormous, not frequent and large: `standoutNorm` divides by the *expected*
+    // multiplier to keep the average flat, so raising `chance` alongside `boost` lowers the
+    // ceiling it was meant to raise. At 0.3/[3.5,6] their best build peaked at 624 — below
+    // the 765 they had with no override at all, and nowhere near the field's 1,200. One
+    // spike a year at up to 12x clears it.
+    standout: { chance: 0.08, boost: [8, 12] },
     builds: ['RGB Everything Keyboard', 'Stream Deck Clone', 'Meme Printer'],
   },
   {
@@ -382,6 +391,8 @@ export const RIVAL_MAP: Record<string, RivalDef> = Object.fromEntries(RIVALS.map
 
 export interface AwardDef {
   label: string;
+  /** A column head's worth of the label — seven of these have to sit side by side. */
+  short: string;
   blurb: string;
   value: (row: ScoreRow) => number;
   format: (value: number, row: ScoreRow) => string;
@@ -421,6 +432,7 @@ export const RIVAL_STANDOUT = { chance: 0.12, boost: [2.5, 4.5] as const };
 export const AWARDS: AwardDef[] = [
   {
     label: 'Most Projects',
+    short: 'Ships',
     blurb: 'Shipped more than anybody else this year',
     value: (row) => row.projectsThisYear,
     format: (v) => `${v} shipped`,
@@ -428,6 +440,7 @@ export const AWARDS: AwardDef[] = [
   },
   {
     label: 'Biggest Crew',
+    short: 'Crew',
     blurb: 'The most people through the door',
     value: (row) => row.members,
     format: (v) => `${v} members`,
@@ -435,6 +448,7 @@ export const AWARDS: AwardDef[] = [
   },
   {
     label: 'Deepest Pockets',
+    short: 'Cash',
     blurb: 'Ended the year with the healthiest balance',
     value: (row) => row.cash,
     format: (v) => money(v),
@@ -442,28 +456,15 @@ export const AWARDS: AwardDef[] = [
   },
   {
     label: 'Space of the Year',
+    short: 'Space',
     blurb: 'Made the biggest name for itself this year',
     value: (row) => row.reputationThisYear,
     format: (v) => `${v} reputation`,
     reputation: 320,
   },
   {
-    label: 'Rising Star',
-    blurb: 'Grew the most on what it started the year with',
-    value: (row) => row.growthThisYear,
-    format: (v) => `+${v}% reputation`,
-    reputation: 80,
-    notWinnerOf: 'Space of the Year',
-  },
-  {
-    label: "People's Choice",
-    blurb: 'Drew the most upvotes this year',
-    value: (row) => row.upvotesThisYear,
-    format: (v) => `${v.toLocaleString('tr-TR')} upvotes`,
-    reputation: 80,
-  },
-  {
     label: 'Best Project',
+    short: 'Build',
     blurb: 'The single build that made the most noise this year',
     value: (row) => row.bestBuild?.score ?? 0,
     format: (v, row) => (row.bestBuild ? `${row.bestBuild.name} · ${v} hype` : 'nothing shipped'),

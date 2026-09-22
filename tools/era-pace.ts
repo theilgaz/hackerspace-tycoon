@@ -242,8 +242,12 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   const bills = store.getState().bills;
   const sum = (pick: (b: (typeof bills)[number]) => number) =>
     bills.length ? Math.round(bills.reduce((n, b) => n + pick(b), 0) / bills.length) : 0;
-  const work = sum((b) => b.income.find((l) => l.label === 'Work shipped')?.amount ?? 0);
-  const dues = sum((b) => b.income.filter((l) => l.label.endsWith('dues')).reduce((n, l) => n + l.amount, 0));
+  // Bill lines are messages now (§11), so match on the key: an English label would stop
+  // matching the moment somebody plays in Turkish, and a filter that matches nothing reads
+  // as ₺0 rather than failing.
+  const key = (l: (typeof bills)[number]['income'][number]) => (typeof l.label === 'string' ? l.label : l.label.key);
+  const work = sum((b) => b.income.find((l) => key(l) === 'bill.work')?.amount ?? 0);
+  const dues = sum((b) => b.income.filter((l) => key(l).endsWith('Dues')).reduce((n, l) => n + l.amount, 0));
   const costs = sum((b) => -b.costs.reduce((n, l) => n + l.amount, 0));
   outcomes.push(
     `  seed ${seed}: ${over ? `EVICTED day ${over.day}` : `survived ${sim.day}d`}`.padEnd(34) +

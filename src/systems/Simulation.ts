@@ -1,4 +1,5 @@
 import { store } from '@/game/store';
+import { caseLocale, msg, t, type Message } from '@/i18n';
 import type {
   BacklogEntry,
   Employment,
@@ -89,7 +90,7 @@ import {
 import { SUBREDDITS, SUBREDDIT_MAP, tasteMatch } from '@/utils/subreddits';
 import { PRINTER_MAP, PRINTERS, STARTING_PRINTER, resaleValue, type PrinterModel } from '@/utils/printers';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
-import { CALENDAR, awardsDay, clock, gameDate, money, uid } from '@/utils/format';
+import { CALENDAR, awardsDay, clock, gameDate, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
 import {
   addWork,
@@ -168,8 +169,8 @@ export class Simulation {
     this.planDay();
     this.player.startDay();
     this.refreshBacklog();
-    this.log('Day 1. The garage smells of PLA and instant coffee.', 'info');
-    this.log('Pick something to build — check the backlog.', 'info');
+    this.log(msg('log.day1'), 'info');
+    this.log(msg('log.pickSomething'), 'info');
     // The game opens paused, and publish() otherwise only runs inside tick(). Without this
     // the UI sees no player, reads your hours as zero, and disables every pitch button.
     this.publish();
@@ -215,7 +216,7 @@ export class Simulation {
     return this.projects.find((p) => p.id === id);
   }
 
-  private log(text: string, kind: 'info' | 'good' | 'bad' | 'warn' = 'info') {
+  private log(text: Message, kind: 'info' | 'good' | 'bad' | 'warn' = 'info') {
     store.getState().pushLog(text, kind);
   }
 
@@ -329,18 +330,18 @@ export class Simulation {
     const state = store.getState();
     if (!def || state.amenities.includes(id)) return false;
     if (def.era > state.era) {
-      this.log(`The ${def.name} needs ${eraDef(def.era).name}.`, 'warn');
+      this.log(msg('log.amenity.needsEra', { item: def.name, era: eraDef(def.era).name }), 'warn');
       return false;
     }
     if (!state.spend(def.price)) {
-      this.log(`Not enough left for the ${def.name}.`, 'bad');
+      this.log(msg('log.amenity.cantAfford', { item: def.name }), 'bad');
       return false;
     }
     state.buyAmenity(id);
     this.log(
       def.upkeep
-        ? `${def.name} installed. ${money(def.upkeep)} a month to run.`
-        : `${def.name} installed.`,
+        ? msg('log.amenity.installedUpkeep', { item: def.name, upkeep: def.upkeep })
+        : msg('log.amenity.installed', { item: def.name }),
       'good',
     );
     return true;
@@ -385,10 +386,7 @@ export class Simulation {
       if (project.idleDays < SHELVE.afterIdleDays) continue;
       this.projects = this.projects.filter((p) => p.id !== project.id);
       this.seeded.delete(project.id);
-      this.log(
-        `Nobody touched ${project.name} for ${SHELVE.afterIdleDays} days. It is on the shelf now.`,
-        'bad',
-      );
+      this.log(msg('log.shelved', { project: project.name, days: SHELVE.afterIdleDays }), 'bad');
     }
   }
 
@@ -448,7 +446,7 @@ export class Simulation {
     const live = state.backlog.filter((entry) => {
       if (entry.expiresOnDay && this.day > entry.expiresOnDay) {
         const def = CATALOG_MAP[entry.defId];
-        this.log(`The ${def.name} offer expired.`, 'warn');
+        this.log(msg('log.offer.expired', { item: def.name }), 'warn');
         return false;
       }
       return true;
@@ -466,7 +464,7 @@ export class Simulation {
       if (liked.length) {
         const def = rng.pick(liked);
         this.addOffer({ defId: def.id, source: 'member', proposerId: member.id });
-        this.log(`${member.name}: "we should build a ${def.name}. I'll take a stage myself."`, 'good');
+        this.log(msg('log.offer.proposal', { member: member.name, item: def.name }), 'good');
       }
     }
 
@@ -482,7 +480,7 @@ export class Simulation {
         sponsorCash: cash,
         expiresOnDay: this.day + rng.int(dlo, dhi),
       });
-      this.log(`A sponsor will pay ₺${cash.toLocaleString('tr-TR')} for a ${def.name}.`, 'good');
+      this.log(msg('log.offer.sponsor', { item: def.name, cash }), 'good');
     }
 
     // Reddit is briefly obsessed with something. Ship while the wave lasts.
@@ -496,7 +494,7 @@ export class Simulation {
         hypeMultiplier: Number(rng.range(mlo, mhi).toFixed(2)),
         expiresOnDay: this.day + rng.int(dlo, dhi),
       });
-      this.log(`r/DIY is full of ${def.name} builds this week.`, 'info');
+      this.log(msg('log.offer.trending', { item: def.name }), 'info');
     }
   }
 
@@ -534,7 +532,7 @@ export class Simulation {
       if (!m.present) {
         if (plan.attending && this.time >= plan.arriveAt && this.time < plan.leaveAt) {
           m.arrive(DOOR);
-          m.note = 'just arrived';
+          m.note = t('note.justArrived');
         }
         continue;
       }
@@ -544,7 +542,7 @@ export class Simulation {
           m.leave();
           continue;
         }
-        m.note = 'heading home';
+        m.note = t('note.headingHome');
         if (!m.walking) m.walkTo(DOOR);
         m.advance(dt);
         continue;
@@ -607,7 +605,7 @@ export class Simulation {
   private decideActivity(m: MemberEntity, _dt: number) {
     // Twelve to one, nobody works. The lounge exists for exactly this.
     if (isLunch(this.time)) {
-      m.note = 'lunch';
+      m.note = t('note.lunch');
       if (this.atStation(m, 'lounge')) {
         m.activity = 'resting';
       } else if (!m.walking) {
@@ -619,7 +617,7 @@ export class Simulation {
     if (m.activity === 'resting') {
       if (m.data.energy >= 65) {
         m.activity = 'idle';
-        m.note = 'back on it';
+        m.note = t('note.backOnIt');
       } else {
         if (!m.walking && !this.atStation(m, 'lounge')) m.walkTo(stationOfType('lounge')!.stand);
         return;
@@ -627,7 +625,7 @@ export class Simulation {
     }
     if (m.data.energy < MEMBER.tiredThreshold) {
       m.activity = 'resting';
-      m.note = 'needs a sit-down';
+      m.note = t('note.needsSitDown');
       m.walkTo(stationOfType('lounge')!.stand);
       return;
     }
@@ -638,9 +636,9 @@ export class Simulation {
     // Drift: interest gone, they walk away from the team. The core antagonist.
     if (m.team && m.interest < DRIFT.abandonThreshold) {
       const project = this.project(m.team)!;
-      this.log(`${m.name} drifted off ${project.name}.`, 'warn');
+      this.log(msg('log.drifted', { member: m.name, project: project.name }), 'warn');
       this.dropFromTeam(project, m, DRIFT.cooldownHours);
-      m.note = 'lost interest';
+      m.note = t('note.lostInterest');
     }
 
     // Volunteers still volunteer: an unallocated member may join something themselves.
@@ -657,7 +655,7 @@ export class Simulation {
       }
       if (best && best.appetite >= DRIFT.signupThreshold && rng.chance(0.4)) {
         this.addToTeam(best.project, m);
-        m.note = `joined ${best.project.name}`;
+        m.note = t('note.joined', { project: best.project.name });
       }
     }
 
@@ -669,14 +667,14 @@ export class Simulation {
         if (station) {
           if (this.atStation(m, station.type)) {
             m.activity = 'working';
-            m.note = `${project.name}: ${stageLabel(project.category, project.stage).toLowerCase()}`;
+            m.note = this.workingNote(project);
           } else if (!m.walking) {
             m.walkTo(station.stand);
           }
           return;
         }
       } else {
-        m.note = `${project.name}: waiting`;
+        m.note = t('note.waiting', { project: project.name });
       }
     }
 
@@ -685,7 +683,7 @@ export class Simulation {
     if (printer.calibration < MACHINE.calibrationWarning || printer.running) {
       if (this.atStation(m, 'fdm')) {
         m.activity = 'babysitting';
-        m.note = printer.calibration < MACHINE.calibrationWarning ? 'levelling the bed' : 'watching the print';
+        m.note = printer.calibration < MACHINE.calibrationWarning ? t('note.levelling') : t('note.watchingPrint');
       } else if (!m.walking) {
         m.walkTo(printer.def.stand);
       }
@@ -694,7 +692,7 @@ export class Simulation {
 
     if (!m.walking && m.activity !== 'idle') {
       m.activity = 'idle';
-      m.note = 'hanging around';
+      m.note = t('note.hangingAround');
       m.walkTo(rng.pick(IDLE_TILES));
     } else if (!m.walking) {
       m.activity = 'idle';
@@ -754,11 +752,11 @@ export class Simulation {
       if (!p.present) return;
       if (p.tile.x === DOOR.x && p.tile.y === DOOR.y && !p.walking) {
         p.leave();
-        p.note = 'done for today';
+        p.note = t('note.doneForToday');
         return;
       }
       p.calibrating = false;
-      p.note = 'out of hours';
+      p.note = t('note.outOfHours');
       if (!p.walking) p.walkTo(DOOR);
       p.advance(dt);
       return;
@@ -767,7 +765,7 @@ export class Simulation {
     if (!p.present) {
       if (this.time >= PLAYER.startHour) {
         p.arrive(DOOR);
-        p.note = 'in the space';
+        p.note = t('note.inTheSpace');
       }
       return;
     }
@@ -775,20 +773,20 @@ export class Simulation {
     // Only a shipped or cancelled project takes you off it — never a stage change.
     if (p.project && !this.project(p.project)) {
       p.project = null;
-      p.note = 'looking for something to do';
+      p.note = t('note.lookingForWork');
     }
 
     if (p.calibrating) {
       const printer = this.printer;
       if (this.atStation(p, 'fdm')) {
         p.activity = 'babysitting';
-        p.note = 'levelling the bed';
+        p.note = t('note.levelling');
         printer.operatorSkill = Math.max(printer.operatorSkill, p.data.skills.machining);
         printer.calibrate(dt);
         this.spendPlayerTime(dt);
         if (printer.calibration >= 0.99) {
           p.calibrating = false;
-          p.note = 'bed is flat again';
+          p.note = t('note.bedFlat');
         }
       } else if (!p.walking) {
         p.walkTo(printer.def.stand);
@@ -804,7 +802,7 @@ export class Simulation {
         if (station) {
           if (this.atStation(p, station.type)) {
             p.activity = 'working';
-            p.note = `${project.name}: ${stageLabel(project.category, project.stage).toLowerCase()}`;
+            p.note = this.workingNote(project);
             this.spendPlayerTime(dt);
           } else if (!p.walking) {
             p.walkTo(station.stand);
@@ -816,7 +814,7 @@ export class Simulation {
       // Nothing to do by hand right now — stay on the project and wait it out.
       if (!p.walking) {
         p.activity = 'idle';
-        p.note = `${project.name}: nothing to do by hand`;
+        p.note = t('note.nothingByHand', { project: project.name });
       }
       p.advance(dt);
       return;
@@ -824,7 +822,7 @@ export class Simulation {
 
     if (!p.walking && p.activity !== 'idle') {
       p.activity = 'idle';
-      p.note = 'free — pick something';
+      p.note = t('note.free');
       p.walkTo(rng.pick(IDLE_TILES));
     } else if (!p.walking) {
       p.activity = 'idle';
@@ -840,7 +838,7 @@ export class Simulation {
   private chargeHours(verb: keyof typeof VERB_HOURS | string): boolean {
     const cost = VERB_HOURS[verb] ?? 0;
     if (!this.player.canAfford(cost)) {
-      this.log(`No hours left today for that.`, 'bad');
+      this.log(msg('log.noHours'), 'bad');
       return false;
     }
     this.player.spendHours(cost);
@@ -880,8 +878,13 @@ export class Simulation {
       }
       this.requeueTimers.set(project.id, 0);
       this.queuePart(project.id, pending[0].id);
-      const who = this.members.find((m) => m.present)?.name ?? 'You';
-      this.log(`${who} re-queued ${pending[0].name} (${project.name}).`, 'info');
+      const who = this.members.find((m) => m.present)?.name;
+      this.log(
+        who
+          ? msg('log.requeued', { member: who, part: pending[0].name, project: project.name })
+          : msg('log.requeuedByYou', { part: pending[0].name, project: project.name }),
+        'info',
+      );
     }
   }
 
@@ -898,10 +901,13 @@ export class Simulation {
 
       const project = this.project(result.job.projectId);
       const part = project?.parts.find((p) => p.id === result.job.partId);
-      const label = project ? ` (${project.name})` : '';
+      const projectName = project?.name ?? '';
       if (result.kind === 'done') {
         if (part) part.status = 'done';
-        this.log(`${result.job.partName} finished${label}. ${clock(this.time)}`, 'good');
+        this.log(
+          msg('log.part.finished', { part: result.job.partName, project: projectName, time: clock(this.time) }),
+          'good',
+        );
       } else {
         if (part) {
           part.status = 'pending';
@@ -909,8 +915,14 @@ export class Simulation {
         }
         const wasted = Math.round(result.job.materialDrawn * MACHINE.wasteOnFailure);
         this.log(
-          `${result.job.partName}${label} ${result.reason} at hour ${result.atHour.toFixed(1)} of ${result.job.hoursRequired}.` +
-            (wasted > 0 ? ` ${wasted}g wasted.` : ''),
+          msg('log.part.failed', {
+            part: result.job.partName,
+            project: projectName,
+            reason: msg(result.reason),
+            atHour: result.atHour,
+            hours: result.job.hoursRequired,
+            wasted,
+          }),
           'bad',
         );
       }
@@ -933,7 +945,7 @@ export class Simulation {
     if (stage === 'fabrication') {
       // Software has nothing to make. Without this the stage never completes.
       if (project.parts.length === 0) {
-        this.setStage(project, 'assembly', '');
+        this.setStage(project, 'assembly', null);
         return;
       }
       if (!this.seeded.has(project.id)) {
@@ -941,7 +953,7 @@ export class Simulation {
         this.queueAllPending(project.id);
       }
       if (partsOutstanding(project).length === 0 && project.parts.length > 0) {
-        this.setStage(project, 'assembly', `${project.name}: all parts made.`, 'good');
+        this.setStage(project, 'assembly', msg('log.stage.allParts', { project: project.name }), 'good');
       }
       return;
     }
@@ -949,10 +961,20 @@ export class Simulation {
     if (stage === 'test') {
       const outcome = resolveTest(project);
       if (outcome.passed) {
-        this.setStage(project, 'release', `${project.name} works. Passed on attempt ${project.testAttempts}.`, 'good');
+        this.setStage(
+          project,
+          'release',
+          msg('log.stage.passed', { project: project.name, attempt: project.testAttempts }),
+          'good',
+        );
       } else {
-        this.log(`${project.name} failed testing: ${outcome.defect}`, 'bad');
-        this.setStage(project, 'iterate', outcome.brokenPartId ? `A part needs remaking.` : `Back to CAD.`, 'warn');
+        this.log(msg('log.stage.testFailed', { project: project.name, defect: outcome.defect ?? '' }), 'bad');
+        this.setStage(
+          project,
+          'iterate',
+          outcome.brokenPartId ? msg('log.stage.remake') : msg('log.stage.backToCad'),
+          'warn',
+        );
       }
       return;
     }
@@ -969,35 +991,39 @@ export class Simulation {
         project.quality < PERFECTIONIST_QUALITY_GATE,
     );
     if (blocker) {
-      blocker.note = 'not signing off on this';
+      blocker.note = t('note.notSigningOff');
       return;
     }
 
     switch (stage) {
       case 'concept':
-        this.setStage(project, 'cad', `${project.name}: concept locked.`);
+        this.setStage(project, 'cad', msg('log.stage.conceptLocked', { project: project.name }));
         break;
       case 'cad':
         generateParts(project);
         this.setStage(
           project,
           'simulation',
-          `${project.name}: CAD done at ${Math.round(project.quality * 100)}% quality, ${project.parts.length} parts to make.`,
+          msg('log.stage.cadDone', { project: project.name, quality: project.quality, parts: project.parts.length }),
         );
         break;
       case 'simulation':
-        this.setStage(project, 'fabrication', `${project.name}: simulation clean.`);
+        this.setStage(project, 'fabrication', msg('log.stage.simClean', { project: project.name }));
         break;
       case 'assembly':
-        this.setStage(project, 'test', `${project.name} assembled. Time to find out.`);
+        this.setStage(project, 'test', msg('log.stage.assembled', { project: project.name }));
         break;
       case 'iterate': {
         const outstanding = partsOutstanding(project);
         if (outstanding.length) {
           this.seeded.delete(project.id);
-          this.setStage(project, 'fabrication', `${project.name}: ${outstanding.length} part(s) back on the machine.`);
+          this.setStage(
+            project,
+            'fabrication',
+            msg('log.stage.backOnMachine', { project: project.name, count: outstanding.length }),
+          );
         } else {
-          this.setStage(project, 'test', `${project.name}: fixes in, testing again.`);
+          this.setStage(project, 'test', msg('log.stage.fixesIn', { project: project.name }));
         }
         break;
       }
@@ -1009,10 +1035,16 @@ export class Simulation {
     }
   }
 
+  /** "Drone: cad" — the status line of somebody working a stage. */
+  private workingNote(project: ProjectData): string {
+    const stage = stageLabel(project.category, project.stage).toLocaleLowerCase(caseLocale());
+    return t('note.working', { project: project.name, stage });
+  }
+
   private setStage(
     project: ProjectData,
     next: StageKey,
-    message: string,
+    message: Message | null,
     kind: 'info' | 'good' | 'bad' | 'warn' = 'info',
   ) {
     project.stage = next;
@@ -1031,7 +1063,7 @@ export class Simulation {
     for (const m of this.members) {
       if (m.team === project.id) {
         m.team = null;
-        m.note = `${project.name} is done`;
+        m.note = t('note.projectDone', { project: project.name });
       }
     }
 
@@ -1043,12 +1075,12 @@ export class Simulation {
       this.incomeThisMonth += payout;
       this.log(
         built
-          ? `${project.name} shipped again — ₺${payout.toLocaleString('tr-TR')}, and the room has seen it before.`
-          : `${project.name} shipped on day ${this.day} — ₺${payout.toLocaleString('tr-TR')}.`,
+          ? msg('log.shippedAgain', { project: project.name, payout })
+          : msg('log.shipped', { project: project.name, day: this.day, payout }),
         'good',
       );
     } else {
-      this.log(`${project.name} shipped on day ${this.day}.`, 'good');
+      this.log(msg('log.shippedUnpaid', { project: project.name, day: this.day }), 'good');
     }
 
     if (def.unlocksMachine) this.installMachine(def.unlocksMachine);
@@ -1072,7 +1104,7 @@ export class Simulation {
     });
     const after = store.getState().era;
     if (after > before) {
-      this.log(`Word is getting around — ${eraDef(after).name}. New projects are open to you.`, 'good');
+      this.log(msg('log.eraUp', { era: eraDef(after).name }), 'good');
     }
   }
 
@@ -1100,22 +1132,22 @@ export class Simulation {
     const model = PRINTER_MAP[modelId];
     if (!model || model.price <= 0) return false;
     if (model.era > store.getState().era) {
-      this.log(`Nobody will ship a ${model.name} to a garage.`, 'warn');
+      this.log(msg('log.printer.needsEra', { model: model.name }), 'warn');
       return false;
     }
     if (!store.getState().spend(model.price)) {
-      this.log(`Even on the overdraft, a ${model.name} is out of reach.`, 'bad');
+      this.log(msg('log.printer.cantAfford', { model: model.name }), 'bad');
       return false;
     }
     const def = installStation('fdm', `fdm-${uid()}`, model.id, model.name);
     if (!def) {
-      this.log(`No room on the floor for another printer.`, 'warn');
+      this.log(msg('log.printer.noRoom'), 'warn');
       return false;
     }
     this.machines.push(this.makeMachine(def));
     store.getState().ownMachine('fdm');
     this.applyPerks();
-    this.log(`${model.name} is on the bench and levelled. It arrived full.`, 'good');
+    this.log(msg('log.printer.arrived', { model: model.name }), 'good');
     this.publish();
     return true;
   }
@@ -1138,7 +1170,7 @@ export class Simulation {
     const next = this.nextLease();
     if (!next || !next.ready) return false;
     if (!store.getState().spend(next.def.moveCost)) {
-      this.log(`Even on the overdraft, moving to ${next.def.name} is out of reach.`, 'bad');
+      this.log(msg('log.lease.cantAfford', { space: next.def.name }), 'bad');
       return false;
     }
     store.setState({ era: next.era });
@@ -1149,10 +1181,7 @@ export class Simulation {
     // and the station arrangement goes entirely — every bench is against a new wall.
     store.getState().clearStationPlacements();
     this.amenityRev = -1;
-    this.log(
-      `You signed for ${next.def.name}. ${money(next.def.moveCost)} to move, and the rent goes up.`,
-      'good',
-    );
+    this.log(msg('log.lease.signed', { space: next.def.name, cost: next.def.moveCost }), 'good');
     this.publish();
     return true;
   }
@@ -1244,8 +1273,10 @@ export class Simulation {
     if (!this.machines.some((m) => m.type === 'fdm')) store.getState().disownMachine('fdm');
     store.getState().earn(value);
     this.log(
-      `Sold the ${machine.label} for ${money(value)}.` +
-        (this.machines.some((m) => m.type === 'fdm') ? '' : ' Nothing left to print with.'),
+      msg(this.machines.some((m) => m.type === 'fdm') ? 'log.machine.sold' : 'log.machine.soldLast', {
+        machine: machine.label,
+        value,
+      }),
       'warn',
     );
     this.publish();
@@ -1257,19 +1288,19 @@ export class Simulation {
     // capability, and a second one would eat a slot the CNC still needs. Printers are the
     // exception and they are bought, not built.
     if (this.machines.some((m) => m.type === type) || stationOfType(type)) {
-      this.log(`A second ${MACHINE_LABEL[type]} — the first one still works. It goes in the store.`, 'info');
+      this.log(msg('log.machine.duplicate', { machine: MACHINE_LABEL[type] }), 'info');
       store.getState().ownMachine(type);
       return;
     }
     const def = installStation(type, `${type}-${this.machines.length + 1}`);
     if (!def) {
-      this.log(`No room left for the new machine. It lives in the corridor.`, 'warn');
+      this.log(msg('log.machine.noRoom'), 'warn');
       return;
     }
     if (FAB_MACHINES.includes(type)) this.machines.push(this.makeMachine(def));
     store.getState().ownMachine(type);
     this.applyPerks();
-    this.log(`${def.label} is up and running. New things are possible.`, 'good');
+    this.log(msg('log.machine.installed', { machine: def.label }), 'good');
   }
 
   // -------------------------------------------------------------------------
@@ -1439,16 +1470,21 @@ export class Simulation {
     if (!project || !member) return false;
 
     if (project.team.length >= project.teamSize) {
-      this.log(`${project.name}'s team is full (${project.teamSize}).`, 'warn');
+      this.log(msg('log.team.full', { project: project.name, size: project.teamSize }), 'warn');
       return false;
     }
     if (member.team) {
       const other = this.project(member.team);
-      this.log(`${member.name} is already on ${other ? other.name : 'something else'}.`, 'warn');
+      this.log(
+        other
+          ? msg('log.team.busy', { member: member.name, project: other.name })
+          : msg('log.team.busyElsewhere', { member: member.name }),
+        'warn',
+      );
       return false;
     }
     if (member.isCoolingOff(projectId)) {
-      this.log(`${member.name} has already said no to ${project.name}.`, 'warn');
+      this.log(msg('log.team.saidNo', { member: member.name, project: project.name }), 'warn');
       return false;
     }
 
@@ -1458,12 +1494,12 @@ export class Simulation {
     const chance = Math.min(0.97, TEAM.acceptBase + match * TEAM.acceptFromPassion + bounty);
     if (!rng.chance(chance)) {
       member.setCooldown(projectId, TEAM.declineCooldownHours);
-      this.log(`${member.name} passed on ${project.name}. "Not really my thing."`, 'warn');
+      this.log(msg('log.team.declined', { member: member.name, project: project.name }), 'warn');
       return false;
     }
 
     this.addToTeam(project, member);
-    this.log(`${member.name} joined ${project.name}.`, 'good');
+    this.log(msg('log.team.joined', { member: member.name, project: project.name }), 'good');
     return true;
   }
 
@@ -1473,7 +1509,7 @@ export class Simulation {
     const member = this.member(memberId);
     if (!project || !member) return;
     this.dropFromTeam(project, member, TEAM.declineCooldownHours / 2);
-    this.log(`${member.name} left ${project.name}.`, 'info');
+    this.log(msg('log.team.left', { member: member.name, project: project.name }), 'info');
   }
 
   /**
@@ -1531,21 +1567,18 @@ export class Simulation {
     if (state.cash >= 0) {
       if (state.overdraftSince !== null) {
         store.setState({ overdraftSince: null });
-        this.log(`Back in the black.`, 'good');
+        this.log(msg('log.cash.backInBlack'), 'good');
       }
       return;
     }
     if (state.overdraftSince === null) {
       store.setState({ overdraftSince: this.day });
-      this.log(
-        `The balance is under. You have ${ECONOMY.overdraftDays} days to get it back above zero.`,
-        'warn',
-      );
+      this.log(msg('log.cash.overdraftStarted', { days: ECONOMY.overdraftDays }), 'warn');
       return;
     }
     if (state.cash < -ECONOMY.overdraftLimit) {
       store.getState().endRun(
-        `The overdraft ran out at ${money(Math.abs(state.cash))} down. The bank pulled the lease.`,
+        msg('over.bank', { amount: Math.abs(state.cash) }),
         this.day,
       );
       return;
@@ -1553,14 +1586,14 @@ export class Simulation {
     const daysUnder = this.day - state.overdraftSince;
     if (daysUnder >= ECONOMY.overdraftDays) {
       store.getState().endRun(
-        `Two months in the red and no way back. The landlord changed the locks.`,
+        msg('over.landlord'),
         this.day,
       );
       return;
     }
     const left = ECONOMY.overdraftDays - daysUnder;
     if (left === 30 || left === 14 || left <= 7) {
-      this.log(`${left} days to get the balance back above zero.`, left <= 7 ? 'bad' : 'warn');
+      this.log(msg('log.cash.daysLeft', { days: left }), left <= 7 ? 'bad' : 'warn');
     }
   }
 
@@ -1608,18 +1641,18 @@ export class Simulation {
     // profit and loss rather than "dues against rent", which always looks like a disaster.
     const income: BillLine[] = [
       {
-        label: 'Work shipped',
-        detail: 'payouts and sponsor money, already banked',
+        label: msg('bill.work'),
+        detail: msg('bill.workDetail'),
         amount: Math.round(this.incomeThisMonth),
       },
       {
-        label: 'Crew dues',
-        detail: `${this.members.length} on the books · ${ECONOMY.crewDues} each`,
+        label: msg('bill.crewDues'),
+        detail: msg('bill.crewDuesDetail', { count: this.members.length, each: ECONOMY.crewDues }),
         amount: crewDues,
       },
       {
-        label: 'Community dues',
-        detail: `${this.membership} using the space · ${ECONOMY.duesPerMember} each`,
+        label: msg('bill.communityDues'),
+        detail: msg('bill.communityDuesDetail', { count: this.membership, each: ECONOMY.duesPerMember }),
         amount: communityDues,
       },
     ];
@@ -1628,10 +1661,10 @@ export class Simulation {
     const utilities = Math.round(this.machineHoursThisMonth * ECONOMY.utilityPerMachineHour);
     const upkeep = this.comforts.upkeep;
     const costs: BillLine[] = [
-      { label: 'Rent', detail: eraDef(state.era).name, amount: -rent },
+      { label: msg('bill.rent'), detail: eraDef(state.era).name, amount: -rent },
       {
-        label: 'Power and consumables',
-        detail: `${Math.round(this.machineHoursThisMonth)} machine-hours`,
+        label: msg('bill.power'),
+        detail: msg('bill.powerDetail', { hours: Math.round(this.machineHoursThisMonth) }),
         amount: -utilities,
       },
     ];
@@ -1639,8 +1672,8 @@ export class Simulation {
     // shop the player has not opened yet is noise.
     if (upkeep > 0) {
       costs.push({
-        label: 'Comforts',
-        detail: `${state.amenities.length} in the space · running costs`,
+        label: msg('bill.comforts'),
+        detail: msg('bill.comfortsDetail', { count: state.amenities.length }),
         amount: -upkeep,
       });
     }
@@ -1674,13 +1707,10 @@ export class Simulation {
     this.incomeThisMonth = 0;
 
     if (shortfall > 0) {
-      this.log(
-        `Could not cover the bill — ${money(shortfall)} short. It goes on the overdraft.`,
-        'bad',
-      );
+      this.log(msg('log.bill.short', { amount: shortfall }), 'bad');
     } else {
       this.log(
-        `Bill settled. ${total >= 0 ? 'Up' : 'Down'} ${money(Math.abs(total))} on the month.`,
+        msg(total >= 0 ? 'log.bill.up' : 'log.bill.down', { amount: Math.abs(total) }),
         total >= 0 ? 'good' : 'warn',
       );
     }
@@ -1781,8 +1811,8 @@ export class Simulation {
     const won = ceremony.awards.filter((a) => a.playerWon).length;
     this.log(
       won
-        ? `Awards night: you took ${won} of ${ceremony.awards.length}.`
-        : `Awards night: nothing for us this year.`,
+        ? msg('log.awards.won', { won, total: ceremony.awards.length })
+        : msg('log.awards.none'),
       won ? 'good' : 'warn',
     );
 
@@ -1825,8 +1855,8 @@ export class Simulation {
     store.getState().openApplicant(next.data.id);
     this.log(
       next.via
-        ? `${next.data.name} got in touch after seeing the ${next.via} write-up.`
-        : `${next.data.name} has been asking about joining.`,
+        ? msg('log.applicant.via', { name: next.data.name, via: next.via })
+        : msg('log.applicant.asking', { name: next.data.name }),
       'good',
     );
   }
@@ -1903,7 +1933,7 @@ export class Simulation {
     const posts = store.getState().posts;
     if (posts.some((p) => p.projectId === projectId && p.day === this.day)) {
       this.log(
-        project ? `${project.name} has already been posted today.` : `The space was posted today.`,
+        project ? msg('log.post.alreadyProject', { project: project.name }) : msg('log.post.alreadySpace'),
         'warn',
       );
       return false;
@@ -1933,9 +1963,11 @@ export class Simulation {
     };
     store.getState().recordPost(entry, reaction.reputationHit);
     this.log(
-      reaction.burned
-        ? `${sub.name} turned on the ${name} post — ${reaction.upvotes} and a pile-on.`
-        : `${name} did ${reaction.upvotes} on ${sub.name}.`,
+      msg(reaction.burned ? 'log.post.burned' : 'log.post.did', {
+        room: sub.name,
+        name: project ? project.name : store.getState().identity?.name ?? msg('word.theSpace'),
+        upvotes: reaction.upvotes,
+      }),
       reaction.burned ? 'bad' : 'good',
     );
     this.publish();
@@ -1952,8 +1984,8 @@ export class Simulation {
     member.role = role;
     this.log(
       role
-        ? `${member.name} is looking after ${ROLE_LABEL[role].toLowerCase()} now.`
-        : `${member.name} has handed the job back.`,
+        ? msg('log.role.set', { member: member.name, role: ROLE_LABEL[role].toLowerCase() })
+        : msg('log.role.cleared', { member: member.name }),
       'info',
     );
     this.publish();
@@ -1975,14 +2007,14 @@ export class Simulation {
           );
           if (dry && store.getState().spend(this.refillCost(dry.id))) {
             dry.refill(dry.consumableMax);
-            this.log(`${member.name} loaded the ${dry.label} back up.`, 'good');
+            this.log(msg('log.role.loaded', { member: member.name, machine: dry.label }), 'good');
           }
           break;
         }
         case 'quartermaster': {
           const unordered = this.projects.find((p) => !p.partsOrdered && p.bomCost > 0);
           if (unordered && this.placeOrder(unordered)) {
-            this.log(`${member.name} got the ${unordered.name} parts on order.`, 'good');
+            this.log(msg('log.role.ordered', { member: member.name, project: unordered.name }), 'good');
           }
           break;
         }
@@ -2032,7 +2064,7 @@ export class Simulation {
             .slice(0, def.teamSize)
             .map((m) => m.id);
           if (this.pitch(def.id, offer?.id, crew)) {
-            this.log(`${member.name} started ${def.name} — there were hands going spare.`, 'good');
+            this.log(msg('log.role.started', { member: member.name, item: def.name }), 'good');
           }
           break;
         }
@@ -2050,7 +2082,7 @@ export class Simulation {
     }
     this.members = this.members.filter((m) => m.id !== id);
     this.plans.delete(id);
-    this.log(`${member.name} is off the books.`, 'warn');
+    this.log(msg('log.member.offBooks', { member: member.name }), 'warn');
   }
 
   /** What a contract costs to set up: induction, a key, a shelf, a tool briefing. */
@@ -2070,7 +2102,10 @@ export class Simulation {
     if (!store.getState().applicants.includes(id)) return false;
     const data = APPLICANTS.find((a) => a.id === id);
     store.getState().passApplicant(id);
-    this.log(`You told ${data?.name ?? 'them'} it is not the right time.`, 'info');
+    this.log(
+      data ? msg('log.applicant.passed', { name: data.name }) : msg('log.applicant.passedAnon'),
+      'info',
+    );
     return true;
   }
 
@@ -2080,13 +2115,13 @@ export class Simulation {
     if (!data || this.members.some((m) => m.id === id)) return false;
     if (!store.getState().applicants.includes(id)) return false;
     if (data.partTimeOnly && employment === 'full-time') {
-      this.log(`${data.name} has a day job — part-time only.`, 'warn');
+      this.log(msg('log.applicant.dayJob', { name: data.name }), 'warn');
       return false;
     }
     const cost = this.hireCost(id, employment);
     if (!this.chargeHours('hire')) return false;
     if (!store.getState().spend(cost)) {
-      this.log(`Even on the overdraft, taking ${data.name} on is out of reach.`, 'bad');
+      this.log(msg('log.applicant.cantAfford', { name: data.name }), 'bad');
       return false;
     }
     store.getState().closeApplicant(id);
@@ -2094,8 +2129,13 @@ export class Simulation {
     member.employment = employment;
     member.shift = employment === 'part-time' ? data.prefers ?? 'morning' : null;
     this.log(
-      `${data.name} joined ${employment === 'full-time' ? 'full-time' : `part-time (${member.shift}s)`} — ` +
-        `${weeklyHoursFor(employment)}h a week.`,
+      employment === 'full-time'
+        ? msg('log.hired.full', { name: data.name, hours: weeklyHoursFor(employment) })
+        : msg('log.hired.part', {
+            name: data.name,
+            shift: member.shift ?? 'morning',
+            hours: weeklyHoursFor(employment),
+          }),
       'good',
     );
     return true;
@@ -2119,7 +2159,7 @@ export class Simulation {
     const state = store.getState();
     const def = CATALOG_MAP[defId];
     if (!def || !canBuild(def, state.ownedMachines)) {
-      this.log(`The space can't build that yet.`, 'bad');
+      this.log(msg('log.pitch.cantBuild'), 'bad');
       return false;
     }
     if (!this.chargeHours('pitch')) return false;
@@ -2140,13 +2180,13 @@ export class Simulation {
       if (offer.sponsorCash) {
         store.getState().earn(offer.sponsorCash);
         this.incomeThisMonth += offer.sponsorCash;
-        this.log(`Sponsor paid ₺${offer.sponsorCash.toLocaleString('tr-TR')} up front for ${def.name}.`, 'good');
+        this.log(msg('log.pitch.sponsorPaid', { item: def.name, cash: offer.sponsorCash }), 'good');
       }
       if (offer.proposerId) {
         const member = this.member(offer.proposerId);
         if (member) {
           this.addToTeam(project, member, 1.2);
-          this.log(`${member.name} signed straight up for ${def.name}.`, 'good');
+          this.log(msg('log.pitch.proposerSigned', { member: member.name, item: def.name }), 'good');
         }
       }
     }
@@ -2154,19 +2194,12 @@ export class Simulation {
     // project was busywork, and forgetting it only ever produced a stall, never a decision.
     if (project.bomCost > 0) {
       if (this.placeOrder(project)) {
-        this.log(
-          `Pitched ${def.name}. Parts ordered — ${money(def.bomCost)}, ${def.leadDays} days out.`,
-          'info',
-        );
+        this.log(msg('log.pitch.ordered', { item: def.name, cost: def.bomCost, days: def.leadDays }), 'info');
       } else {
-        this.log(
-          `Pitched ${def.name}, but there is no cash for the ${money(def.bomCost)} bill of materials. ` +
-            `Nothing can be assembled until it is ordered.`,
-          'warn',
-        );
+        this.log(msg('log.pitch.noCash', { item: def.name, cost: def.bomCost }), 'warn');
       }
     } else {
-      this.log(`Pitched ${def.name}. ${def.blurb}`, 'info');
+      this.log(msg('log.pitch.plain', { item: def.name, blurb: def.blurb }), 'info');
     }
 
     // Ask the crew you picked on the pitch screen. They can still decline.
@@ -2211,7 +2244,9 @@ export class Simulation {
       }
     }
     this.log(
-      took ? `Re-pitched ${project.name}: ${took} joined.` : `Re-pitched ${project.name}. Nobody bit.`,
+      took
+        ? msg('log.repitch.took', { project: project.name, count: took })
+        : msg('log.repitch.none', { project: project.name }),
       took ? 'good' : 'warn',
     );
   }
@@ -2229,7 +2264,7 @@ export class Simulation {
     const cost = this.bountyCost(projectId);
     if (!this.chargeHours('bounty')) return false;
     if (!store.getState().spend(cost)) {
-      this.log(`Even on the overdraft, that bounty is out of reach.`, 'bad');
+      this.log(msg('log.bounty.cantAfford'), 'bad');
       return false;
     }
     project.spent += cost;
@@ -2239,7 +2274,7 @@ export class Simulation {
       m.clearCooldowns();
     }
     this.log(
-      `Bounty on ${project.name} · ${stageLabel(project.category, project.stage)}. Pizza is on the way.`,
+      msg('log.bounty.posted', { project: project.name, stage: stageLabel(project.category, project.stage) }),
       'good',
     );
     return true;
@@ -2269,10 +2304,10 @@ export class Simulation {
     if (!project || project.partsOrdered) return false;
     if (!this.chargeHours('order')) return false;
     if (!this.placeOrder(project)) {
-      this.log(`Even on the overdraft, the ${project.name} parts are out of reach.`, 'bad');
+      this.log(msg('log.parts.cantAfford', { project: project.name }), 'bad');
       return false;
     }
-    this.log(`Ordered parts for ${project.name}. ${project.leadDays} days out.`, 'info');
+    this.log(msg('log.parts.ordered', { project: project.name, days: project.leadDays }), 'info');
     return true;
   }
 
@@ -2289,12 +2324,12 @@ export class Simulation {
     const cost = expediteCost(project, this.totalHours);
     if (!this.chargeHours('expedite')) return false;
     if (!store.getState().spend(cost)) {
-      this.log(`Even on the overdraft, expediting is out of reach.`, 'bad');
+      this.log(msg('log.parts.expediteCantAfford'), 'bad');
       return false;
     }
     project.spent += cost;
     project.partsArriveAt = this.totalHours + remaining * SOURCING.expediteFactor;
-    this.log(`Paid to expedite the ${project.name} order.`, 'good');
+    this.log(msg('log.parts.expedited', { project: project.name }), 'good');
     return true;
   }
 
@@ -2302,7 +2337,7 @@ export class Simulation {
     const project = this.project(projectId);
     if (!project || project.stage !== 'simulation') return;
     project.simulationSkipped = true;
-    this.setStage(project, 'fabrication', `${project.name}: simulation skipped. Hope the maths was right.`, 'warn');
+    this.setStage(project, 'fabrication', msg('log.stage.simSkipped', { project: project.name }), 'warn');
   }
 
   queuePart(projectId: string, partId: string) {
@@ -2311,7 +2346,7 @@ export class Simulation {
     if (!project || !part || part.status === 'done' || part.status === 'queued') return;
     const machine = this.machineFor(part.machineType);
     if (!machine) {
-      this.log(`No ${part.machineType} in the space for ${part.name}.`, 'bad');
+      this.log(msg('log.parts.noMachine', { machine: part.machineType, part: part.name }), 'bad');
       return;
     }
     const job: Job = {
@@ -2333,7 +2368,7 @@ export class Simulation {
     if (!project) return;
     const pending = project.parts.filter((p) => p.status === 'pending');
     pending.forEach((p) => this.queuePart(projectId, p.id));
-    if (pending.length) this.log(`${pending.length} part(s) queued (${project.name}).`);
+    if (pending.length) this.log(msg('log.parts.queued', { count: pending.length, project: project.name }));
   }
 
   moveJob(machineId: string, jobId: string, direction: -1 | 1) {
@@ -2367,11 +2402,11 @@ export class Simulation {
     if (cost <= 0) return false;
     if (!this.chargeHours('filament')) return false;
     if (!store.getState().spend(cost)) {
-      this.log(`Even on the overdraft, filament for the ${machine.label} is out of reach.`, 'bad');
+      this.log(msg('log.filament.cantAfford', { machine: machine.label }), 'bad');
       return false;
     }
     machine.refill(machine.consumableMax);
-    this.log(`${machine.label} loaded up.`, 'good');
+    this.log(msg('log.filament.loaded', { machine: machine.label }), 'good');
     return true;
   }
 

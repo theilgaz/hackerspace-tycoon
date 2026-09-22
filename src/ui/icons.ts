@@ -12,6 +12,9 @@ import type { ProjectCategory } from '@/game/types';
  * shape check without throwing the literal keys away.
  */
 const PATHS = {
+  globe:
+    '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/>' +
+    '<path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
   code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
   cpu:
     '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/>' +

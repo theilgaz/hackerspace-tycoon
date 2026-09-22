@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { caseLocale } from '@/i18n';
 import type { MachineType, RuntimeSnapshot } from '@/game/types';
 import {
   GRID,
@@ -87,7 +88,8 @@ function paintSign(
   badge: IconName | null,
   onBadge: () => void,
 ): { texture: THREE.CanvasTexture; aspect: number } {
-  const text = name.trim().toUpperCase();
+  // The player names the place in their own language: a Turkish name uppercases i to İ.
+  const text = name.trim().toLocaleUpperCase(caseLocale());
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d')!;
 

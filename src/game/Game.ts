@@ -1,4 +1,5 @@
 import { SceneManager } from '@/render/SceneManager';
+import { t } from '@/i18n';
 import { SpaceView } from '@/render/SpaceView';
 import { Simulation } from '@/systems/Simulation';
 import { UI } from '@/ui/ui';
@@ -22,6 +23,7 @@ const STATION_ROLE: Partial<Record<MachineType, string>> = {
 import { LOGOS } from '@/utils/rivals';
 import { clearSave, readSave, writeSave, SAVE_VERSION, type SaveFile } from '@/systems/SaveGame';
 import { eraDef } from '@/utils/constants';
+import { applyLocale } from '@/i18n/preference';
 import '@/ui/styles.css';
 
 /** Orchestrator: owns the clock, the sim, the scene and the UI, and wires them together. */
@@ -81,6 +83,8 @@ export class Game {
       turnAmenity: () => this.turnHeld(),
       stopMoving: () => store.getState().setMoving(null),
       devCommand: (line) => runDevCommand(sim, line).lines,
+      // A preference, not an action on the run: it goes straight to the store and storage.
+      setLocale: (locale) => applyLocale(locale),
       sellPrinter: (machineId) => act(() => sim.sellPrinter(machineId)),
       signLease: () => act(() => sim.signLease()),
       nextLease: () => sim.nextLease(),
@@ -322,7 +326,7 @@ export class Game {
     for (const member of runtime.members) {
       if (member.present) personLabel(member.id, member.name);
     }
-    if (runtime.player?.present) personLabel('player', 'You');
+    if (runtime.player?.present) personLabel('player', t('ui.you'));
 
     // Machines that are doing something say so; everything else only speaks when pointed at.
     for (const machine of runtime.machines) {

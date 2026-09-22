@@ -5,6 +5,8 @@ import { PRINTERS } from '@/utils/printers';
 import { eraDef } from '@/utils/constants';
 import { money } from '@/utils/format';
 import type { MachineType } from '@/game/types';
+import { getLocale, isLocale, LOCALES } from '@/i18n';
+import { applyLocale } from '@/i18n/preference';
 
 /**
  * The developer console (CLAUDE.md §15). A line of text in, a few lines of text out.
@@ -199,6 +201,17 @@ const COMMANDS: Command[] = [
     },
   },
   {
+    name: 'lang',
+    args: '<en|tr|xx>',
+    help: 'switch language; xx brackets every translated string, so bare ones stand out',
+    run: (_sim, [raw]) => {
+      if (!raw) return `language is ${getLocale()} (${LOCALES.join(' / ')})`;
+      if (!isLocale(raw)) return `? ${raw} — one of ${LOCALES.join(', ')}`;
+      applyLocale(raw);
+      return `language → ${raw}`;
+    },
+  },
+  {
     name: 'unlock',
     args: '',
     help: 'own every machine type, so the whole catalogue is pitchable',
@@ -220,7 +233,8 @@ export function runDevCommand(sim: Simulation, line: string): DevResult {
   }
   const out = command.run(sim, args);
   const lines = Array.isArray(out) ? out : [out];
-  const changed = command.name !== 'help';
+  // Neither reading the help nor switching language doctors the run.
+  const changed = command.name !== 'help' && command.name !== 'lang';
   if (changed) {
     // In the player's own log, marked. A doctored run has to say it was doctored.
     store.getState().pushLog(`dev: ${line.trim()}`, 'warn');

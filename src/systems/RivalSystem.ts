@@ -74,11 +74,24 @@ export interface CeremonyAward {
   playerWon: boolean;
 }
 
+/** Where one space stood on one awards night. The only record a year leaves of the table. */
+export interface YearStanding {
+  id: string;
+  rank: number;
+  reputation: number;
+}
+
 export interface Ceremony {
   year: number;
   awards: CeremonyAward[];
   /** Reputation the player earned from the night. */
   reputationGained: number;
+  /**
+   * The whole field, in order, as it stood that night. The standings themselves are a live
+   * snapshot — they only ever say where everybody is *now* — so without this a run keeps no
+   * history at all, and "are they pulling away from me?" is unanswerable the day after.
+   */
+  standings: YearStanding[];
 }
 
 /**
@@ -106,5 +119,8 @@ export function runCeremony(year: number, rows: ScoreRow[]): Ceremony {
     (sum, award) => sum + (award.playerWon ? AWARDS.find((a) => a.label === award.category)!.reputation : 0),
     0,
   );
-  return { year, awards, reputationGained };
+  const standings = [...rows]
+    .sort((a, b) => b.reputation - a.reputation)
+    .map((row, index) => ({ id: row.id, rank: index + 1, reputation: row.reputation }));
+  return { year, awards, reputationGained, standings };
 }

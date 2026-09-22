@@ -1,3 +1,4 @@
+import type { Text } from '@/i18n';
 /**
  * The books (CLAUDE.md §7). Income is lumpy — projects ship when they ship — and the costs
  * are steady, which is the whole tension: a quiet month still costs you a month.
@@ -58,8 +59,9 @@ export function membershipFor(reputation: number): number {
 }
 
 export interface BillLine {
-  label: string;
-  detail: string;
+  /** Messages, rendered at display time: the bill is saved with the run (§11). */
+  label: Text;
+  detail: Text;
   amount: number;
 }
 

@@ -448,6 +448,107 @@ await check('Ranking: one column per award, and the table fits without scrolling
   return ok;
 });
 
+await check('Trophy room: four views off two switches', async () => {
+  // Two awards nights, planted rather than played: reaching October twice takes 250 sim-days
+  // and the thing under test is the wiring, not the ceremony.
+  await evaluate(`
+    (() => {
+      const cats = ['Most Projects', 'Biggest Crew', 'Deepest Pockets', 'Space of the Year',
+        'Best Project'];
+      const ceremonies = [2026, 2027].map((year, i) => ({
+        year,
+        awards: cats.map((category, j) => {
+          const mine = (i + j) % 3 === 0;
+          return {
+            category, blurb: '', winnerId: mine ? 'player' : 'konya',
+            winnerName: mine ? 'Test Alanı' : 'Konya Hackerspace',
+            value: j + ' shipped', playerWon: mine,
+          };
+        }),
+        reputationGained: 160,
+        // Where the field stood that night — what the rank chart plots.
+        standings: ['player', 'konya', 'c-base'].map((sid, k) => ({
+          id: sid,
+          rank: ((k + i) % 3) + 1,
+          reputation: 900 + i * 1200 + k * 50,
+        })),
+      }));
+      __store.setState({ ceremonies });
+    })()
+  `);
+  await openPanel('ranking-open');
+  await click('#modal [data-action="rank-view"][data-value="trophies"]');
+  // By year is one night at a time: seven categories, and a pill per year to page between.
+  const night = await evaluate(`document.querySelectorAll('#modal .trophy-cell').length`);
+  const pills = await evaluate(`document.querySelectorAll('#modal .year-pill').length`);
+  const opensOnNewest = await evaluate(
+    `document.querySelector('#modal .year-pill[aria-pressed="true"]')?.textContent.trim().startsWith('2027')`,
+  );
+  await click('#modal .year-pill[data-value="2026"]');
+  const paged = await evaluate(
+    `document.querySelector('#modal .trophy-single thead th:last-child')?.textContent.includes('2026')`,
+  );
+
+  // All time organises by space: one row per space that has won something, plus you.
+  await click('#modal [data-action="trophy-mode"][data-value="all"]');
+  const league = await evaluate(`document.querySelectorAll('#modal .trophy-league tbody tr').length`);
+  const totals = await evaluate(
+    `[...document.querySelectorAll('#modal .trophy-league td.trophy-total')].map((td) => td.textContent.trim()).join(',')`,
+  );
+
+  // A column head is the way into that category; the crumb is the way back out.
+  await click('#modal .league-col [data-action="trophy-cat"]');
+  const scoped = await evaluate(`document.querySelector('#modal .trophy-scope b')?.textContent.trim()`);
+  await click('#modal [data-action="trophy-mode"][data-value="year"]');
+  const years = await evaluate(`document.querySelectorAll('#modal .trophy-single tbody tr').length`);
+  await click('#modal [data-action="trophy-cat"][data-value=""]');
+  // Back at every category, the scope side of the bar is the year strip itself.
+  const back = await evaluate(`document.querySelectorAll('#modal .year-pill').length`);
+
+  // 7 categories x 2 years, two spaces on the board, one row per year in a category.
+  const ok = night === 5 && pills === 2 && opensOnNewest === true && paged === true &&
+    league === 2 && totals === '7,3' && scoped === 'Most Projects' &&
+    years === 2 && back === 2;
+  if (!ok) {
+    console.log(`      night ${night}, pills ${pills}, newest ${opensOnNewest}, paged ${paged}, league rows ${league}, totals ${totals}, scoped ${scoped}, years ${years}, back ${back}`);
+  }
+  return ok;
+});
+
+await check('Ranking: a row opens that space, and Escape comes back', async () => {
+  await openPanel('ranking-open');
+  // The previous check left the panel in the trophy room; the standings are a tab away.
+  await click('#modal [data-action="rank-view"][data-value="table"]');
+  // Your own row: the one space the planted standings above are guaranteed to carry, and
+  // the case that matters most anyway.
+  await click('#modal .standings-table tbody tr.me');
+  const shape = JSON.parse(
+    await evaluate(`JSON.stringify((() => {
+      const detail = document.querySelector('#modal .space-detail');
+      return {
+        open: !!detail,
+        name: document.querySelector('#modal .space-head-text b')?.textContent.trim() ?? '',
+        crumb: document.querySelector('#modal .trophy-scope b')?.textContent.trim() ?? '',
+        stats: document.querySelectorAll('#modal .stat').length,
+        fits: detail ? detail.scrollWidth - detail.clientWidth : -1,
+        // One point per night that recorded a table, and only the ends are labelled.
+        points: document.querySelectorAll('#modal .rank-chart circle').length,
+        marks: document.querySelectorAll('#modal .rank-chart .chart-mark').length,
+      };
+    })())`),
+  );
+  // Escape pops the drill-in before it closes the panel (§11: one layer at a time).
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await sleep(220);
+  const backOnTable = await evaluate(
+    `!document.querySelector('#modal .space-detail') && !!document.querySelector('#modal .standings-table')`,
+  );
+  const ok = shape.open && shape.stats === 8 && shape.fits === 0 && shape.points === 2 &&
+    shape.marks === 2 && shape.name.startsWith(shape.crumb) && backOnTable === true;
+  if (!ok) console.log(`      ${JSON.stringify(shape)}, back on table ${backOnTable}`);
+  return ok;
+});
+
 await check('Projects: the filter narrows one list', async () => {
   await ensureWorkInFlight();
   await openPanel('projects-open');

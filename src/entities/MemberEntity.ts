@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import type {
   Employment,
   MemberActivity,
@@ -176,7 +177,7 @@ export class MemberEntity {
     this.present = false;
     this.activity = 'away';
     this.path = [];
-    this.note = 'at home';
+    this.note = t('note.atHome');
   }
 
   snapshot(): MemberSnapshot {

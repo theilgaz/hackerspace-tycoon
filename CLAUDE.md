@@ -342,7 +342,7 @@ are the only spaces allowed to look bad for exactly that reason.
 | Pack | HacDC | Radio, a ground station, and a class every week. |
 | Pack | Garaj | Ships constantly, each one small. The usual Deepest Pockets. |
 | Pack | İstanbul / Ankara Hackerspace, Makerspace İzmir | The rest of Turkey: mid-table, close enough to Konya that the rivalry reads. |
-| Underdog | Ctrl+Alt+Defeat | Barely ships, posts everything. A People's Choice outsider (`online: 4.5`). |
+| Underdog | Ctrl+Alt+Defeat | Barely ships, posts everything. A Best Project outsider on a rare, enormous `standout`. |
 | Underdog | Almost Works Labs | One moonshot a season, all-or-nothing (`standout` override). A Best Project outsider. |
 | Underdog | Perpetual Beta | Sponsor money, nothing shipped. A Deepest Pockets outsider. |
 
@@ -355,6 +355,15 @@ or two of the fifty-six first-night awards on normal and hard, and a few more on
 Perpetual Beta takes Deepest Pockets five times in eight because the 0.95 rival pace slows
 Garaj's project income down. **The per-rival `standout` spreads impact without raising its
 average**, so it cannot leak into reputation.
+
+**Which is exactly why a bigger `chance` lowers the ceiling it was meant to raise.**
+`standoutNorm` divides by the *expected* multiplier to hold the average flat, so raising
+`chance` and `boost` together cancels out and then some. Re-pointing Ctrl+Alt+Defeat at Best
+Project with `0.3 / [3.5, 6]` capped their best build at 624 — **below the 765 they had with
+no override at all**, and nowhere near the 1,200 the field reaches. What an underdog's one
+award needs is the opposite shape: rare and enormous, `0.08 / [8, 12]`, which clears 1,500
+about once a year. Work the ceiling out (`rep × 1.3 × boostHigh × norm`) before tuning it;
+the seeds will not tell you, because a shot this rare barely shows up in eight of them.
 
 **Konya's pace carries its cash with it, so watch Deepest Pockets.** Raising Konya's ship rate
 by 3.4x at its old ₺1,700 a project made it the richest space as well as the busiest, and it
@@ -372,29 +381,139 @@ would be. That also means the first ceremony arrives two months before the year 
 than landing on New Year's Eve — which matters, because a player who cannot reach a ceremony
 never sees one of the game's four set pieces.
 
-**A year is 90 days, and it ends with an awards night.** Four categories, judged on the year
+**A year is 90 days, and it ends with an awards night.** Five categories, judged on the year
 just gone rather than all time, so a bad year costs you even when you are ahead overall:
 
-- **Most Projects** · **Biggest Crew** · **Deepest Pockets** · **Space of the Year** (reputation
-  earned that year, worth the most).
+- **Most Projects** (200) · **Biggest Crew** (140) · **Deepest Pockets** (100) · **Space of the
+  Year** (320, reputation earned that year, worth the most) · **Best Project** (80, the single
+  build that made the most noise).
+
+**It was seven, and the two that went were the two that were not their own axis.** Each award
+should measure something the others do not — volume, people, money, name, one great build —
+and on that test *Rising Star* and *People's Choice* both failed. Rising Star was defined in
+terms of another award (`notWinnerOf: 'Space of the Year'`): reputation growth, awarded to
+whoever did not already win on reputation, which is a runner-up rosette rather than a category,
+and it went to Konya in seven seeds of eight. People's Choice measured attention, which the
+game already pays for downstream — hype becomes reputation, which is what Space of the Year
+judges. Both were worth 80, the lowest purse on the night; **the original four carry
+320/200/140/100 between them, and the three added later were all 80s.** Best Project is the
+only 80 kept, because it is the one award that says what you actually *made* ("Nixie Clock ·
+460 hype") rather than how much of it there was.
+
+Measured after the cut, first night, `era-pace`: hard 1.5 awards a night, normal 2.0, easy
+3.25, with the player first in every seed at about 1.6x the field. Two consequences worth
+knowing:
+
+- **A shorter night makes a lock louder.** The player takes Most Projects and Space of the Year
+  in eight seeds of eight — true before the cut too, but it was two of seven and it is now two
+  of five, so 40% of the night is decided before it starts. Those are early-game locks rather
+  than permanent ones (rivals compound, and by year three Konya takes Most Projects), but if
+  the first night is ever tuned again, that is the thing to aim at.
+- **Cutting a category can strand an underdog**, because each invented one exists to sneak
+  exactly one award. People's Choice was Ctrl+Alt+Defeat's, so they were re-pointed at Best
+  Project — which is in character, since they post everything they build.
 
 **The ceremony is a stage, and the wins go on a shelf.** Awards night is the only screen in
 the run that exists purely to be enjoyed, so it is drawn as one: curtains, a lit floor, and a
 trophy per category with the winner under it — yours picked out in gold, everybody else's in
-the dark beside them. The **Trophy room** is a second view on the Ranking panel, year by year,
-newest first, and it keeps the losses too. A trophy room with only wins in it is a brag; with
-the whole night in it, "we came second to Dallas three years running" is part of the story.
+the dark beside them. The **Trophy room** is a second view on the Ranking panel, and it keeps
+the losses too. A trophy room with only wins in it is a brag; with the whole night in it, "we
+came second to Dallas three years running" is part of the story.
+
+**The ceremony is the celebration; the trophy room is the record — so it is a table.** That is
+§11's comparison rule deciding its fourth screen. It was seven cards per year, and the shape was
+the argument against itself: the same seven labels repeated down the panel, a hole where the
+fourth card of the second row should have been (the ceremony's stage centres its wrapped row;
+the shelf did not), and by the fourth year a wall of scrolling.
+
+**Four screens off two switches, on one rule: by year organises by year, all time organises by
+space.** The switch therefore means the same thing at either scope, which is what stops four
+views being four screens to learn:
+
+| | **By year** | **All time** |
+|---|---|---|
+| **All categories** | one night: every category, with a strip of years to page between | the league: one row per space, a column per category, sorted by trophies |
+| **One category** | that category year by year, newest first | who owns it — each space, how many, and which years |
+
+**A year is a page, not a column.** Every year on screen at once was a sideways scroll by the
+fourth one, and it made the newest night — the one you opened the panel to see — no more
+prominent than a night four years ago. The strip above the table is the whole run instead:
+every year, how many of the seven you took in it, and one click to any of them. It opens on
+the most recent, it runs oldest-to-newest because a timeline reads that way, and **it sits in
+the control bar rather than on a row of its own** — four stacked rows of chrome above a
+seven-row table did not fit the panel, and the strip *is* the scope when every category is on
+screen.
+
+**The league is the half a year-by-year view cannot do** — "who is the most decorated space in
+the city" is not answerable by paging through nights. **The single category is the other half**:
+one category's whole history is a handful of rows however long the run goes. You reach it by
+clicking a category — its row label in the night, or its column head in the league, which is
+also how an abbreviated head says what it means. The crumb is the way back.
+
+Five details worth keeping:
+
+- **You are on the league table with nothing on it.** A player who has never won anything is
+  the one who most needs to see where they stand, so the row is added at zero rather than
+  omitted.
+- **`AwardDef` carries a `short`** because seven award names have to sit side by side as
+  column heads — and the left-hand head is *Hackerspace*, not *Space*, since Space of the Year
+  abbreviates to `SPACE` and two columns of that name is a table you have to decode.
+- **Gold means yours, so no column may be all gold.** Every total was picked out at first,
+  which is the §11 rule about a wall of green: the colour stops being a signal.
+
+- **The category column is sticky, and it is one cell.** It holds the label *and* your tally,
+  because two sticky columns need the first one's width hardcoded into the second one's
+  `left`, and the moment those two disagree the years scroll through the gap between them.
+- **A tab gets its own footer.** The Ranking footer explains that the standings are all-time
+  and the awards are not — true, and nothing to do with the room you are looking at.
+- **Gold is the signal and it is a token** (`--gold`, brighter than `--warning`, which is a
+  state rather than a prize). A loss stays neutral, per §11: a wall of gold says as much as
+  a wall of grey.
+
+**Any space is a drill-in, from any row of any of those tables.** The tables answer "who is
+ahead"; a space's own screen answers "who *are* they" — rank, reputation and shipped both all
+time and this year, crew, cash, upvotes, growth, the build that made their year, and every
+trophy they have ever taken off you. Everything on it was already in the store; the standings
+simply had no column for most of it.
+
+It is a drill-in rather than a fifth tab: **you arrive from a row and the crumb goes back to
+the table you arrived from**, and Escape pops it before it closes the panel, per §11's rule
+about unwinding one layer at a time. Two things it got right only on the second go: the
+cabinet is **one line per trophy**, because nine two-line rows scrolled a panel that should
+show a whole career at a glance; and switching tab or closing the panel clears the drill-in,
+so the Ranking button never reopens onto somebody else's space.
+
+**Where they finished, as a line — and the run had to start keeping the record first.** A
+space's screen charts its finishing place per awards night, one point a year. The catch was
+that **the standings are a live snapshot**: they only ever say where everybody is *now*, so
+the day after a ceremony the year it judged is gone. A ceremony therefore stores `standings`
+— the whole field in order, with each space's rank and reputation — because the awards night
+is the one moment a year that is already a checkpoint. Four things worth keeping:
+
+- **The axis runs the whole field, never just the range the line occupies.** Zoomed to its
+  own range, a wobble between 11th and 12th becomes a cliff. The question is "are they
+  pulling away from me", which is only honest against the size of the table.
+- **First place is at the top**, the line wears the space's own colour, and **only the ends
+  are labelled** — a number on every point is noise by the fifth year. The rest is on hover,
+  along with the reputation behind each place.
+- **One series, so there is no legend**; the heading above it names the space. Every figure
+  on the chart is a text token — the colour is carried by the mark, not by the words.
+- **A nested field a migration has to reach into is the one that arrives missing.** A
+  ceremony without `standings` threw inside the chart and took *the whole panel* down — not
+  the chart, the panel, because one render builds all of it. Save v8 fills it in for old
+  nights (which cannot be reconstructed, so they keep none and the chart starts where the
+  record does), and the chart reads `?? []` anyway.
 
 Winning pays reputation. Two tuning notes worth keeping:
 
 - **Every category must be winnable.** Açık Atölye's crew is capped at 15 because a complete
   roster is you plus fourteen — so Biggest Crew is reachable, but only if you have hired
-  everybody. It was capped at 40 first, which made one of the four awards decoration.
+  everybody. It was capped at 40 first, which made one of the awards decoration.
 - `npm run era-pace [seeds]` prints the first awards night, the day each era arrives, and the
-  final standings. Targets: an engaged player takes **one or two of four** on the first night
-  (currently 1.0 per night on normal), finishes **first overall** by day 220 without finishing
-  at twice the field (currently 1.48× on normal), and no single rival wins two categories every
-  time. Measured with a player who uses every verb, Reddit included.
+  final standings. Targets: an engaged player takes **one or two of five** on the first night
+  (currently 2.0 on normal, 1.5 on hard, 3.25 on easy), finishes **first overall** by day 220
+  without finishing at twice the field (currently ~1.6× on normal), and no single rival wins
+  two categories every time. Measured with a player who uses every verb, Reddit included.
 - **Reddit softened hard, and that is left standing on purpose.** Before Phase 2 a hard run
   came first in six seeds of eight; with posting it comes first in all eight, though by as
   little as 1.02×. A new verb making the game easier is expected, and the honest fix is to see
@@ -1225,6 +1344,29 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   back before anything looks one up, and **day plans** are recomputed rather than saved so they
   cannot drift. Bump `SAVE_VERSION` on any shape change — an old file is discarded rather than
   half-loaded, because a save that loads into a broken game is worse than no save.
+- **Language (`src/i18n/`)** — English and Turkish, typed. `en/` is the source of truth and
+  `tr/` is typed against it area by area, so a missing Turkish key fails `npm run typecheck`.
+  Five rules, each from something that broke:
+  - **`t()` for what is rebuilt, `msg()` for what is saved.** A log line, the reason a run
+    ended and a bill line are stored as `{ key, params }` and rendered with `say()` at display
+    time, so a save written in English reads in Turkish after switching. Old saves hold plain
+    strings, which `say()` passes through — no migration needed.
+  - **Numbers go in as numbers.** A message formats its own money and decimals (`money`,
+    `num`), so ₺7,000 and ₺7.000 both come out of one stored line.
+  - **Never glue a Turkish suffix onto a name.** Harmony depends on the name: `ek(name, 'dat')`
+    gives CNC'ye, Unit 4B'ye, Konya'dan, 10'da.
+  - **`lang` drives CSS casing, and that cuts both ways.** Under `lang="tr"`, `uppercase` turns
+    i into İ — right for Turkish, and it turned English labels into İNTEREST and RANKİNG. Text
+    that is still English carries its own `lang="en"`. JS casing goes through `caseLocale()`.
+  - **A key in a template literal typechecks.** Tables that moved from text to keys
+    (`ACTIVITY_LABEL`, `SIZE_FILTERS`) compiled fine and would have printed `ui.size.any` on
+    screen. `?lang=xx` (or `lang xx` in the dev console) brackets everything that went
+    through `t()`, so anything unbracketed is text that did not.
+  Harnesses match bill lines by message key, never by English label — a label filter that
+  stops matching reads as ₺0 instead of failing. Still English on purpose: catalogue content
+  (projects, genres, traits, roles, rivals, subreddits, amenities, awards — step 4, translated
+  at display time because award labels are map keys in saved ceremonies) and the Jobs wizard,
+  Shop and build menu, which are being rebuilt.
 - **Sim purity:** the Simulation must not import `three` and must not touch the DOM. It should be
   runnable headless — this is what makes balance testable.
 - **Debugging:** `window.__store.getState()` in the console.

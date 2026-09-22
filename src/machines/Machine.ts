@@ -2,6 +2,10 @@ import type { JobSnapshot, MachineSnapshot, MachineType } from '@/game/types';
 import { MACHINE } from '@/utils/constants';
 import { rng } from '@/utils/rng';
 import type { StationDef } from './layout';
+import type { MessageKey } from '@/i18n';
+
+/** Why a print failed — a message key under `fail.*` in `src/i18n/en.ts`. */
+export type FailureReason = Extract<MessageKey, `fail.${string}`>;
 
 export interface Job {
   id: string;
@@ -18,7 +22,7 @@ export interface Job {
 
 export type JobResult =
   | { kind: 'done'; job: Job }
-  | { kind: 'failed'; job: Job; reason: string; atHour: number };
+  | { kind: 'failed'; job: Job; reason: FailureReason; atHour: number };
 
 /**
  * A machine processes one job at a time on the sim clock, regardless of whether anyone
@@ -128,7 +132,7 @@ export class Machine {
       const draw = (step / job.hoursRequired) * job.material;
       if (this.consumable < draw) {
         this.consumable = 0;
-        return this.fail(job, 'ran out of filament');
+        return this.fail(job, 'fail.noFilament');
       }
       this.consumable -= draw;
       job.materialDrawn += draw;
@@ -151,22 +155,19 @@ export class Machine {
     return null;
   }
 
-  private fail(job: Job, reason: string): JobResult {
+  private fail(job: Job, reason: FailureReason): JobResult {
     const atHour = job.progress;
     this.current = null;
     return { kind: 'failed', job, reason, atHour };
   }
 
-  private failureReason(): string {
+  private failureReason(): FailureReason {
+    // Keys, not sentences: the log renders them in whatever language is on screen. The lists
+    // keep their length and order, so the RNG stream — and every harness — is unchanged.
     if (this.calibration < MACHINE.calibrationWarning) {
-      return rng.pick(['bed adhesion let go', 'first layer lifted', 'nozzle jammed']);
+      return rng.pick<FailureReason>(['fail.adhesion', 'fail.firstLayer', 'fail.nozzle']);
     }
-    return rng.pick([
-      'turned into spaghetti',
-      'layer shift',
-      'thermal runaway trip',
-      'part knocked loose by the gantry',
-    ]);
+    return rng.pick<FailureReason>(['fail.spaghetti', 'fail.layerShift', 'fail.thermal', 'fail.gantry']);
   }
 
   calibrate(dt: number) {

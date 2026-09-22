@@ -1,3 +1,4 @@
+import type { Text } from '@/i18n';
 import type { Tile } from '@/utils/grid';
 
 // ---------------------------------------------------------------------------
@@ -375,7 +376,7 @@ export interface RivalState {
   reputation: number;
   /** Fraction of their current build that is done. */
   progress: number;
-  /** Upvotes their builds have drawn, all time. People's Choice reads the year's share. */
+  /** Upvotes their builds have drawn, all time. Shown on a space's own screen. */
   upvotes: number;
   /** Their best single build since the last awards night, by hype. Cleared on the night. */
   bestBuild: { name: string; score: number } | null;
@@ -393,9 +394,9 @@ export interface ScoreRow {
   cash: number;
   reputation: number;
   reputationThisYear: number;
-  /** Reputation earned this year as a share of what they walked in with — Rising Star. */
+  /** Reputation earned this year as a share of what they walked in with. */
   growthThisYear: number;
-  /** Upvotes this year — People's Choice. */
+  /** Upvotes this year. */
   upvotesThisYear: number;
   /** The best single build this year, by the hype it made — Best Project. */
   bestBuild: { name: string; score: number } | null;
@@ -431,7 +432,9 @@ export interface LogEntry {
   id: string;
   day: number;
   time: number;
-  text: string;
+  /** A message rendered at display time, so the log follows a language switch. Older saves
+   *  and the dev console carry a plain string, which is shown as it is. */
+  text: Text;
   kind: 'info' | 'good' | 'bad' | 'warn';
   /** Consecutive repeats, collapsed into one line rather than flooding the log. */
   repeats?: number;
