@@ -33,16 +33,25 @@ export interface RivalDef {
    * and c-base get talked about; Konya is busy doing the work.
    */
   online: number;
+  /**
+   * Overrides `RIVAL_STANDOUT` for a space whose builds are all-or-nothing. It spreads their
+   * impact, never raises the average, so it buys a shot at Best Project and nothing else.
+   */
+  standout?: { chance: number; boost: readonly [number, number] };
   /** What their best builds are called on awards night. Picked from, in character. */
   builds: string[];
 }
 
 /**
  * The competition: real hackerspaces, as a nod rather than a portrait. Their in-game
- * numbers are pure balance — each inherits one of five deliberately different shapes so the
- * leaderboard is not a single ladder — but the tone stays affectionate. These are actual
- * communities, so the blurbs describe what each is known for rather than scoring points off
- * them.
+ * numbers are pure balance — each has a deliberately different shape so the leaderboard is
+ * not a single ladder — but the tone stays affectionate. These are actual communities, so
+ * the blurbs describe what each is known for rather than scoring points off them.
+ *
+ * Three tiers. c-base, London, Konya, Tokyo and Xinchejian are the top five, with Konya the
+ * most productive of them — the most ships and the most reputation of any rival. Then the
+ * chasing pack, the rest of Turkey included. Then three invented underdogs, which are the
+ * only ones allowed to look bad: they are not real, so there is nobody to be unkind to.
  */
 export const RIVALS: RivalDef[] = [
   {
@@ -54,8 +63,8 @@ export const RIVALS: RivalDef[] = [
     startMembers: 7,
     maxMembers: 14,
     startCash: 12000,
-    shipPace: 0.054,
-    repPerProject: 449,
+    shipPace: 0.06,
+    repPerProject: 440,
     cashPerProject: 4200,
     cashPerDay: 90,
     repPerMember: 340,
@@ -72,8 +81,8 @@ export const RIVALS: RivalDef[] = [
     startMembers: 10,
     maxMembers: 14,
     startCash: 10000,
-    shipPace: 0.131,
-    repPerProject: 187,
+    shipPace: 0.14,
+    repPerProject: 188,
     cashPerProject: 1500,
     cashPerDay: 170,
     repPerMember: 180,
@@ -84,15 +93,15 @@ export const RIVALS: RivalDef[] = [
   {
     id: 'konya',
     name: 'Konya Hackerspace',
-    blurb: 'The other space in town. Practical, steady, and always at the same table.',
+    blurb: 'The other space in town, and the hardest-working one anywhere. Always shipping.',
     icon: 'cpu',
     colour: '#f0b429',
-    startMembers: 5,
+    startMembers: 6,
     maxMembers: 14,
     startCash: 9000,
-    shipPace: 0.119,
-    repPerProject: 191,
-    cashPerProject: 1700,
+    shipPace: 0.4,
+    repPerProject: 68,
+    cashPerProject: 350,
     cashPerDay: 130,
     repPerMember: 250,
     paceGrowth: 4500,
@@ -108,8 +117,8 @@ export const RIVALS: RivalDef[] = [
     startMembers: 7,
     maxMembers: 13,
     startCash: 4000,
-    shipPace: 0.084,
-    repPerProject: 233,
+    shipPace: 0.1,
+    repPerProject: 262,
     cashPerProject: 900,
     cashPerDay: 90,
     repPerMember: 200,
@@ -145,7 +154,7 @@ export const RIVALS: RivalDef[] = [
     maxMembers: 14,
     startCash: 900,
     shipPace: 0.095,
-    repPerProject: 266,
+    repPerProject: 240,
     cashPerProject: 500,
     cashPerDay: 25,
     repPerMember: 190,
@@ -163,7 +172,7 @@ export const RIVALS: RivalDef[] = [
     maxMembers: 10,
     startCash: 14000,
     shipPace: 0.071,
-    repPerProject: 333,
+    repPerProject: 305,
     cashPerProject: 2200,
     cashPerDay: 180,
     repPerMember: 300,
@@ -181,7 +190,7 @@ export const RIVALS: RivalDef[] = [
     maxMembers: 13,
     startCash: 8000,
     shipPace: 0.084,
-    repPerProject: 299,
+    repPerProject: 265,
     cashPerProject: 2400,
     cashPerDay: 110,
     repPerMember: 260,
@@ -203,7 +212,7 @@ export const RIVALS: RivalDef[] = [
     maxMembers: 15,
     startCash: 9000,
     shipPace: 0.203,
-    repPerProject: 116,
+    repPerProject: 108,
     cashPerProject: 1100,
     cashPerDay: 150,
     repPerMember: 170,
@@ -220,8 +229,8 @@ export const RIVALS: RivalDef[] = [
     startMembers: 6,
     maxMembers: 12,
     startCash: 9000,
-    shipPace: 0.239,
-    repPerProject: 103,
+    shipPace: 0.25,
+    repPerProject: 106,
     cashPerProject: 950,
     cashPerDay: 120,
     repPerMember: 280,
@@ -246,6 +255,126 @@ export const RIVALS: RivalDef[] = [
     paceGrowth: 4500,
     online: 0.8,
     builds: ['Satellite Ground Station', 'Ham Radio Transceiver', 'SDR Weather Receiver'],
+  },
+
+  // The rest of Turkey. Mid-table on purpose: close enough to Konya that the national
+  // rivalry reads, never close enough to join the top five.
+  {
+    id: 'istanbul',
+    name: 'İstanbul Hackerspace',
+    blurb: 'Two continents, one workbench, and a crew that arrives in waves off the ferry.',
+    icon: 'home',
+    colour: '#e05a4f',
+    startMembers: 8,
+    maxMembers: 13,
+    startCash: 8000,
+    shipPace: 0.12,
+    repPerProject: 180,
+    cashPerProject: 1400,
+    cashPerDay: 140,
+    repPerMember: 240,
+    paceGrowth: 4500,
+    online: 1.1,
+    builds: ['Street Cat Feeding Station', 'Ferry Timetable Display', 'Neighbourhood Air Quality Map'],
+  },
+  {
+    id: 'ankara',
+    name: 'Ankara Hackerspace',
+    blurb: 'The capital. Campus people, security nerds, and a CTF team that never goes home.',
+    icon: 'code',
+    colour: '#6f8ff0',
+    startMembers: 6,
+    maxMembers: 12,
+    startCash: 7000,
+    shipPace: 0.1,
+    repPerProject: 200,
+    cashPerProject: 1500,
+    cashPerDay: 120,
+    repPerMember: 260,
+    paceGrowth: 4500,
+    online: 0.9,
+    builds: ['CTF Training Rig', 'Campus Weather Station', 'Open Data Transit Board'],
+  },
+  {
+    id: 'izmir',
+    name: 'Makerspace İzmir',
+    blurb: 'By the sea and in no particular hurry. Better with a CNC than anybody admits.',
+    // 'tooling' is a *category* name, not a glyph; it resolves to this one.
+    icon: 'wrench',
+    colour: '#4fc1a6',
+    startMembers: 5,
+    maxMembers: 12,
+    startCash: 7500,
+    shipPace: 0.13,
+    repPerProject: 150,
+    cashPerProject: 1200,
+    cashPerDay: 120,
+    repPerMember: 260,
+    paceGrowth: 4500,
+    online: 1.0,
+    builds: ['Olive Grove Soil Sensor', 'Kordon Bike Counter', 'Sea Breeze Wind Logger'],
+  },
+
+  // The underdogs. Invented, and always at the foot of the table: a third of anybody else's
+  // pace and a crew that never outgrows the room. Each is built to sneak into exactly one
+  // award now and then — they are not good, but they are not nothing.
+  {
+    id: 'ctrl-alt-defeat',
+    name: 'Ctrl+Alt+Defeat',
+    blurb: 'Four people, a Discord server of thousands, and a build log longer than any build.',
+    // People's Choice: barely ships, but everything it does ship gets posted everywhere.
+    icon: 'gamepad',
+    colour: '#ff7eb6',
+    startMembers: 3,
+    maxMembers: 6,
+    startCash: 2500,
+    shipPace: 0.05,
+    repPerProject: 170,
+    cashPerProject: 300,
+    cashPerDay: 40,
+    repPerMember: 400,
+    paceGrowth: 4500,
+    online: 4.5,
+    builds: ['RGB Everything Keyboard', 'Stream Deck Clone', 'Meme Printer'],
+  },
+  {
+    id: 'almost-works',
+    name: 'Almost Works Labs',
+    blurb: 'Only ever attempts the impossible. Usually fails; once a year, spectacularly does not.',
+    // Best Project: one moonshot a season at most, and when it lands it really lands.
+    icon: 'lightbulb',
+    colour: '#9ad0ff',
+    startMembers: 3,
+    maxMembers: 5,
+    startCash: 3000,
+    shipPace: 0.02,
+    repPerProject: 420,
+    cashPerProject: 600,
+    cashPerDay: 30,
+    repPerMember: 500,
+    paceGrowth: 4500,
+    online: 1.2,
+    standout: { chance: 0.35, boost: [3, 5] },
+    builds: ['Backyard Rocket Engine', 'Homemade Tokamak (Mostly)', 'Self-Driving Office Chair'],
+  },
+  {
+    id: 'perpetual-beta',
+    name: 'Perpetual Beta',
+    blurb: 'A startup’s idea of a hackerspace. Every tool money can buy, still in the boxes.',
+    // Deepest Pockets: the sponsor keeps paying and nobody ever spends it on anything.
+    icon: 'coins',
+    colour: '#c9b27a',
+    startMembers: 4,
+    maxMembers: 6,
+    startCash: 27500,
+    shipPace: 0.04,
+    repPerProject: 190,
+    cashPerProject: 300,
+    cashPerDay: 220,
+    repPerMember: 450,
+    paceGrowth: 4500,
+    online: 0.5,
+    builds: ['Pitch Deck Hologram', 'Blockchain Coffee Machine', 'Smart Bin (Beta)'],
   },
 ];
 

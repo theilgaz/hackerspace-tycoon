@@ -5,7 +5,13 @@ import type { ProjectCategory } from '@/game/types';
  * They replace the emoji the wizard used to lean on — emoji render at whatever size and
  * weight the platform feels like, which is exactly why a set of them never looks designed.
  */
-const PATHS: Record<string, string> = {
+/**
+ * **Not annotated `Record<string, string>` on purpose.** It was, and that made
+ * `IconName = keyof typeof PATHS` mean `string` — so `icon('tooling')` typechecked, drew
+ * `<svg>undefined</svg>`, and put an empty box on the leaderboard. `satisfies` keeps the
+ * shape check without throwing the literal keys away.
+ */
+const PATHS = {
   code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
   cpu:
     '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/>' +
@@ -71,7 +77,7 @@ const PATHS: Record<string, string> = {
   dish:
     '<circle cx="12" cy="12" r="8.5"/><path d="M12 12 18.2 5.8"/>' +
     '<path d="M7.6 12A4.4 4.4 0 0 1 12 7.6"/>',
-};
+} satisfies Record<string, string>;
 
 export type IconName = keyof typeof PATHS;
 

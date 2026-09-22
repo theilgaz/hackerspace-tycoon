@@ -1,14 +1,14 @@
 import type { RivalState, ScoreRow } from '@/game/types';
 import { AWARDS, RIVALS, RIVAL_STANDOUT, RIVAL_UPVOTES_PER_REP } from '@/utils/rivals';
 
-const [boostLow, boostHigh] = RIVAL_STANDOUT.boost;
-/** Keeps the average build's impact at its reputation, so standouts are spread, not inflation. */
-const STANDOUT_NORM =
-  1 / (1 - RIVAL_STANDOUT.chance + RIVAL_STANDOUT.chance * ((boostLow + boostHigh) / 2));
 import { rng } from '@/utils/rng';
 
+/** Keeps the average build's impact at its reputation, so standouts are spread, not inflation. */
+const standoutNorm = ({ chance, boost: [low, high] }: { chance: number; boost: readonly [number, number] }) =>
+  1 / (1 - chance + chance * ((low + high) / 2));
+
 /**
- * Five other hackerspaces, simulated cheaply. They are not running the real pipeline —
+ * The other hackerspaces, simulated cheaply. They are not running the real pipeline —
  * they are a pace-setter, so the player has something to be measured against at the end of
  * each year (CLAUDE.md §11). Each has a different shape so the leaderboard is not a single
  * ladder: one is rich and unknown, one is famous and broke.
@@ -47,8 +47,9 @@ export function tickRivals(rivals: RivalState[], pressure: RivalPressure = { pac
       rival.reputation += earned;
       // How loud the build was. A standout changes this and only this: fed into reputation it
       // compounded through `paceGrowth` and the field finished a third higher than it should.
-      const standout = rng.chance(RIVAL_STANDOUT.chance) ? rng.range(boostLow, boostHigh) : 1;
-      const impact = Math.round(earned * standout * STANDOUT_NORM);
+      const shape = def.standout ?? RIVAL_STANDOUT;
+      const standout = rng.chance(shape.chance) ? rng.range(shape.boost[0], shape.boost[1]) : 1;
+      const impact = Math.round(earned * standout * standoutNorm(shape));
       rival.upvotes += Math.round(impact * RIVAL_UPVOTES_PER_REP * def.online * rng.range(0.5, 1.5));
       if (!rival.bestBuild || impact > rival.bestBuild.score) {
         rival.bestBuild = { name: rng.pick(def.builds), score: impact };
