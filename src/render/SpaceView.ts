@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { MachineType, RuntimeSnapshot } from '@/game/types';
-import { GRID, STATIONS, type StationDef } from '@/machines/layout';
+import { GRID, STATIONS, amenitySlots, type StationDef } from '@/machines/layout';
+import { amenityDef, type AmenityDef } from '@/utils/amenities';
 import { MACHINE } from '@/utils/constants';
 import { iconDataUrl, type IconName } from '@/ui/icons';
 
@@ -175,6 +176,10 @@ export class SpaceView {
   private sign: THREE.Mesh | null = null;
   /** Bumped on every repaint, so a badge that loads late cannot draw onto a stale sign. */
   private signToken = 0;
+  /** Comforts bought from the Shop, in the order they were bought (§7b). */
+  private amenityIds: string[] = [];
+  private amenityKey = '';
+  private amenityNodes: THREE.Object3D[] = [];
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
@@ -596,6 +601,339 @@ export class SpaceView {
     node.rotation.y = activity === 'working' ? Math.sin(this.elapsed * 2.5) * 0.18 : 0;
   }
 
+  // -------------------------------------------------------------------------
+  // The Shop's comforts (§7b)
+  // -------------------------------------------------------------------------
+
+  /** Called every frame by `Game`; rebuilds only when the owned list actually changes. */
+  setAmenities(ids: string[]) {
+    const key = ids.join(',');
+    if (key === this.amenityKey) return;
+    this.amenityKey = key;
+    this.amenityIds = [...ids];
+    this.buildAmenities();
+  }
+
+  /**
+   * Everything the space has bought for the people in it. **A comfort you cannot see is a
+   * number in a panel**, and the whole reason the shop is worth building is that ₺22,000 of
+   * arcade cabinet should be standing in the room the moment it is paid for.
+   */
+  private buildAmenities() {
+    for (const node of this.amenityNodes) {
+      this.group.remove(node);
+      node.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        child.geometry.dispose();
+        for (const material of [child.material].flat()) material.dispose();
+      });
+    }
+    this.amenityNodes = [];
+
+    const slots = amenitySlots();
+    let floorIndex = 0;
+    for (const id of this.amenityIds) {
+      const def = amenityDef(id);
+      if (!def) continue;
+      const node = new THREE.Group();
+      node.add(this.buildProp(def));
+
+      if (def.mount === 'wall') {
+        this.placeOnWall(node, def);
+      } else {
+        const slot = slots[floorIndex];
+        floorIndex += 1;
+        if (!slot) continue; // more comforts than the room has edges; it waits for a lease
+        node.position.copy(toWorld(slot.x, slot.y));
+        // **They face the camera, and that is not the same as facing into the room.** An
+        // isometric camera only ever sees the +x and +z faces, so a fridge turned to look up
+        // the room — which is what a station's stand tile would ask for — presents its back
+        // and becomes a dark box. These have no stand tile and nobody operates them, so the
+        // only thing their facing decides is whether you can see what you paid for.
+      }
+      this.group.add(node);
+      this.amenityNodes.push(node);
+    }
+  }
+
+  /** Wall-mounted kit hangs off the back wall, which is the one the camera reads across. */
+  private placeOnWall(node: THREE.Object3D, def: AmenityDef) {
+    const back = toWorld((GRID.width - 1) / 2, -0.6);
+    node.position.z = back.z + 0.1;
+    if (def.shape === 'ac') {
+      node.position.x = toWorld(GRID.width - 1.4, 0).x;
+      node.position.y = 1.34;
+    } else {
+      node.position.x = back.x;
+      node.position.y = 1.16;
+    }
+  }
+
+  private buildProp(def: AmenityDef): THREE.Object3D {
+    switch (def.shape) {
+      case 'coffee':
+        return this.propCoffee(def.tone);
+      case 'water':
+        return this.propWater(def.tone);
+      case 'couch':
+        return this.propCouch(def.tone);
+      case 'fridge':
+        return this.propFridge(def.tone);
+      case 'ac':
+        return this.propAirCon(def.tone);
+      case 'pingpong':
+        return this.propPingPong(def.tone);
+      case 'aquarium':
+        return this.propAquarium(def.tone);
+      case 'arcade':
+        return this.propArcade(def.tone);
+      default:
+        return this.propAcoustics(def.tone);
+    }
+  }
+
+  private propCoffee(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.42, 0.5), mat('#3b4250'));
+    counter.position.y = 0.21;
+    counter.castShadow = true;
+    g.add(counter);
+    const machine = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.4, 0.32), mat(tone));
+    machine.position.set(-0.14, 0.62, 0);
+    machine.castShadow = true;
+    g.add(machine);
+    const spout = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.08), mat('#c9d1dd'));
+    spout.position.set(-0.14, 0.47, 0.2);
+    g.add(spout);
+    for (const sx of [0.16, 0.3]) {
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.1, 8), mat('#e8ecf2'));
+      cup.position.set(sx, 0.47, 0.06);
+      g.add(cup);
+    }
+    return g;
+  }
+
+  private propWater(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.86, 0.36), mat('#dfe4ec'));
+    body.position.y = 0.43;
+    body.castShadow = true;
+    g.add(body);
+    const bottle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.17, 0.19, 0.42, 10),
+      new THREE.MeshStandardMaterial({
+        color: tone,
+        flatShading: true,
+        transparent: true,
+        opacity: 0.72,
+      }),
+    );
+    bottle.position.y = 1.08;
+    g.add(bottle);
+    const tap = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.1), mat('#5a6270'));
+    tap.position.set(0, 0.6, 0.2);
+    g.add(tap);
+    return g;
+  }
+
+  private propCouch(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.26, 0.56), mat(tone));
+    seat.position.set(0, 0.25, 0.04);
+    seat.castShadow = true;
+    g.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.42, 0.16), mat(tone));
+    back.position.set(0, 0.42, -0.22);
+    back.castShadow = true;
+    g.add(back);
+    for (const sx of [-0.42, 0.42]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.56), mat(tone));
+      arm.position.set(sx, 0.44, 0.04);
+      g.add(arm);
+    }
+    for (const sx of [-0.3, 0.3]) {
+      const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.42), mat('#6f8f72'));
+      cushion.position.set(sx, 0.42, 0.06);
+      g.add(cushion);
+    }
+    return g;
+  }
+
+  private propFridge(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.3, 0.54), mat('#2d333d'));
+    body.position.y = 0.65;
+    body.castShadow = true;
+    g.add(body);
+    // The glass door, lit from inside: the one thing in the room that looks like a shop.
+    const door = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 1.02, 0.06),
+      new THREE.MeshStandardMaterial({
+        color: tone,
+        flatShading: true,
+        transparent: true,
+        opacity: 0.62,
+        emissive: new THREE.Color(tone),
+        emissiveIntensity: 0.5,
+      }),
+    );
+    door.position.set(0, 0.72, 0.28);
+    g.add(door);
+    for (const y of [0.44, 0.76, 1.08]) {
+      const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.04, 0.4), mat('#4d5663'));
+      shelf.position.set(0, y, 0.06);
+      g.add(shelf);
+    }
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.4, 0.04), mat('#aab3c0'));
+    handle.position.set(0.21, 0.72, 0.31);
+    g.add(handle);
+    return g;
+  }
+
+  private propAirCon(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.28, 0.22), mat(tone));
+    body.castShadow = true;
+    g.add(body);
+    const vent = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, 0.05), mat('#8f98a5'));
+    vent.position.set(0, -0.09, 0.11);
+    g.add(vent);
+    const light = new THREE.Mesh(
+      new THREE.SphereGeometry(0.03, 8, 6),
+      new THREE.MeshStandardMaterial({ color: '#7ac74f', emissive: '#2f6b1f', flatShading: true }),
+    );
+    light.position.set(0.38, 0.02, 0.12);
+    g.add(light);
+    return g;
+  }
+
+  private propPingPong(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.06, 0.68), mat(tone));
+    top.position.y = 0.72;
+    top.castShadow = true;
+    g.add(top);
+    const line = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.01, 0.03), mat('#e8ecf2'));
+    line.position.y = 0.756;
+    g.add(line);
+    const net = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.14, 0.72), mat('#cdd4de'));
+    net.position.y = 0.8;
+    g.add(net);
+    for (const sx of [-0.46, 0.46]) {
+      for (const sz of [-0.26, 0.26]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.7, 0.06), mat('#4a525e'));
+        leg.position.set(sx, 0.35, sz);
+        g.add(leg);
+      }
+    }
+    const bat = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.12), mat('#b4453a'));
+    bat.position.set(0.3, 0.77, 0.18);
+    bat.rotation.y = 0.5;
+    g.add(bat);
+    return g;
+  }
+
+  private propAquarium(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const stand = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.5, 0.42), mat('#3a3027'));
+    stand.position.y = 0.25;
+    stand.castShadow = true;
+    g.add(stand);
+    const water = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.44, 0.38),
+      new THREE.MeshStandardMaterial({
+        color: tone,
+        flatShading: true,
+        transparent: true,
+        opacity: 0.45,
+        emissive: new THREE.Color(tone),
+        emissiveIntensity: 0.35,
+      }),
+    );
+    water.position.y = 0.73;
+    g.add(water);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.05, 0.42), mat('#2d333d'));
+    lid.position.y = 0.97;
+    g.add(lid);
+    for (const [fx, fy, colour] of [
+      [-0.16, 0.7, '#f0b429'],
+      [0.12, 0.8, '#e2725b'],
+      [0.2, 0.64, '#f08fa4'],
+    ] as [number, number, string][]) {
+      const fish = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.03), mat(colour));
+      fish.position.set(fx, fy, 0.06);
+      g.add(fish);
+    }
+    return g;
+  }
+
+  private propArcade(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.5, 0.62), mat('#22262e'));
+    body.position.y = 0.75;
+    body.castShadow = true;
+    g.add(body);
+    const side = mat(tone);
+    for (const sx of [-0.31, 0.31]) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.02, 1.44, 0.58), side);
+      panel.position.set(sx, 0.75, 0);
+      g.add(panel);
+    }
+    // The screen, tipped back the way a cabinet's is, and the only light source in the room
+    // that is there purely for fun.
+    const screen = new THREE.Mesh(
+      new THREE.BoxGeometry(0.46, 0.4, 0.04),
+      new THREE.MeshStandardMaterial({
+        color: '#7fd8ff',
+        flatShading: true,
+        emissive: new THREE.Color('#2b6fa8'),
+        emissiveIntensity: 0.9,
+      }),
+    );
+    screen.position.set(0, 1.08, 0.3);
+    screen.rotation.x = -0.28;
+    g.add(screen);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.06, 0.26), mat('#3a4250'));
+    panel.position.set(0, 0.86, 0.36);
+    panel.rotation.x = 0.34;
+    g.add(panel);
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.12, 6), mat('#d94f3d'));
+    stick.position.set(-0.12, 0.93, 0.36);
+    g.add(stick);
+    for (const sx of [0.04, 0.14]) {
+      const button = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.03, 8), mat('#f0b429'));
+      button.position.set(sx, 0.9, 0.36);
+      g.add(button);
+    }
+    const marquee = new THREE.Mesh(
+      new THREE.BoxGeometry(0.56, 0.18, 0.06),
+      new THREE.MeshStandardMaterial({
+        color: tone,
+        flatShading: true,
+        emissive: new THREE.Color(tone),
+        emissiveIntensity: 0.6,
+      }),
+    );
+    marquee.position.set(0, 1.4, 0.3);
+    g.add(marquee);
+    return g;
+  }
+
+  private propAcoustics(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    // A run of panels across the back wall, staggered, the way they actually get put up.
+    const span = Math.max(3, Math.floor(GRID.width * 0.7));
+    for (let i = 0; i < span; i += 1) {
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.46, 0.05),
+        mat(i % 2 === 0 ? tone : '#4a4f5a'),
+      );
+      panel.position.set((i - (span - 1) / 2) * 0.54, i % 2 === 0 ? 0 : -0.3, 0);
+      g.add(panel);
+    }
+    return g;
+  }
+
   /**
    * A new lease is a new room: the floor is a different size and a different colour, and
    * every bench has been carried to a new wall. Cheaper to throw the room away and build it
@@ -614,6 +952,9 @@ export class SpaceView {
     this.people.clear();
     this.buildFloor();
     this.buildWalls();
+    // The comforts came in the van too, and their slots are derived from the new grid.
+    this.amenityNodes = [];
+    this.buildAmenities();
     this.syncStations();
     return true;
   }

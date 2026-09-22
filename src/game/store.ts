@@ -66,6 +66,8 @@ export interface GameState {
   posts: Post[];
   /** Machine types the space owns; gates what can be attempted. */
   ownedMachines: MachineType[];
+  /** Comforts bought from the Shop (§7b). Ids from `AMENITIES`, in the order bought. */
+  amenities: string[];
   /** Offers waiting to be pitched (CLAUDE.md §4a). */
   backlog: BacklogEntry[];
   runtime: RuntimeSnapshot;
@@ -94,6 +96,7 @@ export interface GameState {
   closeApplicant: (id: string) => void;
   passApplicant: (id: string) => void;
   ownMachine: (type: MachineType) => void;
+  buyAmenity: (id: string) => void;
   disownMachine: (type: MachineType) => void;
   recordShipped: (hype: number, record: ShippedRecord) => void;
   recordReputation: (amount: number) => void;
@@ -133,6 +136,7 @@ export const store = createStore<GameState>((set, get) => ({
   shipped: [],
   reputation: 0,
   ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
+  amenities: [],
   backlog: [],
   applicants: [],
   passed: [],
@@ -169,13 +173,13 @@ export const store = createStore<GameState>((set, get) => ({
     const {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      passed, upvotes, backlog, log, hype, posts, overdraftSince,
+      passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      passed, upvotes, backlog, log, hype, posts, overdraftSince,
+      passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities,
     };
   },
 
@@ -225,6 +229,9 @@ export const store = createStore<GameState>((set, get) => ({
     set((s) => (s.ownedMachines.includes(type) ? s : { ownedMachines: [...s.ownedMachines, type] })),
   disownMachine: (type) =>
     set((s) => ({ ownedMachines: s.ownedMachines.filter((m) => m !== type) })),
+  // Comforts are never sold back: a table tennis table is not an investment decision, and
+  // a shop you can churn is a shop that pays for itself.
+  buyAmenity: (id) => set((s) => (s.amenities.includes(id) ? s : { amenities: [...s.amenities, id] })),
 
   recordPost: (post, reputationDelta) =>
     set((s) => ({

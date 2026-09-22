@@ -28,6 +28,7 @@ import {
   installStation,
   installedStations,
   removeStation,
+  setAmenityTiles,
   type StationDef,
   resetStations,
   stationOfType,
@@ -35,6 +36,7 @@ import {
 import {
   BACKLOG,
   BOUNTY,
+  COMFORT,
   DRIFT,
   FAB,
   FILAMENT,
@@ -69,6 +71,7 @@ import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
 import type { SaveFile } from './SaveGame';
 import { ECONOMY, membershipFor, rentFor, type Bill, type BillLine } from '@/utils/economy';
+import { amenityDef, comfortsOf, NO_COMFORTS, type Comforts } from '@/utils/amenities';
 import {
   decayHype,
   hypePressure,
@@ -251,11 +254,64 @@ export class Simulation {
     }
   }
 
+  /**
+   * What the Shop is currently doing for the place (§7b). Read in the per-member inner
+   * loops, so it is folded once and kept until the owned list changes rather than being
+   * recomputed a few thousand times a second.
+   */
+  private comfortCache: Comforts = NO_COMFORTS;
+  private comfortKey = '';
+
+  get comforts(): Comforts {
+    const owned = store.getState().amenities;
+    const key = owned.join(',');
+    if (key !== this.comfortKey) {
+      this.comfortKey = key;
+      this.comfortCache = comfortsOf(owned);
+      // Floor-standing comforts are solid: people walk round them, which is part of what
+      // you are paying for when you put a table tennis table in a small room.
+      setAmenityTiles(owned.filter((id) => amenityDef(id)?.mount === 'floor').length);
+    }
+    return this.comfortCache;
+  }
+
+  /**
+   * Buy a comfort. There is no selling one back: a table tennis table is not an investment
+   * decision, and a shop you can churn is a shop that pays for itself.
+   */
+  buyAmenity(id: string): boolean {
+    const def = amenityDef(id);
+    const state = store.getState();
+    if (!def || state.amenities.includes(id)) return false;
+    if (def.era > state.era) {
+      this.log(`The ${def.name} needs ${eraDef(def.era).name}.`, 'warn');
+      return false;
+    }
+    if (!state.spend(def.price)) {
+      this.log(`Not enough left for the ${def.name}.`, 'bad');
+      return false;
+    }
+    state.buyAmenity(id);
+    this.log(
+      def.upkeep
+        ? `${def.name} installed. ${money(def.upkeep)} a month to run.`
+        : `${def.name} installed.`,
+      'good',
+    );
+    return true;
+  }
+
   private endOfDay() {
     this.shelveAbandoned();
+    const comfort = this.comforts.mood;
     for (const m of this.members) {
       if (m.present) m.leave();
       m.data.energy = Math.min(100, m.data.energy + 45);
+      // **Mood is the shop's channel into the sim**, and it already drives both the show-up
+      // roll and the work rate. It eases toward the room rather than snapping to it: nobody's
+      // week turns around the afternoon the coffee machine arrives.
+      const target = Math.max(0, Math.min(100, m.baseMood + comfort));
+      m.data.mood += (target - m.data.mood) * COMFORT.settle;
       if (this.plans.get(m.id)?.attending && m.hasTrait('ghost')) {
         m.ghostFactor *= GHOST_DECAY;
       }
@@ -491,7 +547,7 @@ export class Simulation {
         // bench is not eight times the throughput.
         const factor =
           index === 0 ? 1 : MEMBER.extraWorkerFactor * Math.pow(MEMBER.crowdDecay, index - 1);
-        const rate = m.workRate(skill, project.tags) * factor;
+        const rate = m.workRate(skill, project.tags) * factor * this.comforts.focus;
         total += rate * dt;
         rateSum += rate;
         const level = skill ? m.data.skills[skill] : 2;
@@ -601,27 +657,32 @@ export class Simulation {
   }
 
   private performActivity(m: MemberEntity, dt: number) {
+    // Air conditioning, a decent chair and a fish tank all land here.
+    const comfort = this.comforts;
     switch (m.activity) {
       case 'working': {
         const project = m.team ? this.project(m.team) : null;
         const stage = project ? STAGE_MAP[project.stage] : null;
-        m.data.energy = Math.max(0, m.data.energy - MEMBER.energyDrain * dt);
-        if (stage) m.interest -= DRIFT.decayPerHour * (1 - stage.appeal) * dt;
+        m.data.energy = Math.max(0, m.data.energy - MEMBER.energyDrain * comfort.fatigue * dt);
+        if (stage) m.interest -= DRIFT.decayPerHour * (1 - stage.appeal) * comfort.drift * dt;
         break;
       }
       case 'resting':
-        m.data.energy = Math.min(100, m.data.energy + MEMBER.energyRestore * dt);
+        m.data.energy = Math.min(100, m.data.energy + MEMBER.energyRestore * comfort.rest * dt);
         break;
       case 'idle': {
         // Hanging about waiting for a machine erodes enthusiasm, just more slowly.
-        if (m.team) m.interest -= DRIFT.decayPerHour * 0.35 * dt;
+        if (m.team) m.interest -= DRIFT.decayPerHour * 0.35 * comfort.drift * dt;
         break;
       }
       case 'babysitting': {
         const printer = this.printer;
         printer.operatorSkill = Math.max(printer.operatorSkill, m.data.skills.machining);
         if (printer.calibration < 0.98) printer.calibrate(dt);
-        m.data.energy = Math.max(0, m.data.energy - MEMBER.energyDrain * 0.4 * dt);
+        m.data.energy = Math.max(
+          0,
+          m.data.energy - MEMBER.energyDrain * 0.4 * comfort.fatigue * dt,
+        );
         break;
       }
       default:
@@ -1410,11 +1471,12 @@ export class Simulation {
     const state = store.getState();
     const rent = rentFor(state.era);
     const utilities = Math.round(this.machineHoursThisMonth * ECONOMY.utilityPerMachineHour);
+    const upkeep = this.comforts.upkeep;
     const dues = this.members.length * ECONOMY.crewDues + this.membership * ECONOMY.duesPerMember;
     return {
       income: dues,
-      costs: rent + utilities,
-      net: dues - rent - utilities,
+      costs: rent + utilities + upkeep,
+      net: dues - rent - utilities - upkeep,
       dueInDays: ECONOMY.billEvery - ((this.day - 1) % ECONOMY.billEvery),
     };
   }
@@ -1452,6 +1514,7 @@ export class Simulation {
 
     const rent = rentFor(state.era);
     const utilities = Math.round(this.machineHoursThisMonth * ECONOMY.utilityPerMachineHour);
+    const upkeep = this.comforts.upkeep;
     const costs: BillLine[] = [
       { label: 'Rent', detail: eraDef(state.era).name, amount: -rent },
       {
@@ -1460,10 +1523,19 @@ export class Simulation {
         amount: -utilities,
       },
     ];
+    // Only listed once there is something to list: a zero line on every statement for a
+    // shop the player has not opened yet is noise.
+    if (upkeep > 0) {
+      costs.push({
+        label: 'Comforts',
+        detail: `${state.amenities.length} in the space · running costs`,
+        amount: -upkeep,
+      });
+    }
 
     // The statement's bottom line is the true month; only dues and costs move cash now.
-    const total = Math.round(this.incomeThisMonth) + dues - rent - utilities;
-    const cashDelta = dues - rent - utilities;
+    const total = Math.round(this.incomeThisMonth) + dues - rent - utilities - upkeep;
+    const cashDelta = dues - rent - utilities - upkeep;
     const balanceBefore = state.cash;
     const shortfall = Math.max(0, -(balanceBefore + cashDelta));
     const balanceAfter = balanceBefore + cashDelta;
@@ -1630,7 +1702,9 @@ export class Simulation {
   private tickRecruiting() {
     const every = DIFFICULTY_MAP[store.getState().difficulty].recruitEvery;
     // Attention is why people hear about you at all, so it buys days on this clock.
-    const gain = 1 + this.pressure * (HYPE.recruitSpeedUp - 1);
+    // Attention brings people to the door; the comforts are what they hear about when
+    // they ask around, so the two stack on the same clock.
+    const gain = (1 + this.pressure * (HYPE.recruitSpeedUp - 1)) * this.comforts.draw;
     this.recruitClock = Math.min(this.recruitClock + gain, every);
     if (this.recruitClock < every) return;
     const next = this.nextApplicant();

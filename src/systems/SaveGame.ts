@@ -59,7 +59,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -139,6 +139,10 @@ function migrate(file: SaveFile): SaveFile {
       (member as { role: null }).role = null;
     }
   }
+
+  // v6 — the Shop. An older run never had one, so it owns no comforts; mood settles up
+  // from wherever it was saved on its own.
+  if (!Array.isArray(store.amenities)) store.amenities = [];
 
   file.version = SAVE_VERSION;
   return file;

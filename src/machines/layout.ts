@@ -86,6 +86,51 @@ function toolSlots(): { tile: Tile; stand: Tile }[] {
 
 const slotsFor = (type: MachineType) => (type === 'fdm' ? printerSlots() : toolSlots());
 
+/**
+ * Where the Shop's comforts stand (§7b). They get the **open edges** — the bottom row and
+ * the odd rows of the right-hand column that the tool slots step over — rather than a wall
+ * shared with the kit: the two working walls are already spoken for, and a fridge wedged
+ * between the solder bench and the assembly table would be in somebody's way in a room
+ * where being in the way costs hours.
+ *
+ * The first two columns of the bottom row are left clear because the door is down there and
+ * everybody walks in through it.
+ */
+export function amenitySlots(): Tile[] {
+  const slots: Tile[] = [];
+  const bottom = GRID.height - 1;
+  // Spaced out, then filled in — the same rule the printer wall follows. Seven comforts
+  // shoulder to shoulder along one edge read as a skip, not as a room; with a tile between
+  // them each one is a thing you bought.
+  for (let x = 2; x < GRID.width; x += 2) slots.push({ x, y: bottom });
+  for (let y = 3; y <= GRID.height - 3; y += 2) slots.push({ x: GRID.width - 1, y });
+  for (let x = 3; x < GRID.width - 1; x += 2) slots.push({ x, y: bottom });
+  return slots;
+}
+
+/**
+ * Tiles the comforts occupy. Kept apart from `BLOCKED` on purpose: `applyEraLayout` wipes
+ * that set and refills it from the stations, so anything folded into it would quietly stop
+ * blocking the moment a lease was signed.
+ */
+const PROPS = new Set<string>();
+/** How many floor-standing comforts the space owns. Their tiles are derived from it. */
+let amenityCount = 0;
+
+function rebuildProps() {
+  PROPS.clear();
+  const slots = amenitySlots();
+  for (let i = 0; i < Math.min(amenityCount, slots.length); i += 1) {
+    PROPS.add(`${slots[i].x},${slots[i].y}`);
+  }
+}
+
+/** Called whenever the owned list changes. Wall-mounted items take no floor. */
+export function setAmenityTiles(count: number) {
+  amenityCount = count;
+  rebuildProps();
+}
+
 export const MACHINE_LABEL: Record<MachineType, string> = {
   fdm: 'FDM Printer',
   bench: 'Solder Bench',
@@ -169,6 +214,8 @@ export function resetStations() {
   for (const s of STATIONS) STATION_MAP[s.id] = s;
   BLOCKED.clear();
   for (const s of STATIONS) BLOCKED.add(`${s.tile.x},${s.tile.y}`);
+  amenityCount = 0;
+  PROPS.clear();
 }
 
 /** Where the work of each stage physically happens. */
@@ -247,8 +294,12 @@ export function applyEraLayout(era: number) {
 
   BLOCKED.clear();
   for (const station of STATIONS) BLOCKED.add(`${station.tile.x},${station.tile.y}`);
+  // The comforts move too — their slots are derived from the new grid, so this re-runs
+  // rather than clearing. You do not leave the aquarium behind in the garage.
+  rebuildProps();
 }
 
 export function isBlocked(tile: Tile): boolean {
-  return BLOCKED.has(`${tile.x},${tile.y}`);
+  const key = `${tile.x},${tile.y}`;
+  return BLOCKED.has(key) || PROPS.has(key);
 }

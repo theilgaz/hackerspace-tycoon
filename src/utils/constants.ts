@@ -107,6 +107,24 @@ export const TEAM = {
 };
 
 /** §13.1 — passion match → willingness to sign up for a stage. */
+/**
+ * How the shop's comforts land on people (§7b). Mood is the channel: it already drives the
+ * show-up roll and the work rate, and until the shop existed nothing in the game wrote to it.
+ */
+export const COMFORT = {
+  /**
+   * The ceiling on the mood a fully kitted space can add. Comforts are the one thing a
+   * player can simply keep buying, so the sum runs through a saturation curve and the
+   * fourth nice thing in a room is worth much less than the first.
+   */
+  moodCap: 26,
+  /**
+   * How much of the gap to the new mood a day closes. A coffee machine takes about three
+   * days to be felt, which is right: nobody's week turns around the afternoon it arrives.
+   */
+  settle: 0.34,
+};
+
 export const DRIFT = {
   /** Interest a member starts with when they sign up (scaled by passion match). */
   startInterest: 1.0,

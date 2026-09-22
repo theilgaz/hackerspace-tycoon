@@ -38,6 +38,12 @@ import {
   weeklyHoursFor,
 } from '@/utils/constants';
 import { clock, dayName, hours, money, pct } from '@/utils/format';
+import {
+  AMENITIES,
+  comfortsOf,
+  effectLines,
+  type AmenityDef,
+} from '@/utils/amenities';
 import { CLAIMS, SUBREDDITS, SUBREDDIT_MAP, tasteMatch } from '@/utils/subreddits';
 import { merit, projectSubject, react, type Subject } from '@/systems/HypeSystem';
 import type { PrinterModel } from '@/utils/printers';
@@ -71,6 +77,7 @@ export interface UIHandlers {
   buyFilament(machineId?: string): void;
   refillCost(machineId?: string): number;
   buyPrinter(modelId: string): void;
+  buyAmenity(id: string): void;
   sellPrinter(machineId: string): void;
   signLease(): void;
   nextLease(): { era: number; def: EraDef; ready: boolean; afford: boolean } | null;
@@ -217,7 +224,7 @@ export class UI {
 
   /** Which build-menu panel is open, if any. */
   private openModal:
-    | 'jobs' | 'people' | 'ranking' | 'machines' | 'projects' | 'reddit' | null = null;
+    | 'jobs' | 'people' | 'ranking' | 'machines' | 'projects' | 'reddit' | 'shop' | null = null;
 
   /** Which group of projects is on screen. Falls through when the chosen one is empty. */
   private projectsTab: 'all' | 'on' | 'done' = 'all';
@@ -680,6 +687,14 @@ export class UI {
           if (value) h.buyPrinter(value);
           this.rerender();
           break;
+        case 'shop-open':
+          this.openModal = 'shop';
+          this.rerender();
+          break;
+        case 'buy-amenity':
+          if (value) h.buyAmenity(value);
+          this.rerender();
+          break;
         case 'sign-lease':
           h.signLease();
           this.rerender();
@@ -1061,6 +1076,16 @@ export class UI {
          <span class="bar-label">People</span>
          ${state.applicants.length ? `<i class="pip">${state.applicants.length}</i>` : ''}
        </button>
+       <button class="bar-item ${this.openModal === 'shop' ? 'active' : ''}" data-action="shop-open"
+         title="Comforts for the people, not for the work">
+         ${icon('coins', 'ui-icon bar-icon')}
+         <span class="bar-label">Shop</span>
+         ${
+           AMENITIES.some((a) => a.era <= state.era && !state.amenities.includes(a.id))
+             ? `<i class="pip">${AMENITIES.filter((a) => a.era <= state.era && !state.amenities.includes(a.id)).length}</i>`
+             : ''
+         }
+       </button>
        <button class="bar-item ${this.openModal === 'reddit' ? 'active' : ''}" data-action="reddit-open"
          title="Put something in front of an audience — attention falls on its own">
          ${icon('flame', 'ui-icon bar-icon')}
@@ -1403,16 +1428,25 @@ export class UI {
               ? this.projectsBody(state)
               : this.openModal === 'reddit'
                 ? this.redditBody(state)
-                : this.jobsBody(state);
+                : this.openModal === 'shop'
+                  ? this.shopBody(state)
+                  : this.jobsBody(state);
     this.setHTML(
       this.modal,
       'modal',
       `<div class="modal-backdrop" data-action="jobs-close">
         <div class="modal ${
-          this.openModal === 'machines' || this.openModal === 'projects' || this.openModal === 'people'
+          this.openModal === 'machines' ||
+          this.openModal === 'projects' ||
+          this.openModal === 'people' ||
+          this.openModal === 'shop'
             ? 'modal--fit'
             : ''
-        } ${this.openModal === 'projects' || this.openModal === 'people' ? 'modal--wide' : ''}"
+        } ${
+          this.openModal === 'projects' || this.openModal === 'people' || this.openModal === 'shop'
+            ? 'modal--wide'
+            : ''
+        }"
           data-action="noop">
           <header>
             ${body.head}
@@ -2595,6 +2629,9 @@ export class UI {
         const color = MEMBER_COLORS[m.id] ?? personColor(m.id);
         const interestTone = m.interest < 0.4 ? 'bad' : m.interest < 0.7 ? 'warn' : '';
         const energyTone = m.energy < 25 ? 'bad' : m.energy < 50 ? 'warn' : 'good';
+        // Mood used to be a stat nothing wrote to. The Shop writes to it, so it is now worth
+        // a row: it is the number that says whether the comforts were worth buying.
+        const moodTone = m.mood < 45 ? 'bad' : m.mood < 65 ? 'warn' : 'good';
         return `<div class="member ${m.present ? '' : 'away'}">
           <div class="head">
             <i class="swatch" style="background:${color}"></i>
@@ -2609,6 +2646,7 @@ export class UI {
           <div class="meters">
             <div class="meter"><label>interest</label>${bar(m.interest, 1.2, interestTone)}</div>
             <div class="meter"><label>energy</label>${bar(m.energy, 100, energyTone)}</div>
+            <div class="meter" title="What the place is like to be in. It moves the odds they turn up at all, and how fast they work. The Shop is what raises it."><label>mood</label>${bar(m.mood, 100, moodTone)}</div>
             <div class="meter"><label>commit</label><span class="mono">${data?.commitment ?? '?'} h/wk</span></div>
           </div>
           <div class="traits">
@@ -2630,6 +2668,124 @@ export class UI {
   // --- machines -------------------------------------------------------------
 
   /** The shop floor: every machine, what it is chewing on, and what is behind it. */
+  // --- the Shop: what you buy for the people (§7b) --------------------------
+
+  /**
+   * Comforts, grouped by the lease that unlocks them. **The grouping is the point**: it is
+   * the one screen in the game that says out loud what signing the next lease actually gets
+   * you, and an arcade cabinet you cannot buy yet is worth seeing for the same reason the
+   * printer shop lists the H2S.
+   *
+   * Each card states its effect in full, including the ones that cost you something — the
+   * table tennis table really does mean less work gets done, and hiding that would make the
+   * purchase a formality rather than a decision.
+   */
+  private shopBody(state: GameState): { head: string; content: string; foot: string } {
+    const owned = state.amenities;
+    const comforts = comfortsOf(owned);
+    const pct = (value: number) => `${value > 1 ? '+' : '−'}${Math.round(Math.abs(value - 1) * 100)}%`;
+
+    // What the room is currently doing for everybody in it. Nothing until something is
+    // bought — an all-zero readout on an empty shop teaches nothing.
+    const summary = owned.length
+      ? `<div class="ui-row" style="margin-bottom:12px">
+          <span class="icon-chip" style="--tone:var(--success)">${icon('users', 'ui-icon ui-icon--lg')}</span>
+          <div class="ui-row__main">
+            <b class="ui-title">What the place is like to be in</b>
+            <span class="ui-row__meta" style="margin-top:4px">
+              <span class="ui-badge ui-badge--accent" title="everybody turns up more, and works better">
+                ${icon('effort')}mood +${comforts.mood.toFixed(1)}
+              </span>
+              ${comforts.focus !== 1 ? `<span class="ui-badge">work rate ${pct(comforts.focus)}</span>` : ''}
+              ${comforts.rest !== 1 ? `<span class="ui-badge">rest ${pct(comforts.rest)}</span>` : ''}
+              ${comforts.fatigue !== 1 ? `<span class="ui-badge">tiring ${pct(comforts.fatigue)}</span>` : ''}
+              ${comforts.drift !== 1 ? `<span class="ui-badge">drift ${pct(comforts.drift)}</span>` : ''}
+              ${comforts.draw !== 1 ? `<span class="ui-badge">word of mouth ${pct(comforts.draw)}</span>` : ''}
+            </span>
+          </div>
+          <span class="ui-badge ui-badge--tone" style="--tone:var(--warning)" title="on every monthly statement">
+            ${icon('coins')}${money(comforts.upkeep)}/mo
+          </span>
+        </div>`
+      : '';
+
+    const groups = [1, 2, 3]
+      .map((era) => {
+        const items = AMENITIES.filter((a) => a.era === era);
+        if (!items.length) return '';
+        const locked = era > state.era;
+        return `<div class="ui-label" style="margin:${era === 1 ? 0 : 16}px 0 9px">
+            ${esc(eraDef(era).name)}
+            ${locked ? `<span class="ui-badge" style="margin-left:7px">${icon('clock')}not yours yet</span>` : ''}
+          </div>
+          <div class="ui-grid ui-grid--3">${items.map((a) => this.amenityCard(a, state)).join('')}</div>`;
+      })
+      .join('');
+
+    return {
+      head: `<div class="modal-head">${icon('coins', 'ui-icon ui-icon--lg')}<b>The Shop</b>
+        <span class="ui-badge${owned.length ? ' ui-badge--accent' : ''}">${owned.length} of ${AMENITIES.length}</span>
+      </div>`,
+      content: summary + groups,
+      foot: `<span class="ui-desc" style="font-size:10.5px">
+        None of this makes a part. It makes people turn up, stay longer and work better —
+        which §13 says is the only constraint that ever really binds. Printers and tools are
+        in <b>Machines</b>.
+      </span>`,
+    };
+  }
+
+  private amenityCard(def: AmenityDef, state: GameState): string {
+    const owned = state.amenities.includes(def.id);
+    const locked = def.era > state.era;
+    const afford = this.affordable(state, def.price);
+    const buyable = !owned && !locked && afford;
+    return `<button class="ui-option ${owned ? 'ui-option--on' : ''}" data-action="buy-amenity"
+      data-value="${def.id}" ${buyable ? '' : 'disabled'} style="--tone:${def.tone}"
+      title="${
+        owned
+          ? 'Already in the space'
+          : locked
+            ? `Comes with ${esc(eraDef(def.era).name)}`
+            : afford
+              ? `${money(def.price)} now${def.upkeep ? `, ${money(def.upkeep)} a month` : ''}`
+              : 'Not enough left'
+      }">
+      <div class="ui-option__head">
+        <span class="icon-chip">${icon(def.icon, 'ui-icon ui-icon--lg')}</span>
+        <span class="ui-title">${esc(def.name)}</span>
+        ${owned ? `<span class="ui-badge ui-badge--accent">${icon('check')}in</span>` : ''}
+      </div>
+      <span class="ui-option__desc ui-clamp-3">${esc(def.blurb)}</span>
+      <span class="ui-row__meta" style="margin:0">
+        ${effectLines(def.effect)
+          .map(
+            (line) =>
+              `<span class="ui-badge ui-badge--tone" style="--tone:var(--${line.good ? 'success' : 'destructive'})">
+                 ${esc(line.label)}
+               </span>`,
+          )
+          .join('')}
+      </span>
+      <span class="ui-row__meta" style="margin:0">
+        <span class="ui-badge ui-badge--tone"
+          style="--tone:var(--${locked ? 'warning' : afford || owned ? 'success' : 'destructive'})">
+          ${icon('coins')}${money(def.price)}
+        </span>
+        ${
+          locked
+            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('clock')}era ${def.era}</span>`
+            : ''
+        }
+        ${
+          def.upkeep
+            ? `<span class="ui-badge" title="charged on every monthly statement">${money(def.upkeep)}/mo</span>`
+            : `<span class="ui-badge">no upkeep</span>`
+        }
+      </span>
+    </button>`;
+  }
+
   private machinesBody(state: GameState): { head: string; content: string; foot: string } {
     const machines = state.runtime.machines;
     const running = machines.filter((m) => m.current).length;

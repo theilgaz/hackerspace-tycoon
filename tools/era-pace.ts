@@ -13,6 +13,7 @@ import { AWARDS } from '@/utils/rivals';
 const ROLES = Object.keys(ROLE_LABEL) as Role[];
 import { CLAIMS, SUBREDDITS, tasteMatch } from '@/utils/subreddits';
 import { merit } from '@/systems/HypeSystem';
+import { AMENITIES } from '@/utils/amenities';
 import { STAGE_STATION } from '@/machines/layout';
 
 const rows: string[] = [];
@@ -23,15 +24,38 @@ const SEEDS = Number(process.argv[2] ?? 4);
 // Difficulty now sets the crew you start with and how fast more arrive, so it has to be
 // measurable here rather than assumed to be 'normal'.
 const LEVEL = (process.argv[3] ?? 'normal') as DifficultyKey;
+/** `NO_SHOP=1` plays the same run without buying a single comfort — the A/B that says
+ *  whether the shop is worth its money, the way `hype-check` does for posting. */
+const SHOPS = process.env.NO_SHOP !== '1';
 for (let seed = 1; seed <= SEEDS; seed += 1) {
   rng.reseed(seed);
-  store.setState({ difficulty: LEVEL, cash: DIFFICULTY_MAP[LEVEL].startCash, log: [], era: 1, shippedCount: 0, reputation: 0, ceremony: null, ceremonies: [], bill: null, bills: [], missedBills: 0, gameOver: null,
+  // Every field, every seed (§13): a leftover ceremony once made three rounds of tuning
+  // read a leaderboard of starting values. The duplicate keys this used to carry were the
+  // other half of that lesson — legal JavaScript, and the last one silently wins.
+  store.setState({
+    difficulty: LEVEL,
+    cash: DIFFICULTY_MAP[LEVEL].startCash,
+    log: [],
+    era: 1,
+    shippedCount: 0,
+    shipped: [],
+    reputation: 0,
     ceremony: null,
     ceremonies: [],
     bill: null,
     bills: [],
     missedBills: 0,
-    gameOver: null, backlog: [], applicants: [], upvotes: 0, runtime: emptyRuntime() });
+    overdraftSince: null,
+    gameOver: null,
+    backlog: [],
+    applicants: [],
+    passed: [],
+    upvotes: 0,
+    hype: 0,
+    posts: [],
+    amenities: [],
+    runtime: emptyRuntime(),
+  });
   const sim = new Simulation();
   const arrived: Record<number, number> = {};
   let lastPostDay = 0;
@@ -152,6 +176,14 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       const shop = sim.buyablePrinters().filter((m) => m.era <= store.getState().era);
       const pick = [...shop].sort((a, b) => b.price - a.price).find((m) => spendable() >= m.price * 3);
       if (pick) sim.buyPrinter(pick.id);
+    }
+    // **The new verb, overused on purpose** (§13). An engaged player buys every comfort the
+    // lease allows as soon as it is comfortably affordable — which is the worst case for the
+    // balance, because the shop has no ceiling and its upkeep lands on the player alone.
+    for (const amenity of SHOPS ? AMENITIES : []) {
+      if (amenity.era > store.getState().era) continue;
+      if (store.getState().amenities.includes(amenity.id)) continue;
+      if (spendable() >= amenity.price * 2.5) sim.buyAmenity(amenity.id);
     }
     // Take on anybody who is interested and affordable — the roster is the constraint.
     for (const id of [...store.getState().applicants]) {

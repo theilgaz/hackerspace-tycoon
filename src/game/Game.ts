@@ -73,6 +73,7 @@ export class Game {
       buyFilament: (machineId) => act(() => sim.buyFilament(machineId)),
       refillCost: (machineId) => sim.refillCost(machineId),
       buyPrinter: (modelId) => act(() => sim.buyPrinter(modelId)),
+      buyAmenity: (id) => act(() => sim.buyAmenity(id)),
       sellPrinter: (machineId) => act(() => sim.sellPrinter(machineId)),
       signLease: () => act(() => sim.signLease()),
       nextLease: () => sim.nextLease(),
@@ -198,6 +199,8 @@ export class Game {
 
     // A new room needs a new shot of it, so the camera reframes when the floor changes.
     if (this.view.setEra(state.era)) this.scene.resize();
+    // Everything bought from the Shop stands in the room the moment it is paid for.
+    this.view.setAmenities(state.amenities);
     // The badge and the name go on the wall the moment the doors open.
     this.view.setSign(
       state.identity?.name ?? '',

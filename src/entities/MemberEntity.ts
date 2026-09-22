@@ -51,8 +51,16 @@ export class MemberEntity {
   /** Stages they have burned out on, with sim-hours left before they will reconsider. */
   private cooldowns = new Map<string, number>();
 
+  /**
+   * Their own temperament, from the roster. Mood moves around this rather than from zero:
+   * the shop's comforts are added to it, so a naturally sunny person stays the sunniest in
+   * the room however good the coffee gets.
+   */
+  readonly baseMood: number;
+
   constructor(data: MemberData, startTile: Tile) {
     this.data = data;
+    this.baseMood = data.mood;
     this.tile = { ...startTile };
     this.pos = { x: startTile.x, y: startTile.y };
   }

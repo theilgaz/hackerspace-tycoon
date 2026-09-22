@@ -804,6 +804,13 @@ button.primary { padding: 9px 12px; font-size: 12.5px; }
 .ui-option:hover:not(:disabled) { background: var(--card-hover); border-color: var(--border-strong); }
 .ui-option:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .ui-option:disabled { opacity: 0.4; cursor: not-allowed; }
+/*
+ * Something you already own. It is disabled like anything else you cannot click, but a
+ * comfort standing in your space should not read as a locked one — it keeps its colour and
+ * takes a marked border instead.
+ */
+.ui-option--on:disabled { opacity: 1; cursor: default; }
+.ui-option--on { border-color: var(--tone, var(--primary)); background: var(--card-hover); }
 .ui-option__head { display: flex; align-items: center; gap: 9px; width: 100%; }
 .ui-option__head .ui-title { flex: 1; min-width: 0; }
 .ui-option__desc { font-size: 11px; line-height: 1.45; color: var(--subtle-foreground); min-height: 31px; }

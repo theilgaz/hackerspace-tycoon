@@ -880,6 +880,74 @@ a few thousand under. There were five of them.
 It now makes the bill *worse* — you lose their dues — so it is a way to free a seat, not a way
 to save money. The button stays, its meaning is inverted, and the People panel says so.
 
+## 7b. The Shop — BUILT (`src/utils/amenities.ts`)
+
+**Machines make parts; the Shop makes the place worth turning up to.** Nine comforts, gated
+by the lease, bought once and never sold back — a coffee machine and a water cooler in the
+garage, a drinks fridge, air conditioning, a table tennis table and an aquarium in Unit 4B,
+an arcade cabinet and acoustic panels in the warehouse.
+
+| | Buys | Costs |
+|---|---|---|
+| **Coffee Machine** · **Water Cooler** · **A Proper Couch** | rest, and a little mood | ₺700/mo between them |
+| **Drinks Fridge** · **Aquarium** | mood, word of mouth, slower drift | ₺1,300/mo |
+| **Air Conditioning** | the biggest focus gain in the game | ₺1,900/mo |
+| **Table Tennis** · **Arcade Cabinet** | the biggest mood and recruitment gains | 5-8% of everybody's work rate |
+| **Acoustic Panels** | focus and drift, no mood at all | ₺17,000 once |
+
+**Mood is the channel, and that is the whole design.** §13's oldest rule is that the binding
+constraint is whether anybody is in the building, so a comfort that only made present people
+faster would be worth nothing. Mood already drove the show-up roll in `planDay` *and* the
+work rate in `MemberEntity.workRate` — it was the one stat the doc described at length that
+**nothing in the game ever wrote to**. The Shop writes to it. Four details:
+
+- **It eases, it does not snap.** Mood moves 34% of the way to its new level each day, so a
+  coffee machine takes about three days to be felt. Nobody's week turns around the afternoon
+  it arrives.
+- **It is added to a temperament, not set.** Each member keeps their roster mood as
+  `baseMood`; comforts are added on top. The sunniest person in the room stays the sunniest
+  however good the coffee gets.
+- **Mood saturates; the multipliers do not.** Comforts are the one thing a player can simply
+  keep buying, so the sum runs through `COMFORT.moodCap` — the fourth nice thing in a room is
+  worth much less than the first. A fully kitted warehouse is +18 mood, not +32.
+- **Two of them cost you work.** Nobody finishes a stage through a rally. Table tennis is
+  −5% work rate and the arcade −8%, and both are still worth buying. Per §13, a reward with
+  no matching punishment is not a choice — the upkeep is the punishment for the rest.
+
+**What it is worth, measured** (`NO_SHOP=1 npm run era-pace` plays the identical run without
+buying a thing — the A/B switch, like `hype-check`'s archetypes). Eight seeds, an autoplayer
+that buys every comfort the lease allows as soon as it is comfortably affordable:
+
+| | normal | hard |
+|---|---|---|
+| Projects shipped | 93 → 112 (+21%) | 79 → 91 (+15%) |
+| Final reputation | 20,600 → 22,100 (+7%) | 18,600 → 19,900 (+7%) |
+| **Era 3 arrives** | **day 110 → day 140** | **day 120 → day 156** |
+| First awards night | 22 of 56 either way | 18 of 56 either way |
+
+**The cost is the next lease, and that is the decision.** The shop does not compete with
+printers or with hiring; it competes with the ₺52,000 move to the warehouse, which is why a
+maximal shopper gets there a month later while shipping a fifth more. The first awards night
+is untouched because it falls on day 69, before there is money for any of this. **Era 3's
+documented day 102-118 is the no-shop pace**; a player who furnishes the place should expect
+the warehouse later and a better-run garage meanwhile.
+
+**They stand in the room.** A comfort you cannot see is a number in a panel, and ₺22,000 of
+arcade cabinet should be in the building the moment it is paid for. Floor-standing ones take
+the open edges — the bottom row and the odd rows of the right-hand column — spaced a tile
+apart for the same reason the printer wall is, and they block those tiles, so people walk
+round them. Air conditioning and the acoustic panels hang on the back wall and take no floor.
+Two things that were wrong first:
+
+- **A prop faces the camera, not the room.** An isometric camera only ever sees the +x and
+  +z faces, so a fridge turned to look up the room — which is what a station's stand tile
+  asks for — presents its back and is a dark box. These have no stand tile and nobody
+  operates them, so the only thing their facing decides is whether you can see what you
+  bought.
+- **Their tiles are derived from the grid and rebuilt on a lease**, not cleared. The first
+  version folded them into `BLOCKED`, which `applyEraLayout` wipes and refills from the
+  stations — so the aquarium would have quietly stopped being solid the moment you moved.
+
 ## 8. Eras (progression)
 
 | Era | Space | Unlocks | Milestone goal |
@@ -1037,7 +1105,8 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   One trap worth the line: the clock panel is a flex *row*, so a bar dropped into it with
   `flex: none` and no width rendered at zero pixels and simply was not there. It takes a
   wrapped row of its own.
-- **The build menu is the spine of the UI.** Jobs, Projects, Ranking, Machines, People. A panel
+- **The build menu is the spine of the UI.** Jobs, Projects, Ranking, Machines, People,
+  Shop, Socials. A panel
   belongs here rather than in a permanent sidebar whenever you only touch it a few times a day.
   The clock sits alone in the top-left because it is the one thing glanced at constantly and it
   changes every frame; cash is coloured by state, not merely printed.
@@ -1209,8 +1278,9 @@ Two further findings, both now fixed and worth not re-introducing:
 The doc has described a richer game than the code plays in three places. Kept here so the gap
 is visible rather than rediscovered:
 
-- **`mood` is written nowhere** except when a save is restored. §3 says the player raises
-  commitment with mood; nothing raises mood.
+- ~~**`mood` is written nowhere**~~ — **fixed by the Shop (§7b).** It was read in two hot
+  places (the show-up roll and the work rate) and written in none, which is the most
+  expensive kind of dead stat: it looks live. The comforts are what write to it.
 - **`commitment` drives nothing.** It is shown in the People panel and on the member card, but
   contracted hours (§3d) replaced it as the capacity number.
 - **Five of the seven traits are type declarations only** — `scopeCreeper`, `mentor`,
@@ -1276,7 +1346,9 @@ every day and feeds recruitment, dues and sponsors. `npm run hype-check` measure
 hour it costs is worth spending. **Crowdfunding is still open** — it is the piece that turns
 hype into a deadline you can miss, which is the sharpest version of the anti-drift clock.
 **Phase 3 — Economy — BUILT.** Dues, rent, wages, metered consumables, the monthly statement
-and eviction (§7a).
+and eviction (§7a). **Phase 3.1 — the Shop — BUILT** (§7b): nine era-gated comforts that
+raise mood, which was the one stat the doc described and nothing ever wrote to. They stand
+in the room, they carry monthly upkeep, and what they really cost you is the next lease.
 Phase 4 — Space builder: tile painting, machine placement, rooms, power, adjacency.
 Phase 5 — Recruitment: events, policies, mood/commitment loop. *(The applicant pool is built:
 twelve named people join when a shipped project matches their passions — see §5.)*
@@ -1306,6 +1378,9 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     throughput, team sizes, the catalog, or anything in `rivals.ts` — **and run all three
     difficulties**, since they now hand the player different crews and a change that suits one
     can break another.
+  - `NO_SHOP=1 npm run era-pace [seeds] [level]` — the same run with the Shop never opened.
+    Run both after touching `amenities.ts` or `COMFORT`: a comfort is only worth its upkeep
+    if the pair disagree, and §7b records what the gap currently is.
   - `npm run click-check` — needs `npm run dev` running. Drives the real UI with real mouse
     press/release pairs while the sim runs, and counts DOM rebuilds. Run it after touching
     anything in `src/ui/`.
@@ -1320,6 +1395,6 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
   - `src/render/` — `SceneManager.ts`, `SpaceView.ts`
   - `src/ui/` — panels, modals, `styles.css`
   - `src/utils/` — `constants.ts` (**all balance numbers**), `catalog.ts` (**all project
-    content**), `grid.ts`, `rng.ts`, `format.ts`
+    content**), `amenities.ts` (**the Shop**), `grid.ts`, `rng.ts`, `format.ts`
 - Balance: every coefficient from §13 starts life in `src/utils/constants.ts`. Never inline a
   tuning number at a call site.
