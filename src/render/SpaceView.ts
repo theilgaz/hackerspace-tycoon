@@ -59,6 +59,65 @@ function mat(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> 
   });
 }
 
+/**
+ * Paints a name onto a canvas for the wall sign. **This is the one texture in the room**,
+ * and it is a deliberate exception to §11's "no textures": letterforms are the single thing
+ * flat-shaded boxes cannot do, and a hackerspace with its name on the wall is what every one
+ * of them actually looks like.
+ *
+ * Letter spacing is applied a character at a time rather than through `ctx.letterSpacing`,
+ * which is recent enough that it would silently do nothing on an older engine — and a sign
+ * that quietly loses its spacing is worse than one that never had any.
+ */
+function paintSign(name: string, colour: string): { texture: THREE.CanvasTexture; aspect: number } {
+  const text = name.trim().toUpperCase();
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+
+  // Measure first, then size the canvas to the text: a fixed canvas either crops a long
+  // name or stretches a short one across half the wall.
+  const size = 84;
+  const font = (px: number) => `600 ${px}px 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, monospace`;
+  const spacing = size * 0.16;
+  const widthOf = (px: number) => {
+    ctx.font = font(px);
+    let w = 0;
+    for (const ch of text) w += ctx.measureText(ch).width + spacing;
+    return Math.max(1, w - spacing);
+  };
+
+  // Long names shrink rather than run off the end of the wall.
+  const maxText = 1500;
+  const px = widthOf(size) > maxText ? Math.max(38, Math.floor(size * (maxText / widthOf(size)))) : size;
+  const textWidth = widthOf(px);
+  const padX = px * 0.6;
+  canvas.width = Math.ceil(textWidth + padX * 2);
+  canvas.height = Math.ceil(px * 2.1);
+
+  ctx.font = font(px);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const baseline = px * 1.1;
+
+  let cursor = padX;
+  ctx.fillStyle = colour;
+  for (const ch of text) {
+    ctx.fillText(ch, cursor, baseline);
+    cursor += ctx.measureText(ch).width + spacing;
+  }
+
+  // A rule under the name, the way a painted sign is finished. Short of the full width so
+  // it reads as part of the mark rather than as a shelf.
+  ctx.globalAlpha = 0.55;
+  ctx.fillRect(padX, baseline + px * 0.36, textWidth, Math.max(2, px * 0.055));
+  ctx.globalAlpha = 1;
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return { texture, aspect: canvas.width / canvas.height };
+}
+
 interface MachineVisual {
   light: THREE.Mesh;
   bar: THREE.Mesh;
@@ -80,6 +139,10 @@ export class SpaceView {
   private stationZones = new Map<string, THREE.Mesh>();
   private hovered: string | null = null;
   private elapsed = 0;
+  /** The name painted on the left wall, and what it is painted in. */
+  private signName = '';
+  private signColour = '#5ecfc0';
+  private sign: THREE.Mesh | null = null;
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
@@ -124,6 +187,69 @@ export class SpaceView {
     left.castShadow = true;
     left.receiveShadow = true;
     this.group.add(left);
+
+    this.buildSign(h);
+  }
+
+  /**
+   * The space's name, painted on the long left wall. It goes there rather than on the back
+   * wall because the back wall is where the kit lives — the left wall is the one big blank
+   * face the camera looks straight at, and it is still blank in the warehouse.
+   */
+  private buildSign(wallHeight = 1.8) {
+    if (this.sign) {
+      this.group.remove(this.sign);
+      (this.sign.material as THREE.MeshStandardMaterial).map?.dispose();
+      (this.sign.material as THREE.Material).dispose();
+      this.sign.geometry.dispose();
+      this.sign = null;
+    }
+    if (!this.signName.trim()) return;
+
+    const { texture, aspect } = paintSign(this.signName, this.signColour);
+    // **Sized by the wall it is on, not by a fixed cap height.** A fixed height made a long
+    // name a thin strip across a fifth of the wall — the letters have to grow or shrink so
+    // that a one-word name and a four-word one both take up about half the wall. The cap
+    // stops a short name turning into a billboard.
+    const wallLength = GRID.height * TILE + 0.3;
+    let height = Math.min(0.52, Math.max(0.26, (wallLength * 0.55) / aspect));
+    let width = height * aspect;
+    if (width > wallLength * 0.78) {
+      width = wallLength * 0.78;
+      height = width / aspect;
+    }
+
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, height),
+      new THREE.MeshStandardMaterial({
+        map: texture,
+        transparent: true,
+        roughness: 1,
+        metalness: 0,
+        // Paint, not a lightbox: lit like the wall it is on, with just enough emission that
+        // it stays readable in the corner the key light never reaches.
+        emissive: new THREE.Color(this.signColour),
+        emissiveMap: texture,
+        emissiveIntensity: 0.55,
+        depthWrite: false,
+      }),
+    );
+    // A plane faces +z; a quarter turn puts it against the inside face of the wall, with
+    // its own left-to-right running up the room, which is the direction the wall recedes in.
+    mesh.rotation.y = Math.PI / 2;
+    mesh.position.copy(toWorld(-0.6, (GRID.height - 1) / 2));
+    mesh.position.x += 0.1;
+    mesh.position.y = wallHeight * 0.64;
+    this.group.add(mesh);
+    this.sign = mesh;
+  }
+
+  /** Called every frame by `Game`; repaints only when the name or the badge colour changes. */
+  setSign(name: string, colour: string) {
+    if (name === this.signName && colour === this.signColour) return;
+    this.signName = name;
+    this.signColour = colour;
+    this.buildSign();
   }
 
   /** Stations can appear mid-game when a tool project ships, and go again when one is sold. */
@@ -444,6 +570,7 @@ export class SpaceView {
     this.era = next;
 
     for (const child of [...this.group.children]) this.group.remove(child);
+    this.sign = null; // the whole room went with the children; `buildWalls` paints a new one
     this.builtStations.clear();
     this.stationNodes.clear();
     this.stationZones.clear();

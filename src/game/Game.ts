@@ -197,6 +197,8 @@ export class Game {
 
     // A new room needs a new shot of it, so the camera reframes when the floor changes.
     if (this.view.setEra(state.era)) this.scene.resize();
+    // The name goes on the wall the moment the doors open, in the badge's own colour.
+    this.view.setSign(state.identity?.name ?? '', state.identity?.colour ?? '#5ecfc0');
     this.view.update(state.runtime, dt);
     const over = this.scene.pick(this.pointer.x, this.pointer.y, this.view.pickables);
     if (over !== this.hovered) {
