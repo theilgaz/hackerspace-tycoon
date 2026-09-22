@@ -3,9 +3,10 @@ import { SpaceView } from '@/render/SpaceView';
 import { Simulation } from '@/systems/Simulation';
 import { UI } from '@/ui/ui';
 import { store } from './store';
-import { STATION_MAP } from '@/machines/layout';
+import { STATION_MAP, amenityPlacement } from '@/machines/layout';
 import { pct } from '@/utils/format';
 import type { MachineType } from './types';
+import { amenityDef } from '@/utils/amenities';
 import type { IconName } from '@/ui/icons';
 
 /** What a station is for, shown when you point at one that has no queue of its own. */
@@ -33,6 +34,8 @@ export class Game {
   /** Station under the cursor, for the hover label. */
   private hovered: string | null = null;
   private pointer = { x: 0, y: 0 };
+  /** Where the last press landed, so a pan is not mistaken for a click. */
+  private pressedAt: { x: number; y: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement, labels: HTMLElement, uiRoot: HTMLElement) {
     this.scene = new SceneManager(canvas);
@@ -74,6 +77,8 @@ export class Game {
       refillCost: (machineId) => sim.refillCost(machineId),
       buyPrinter: (modelId) => act(() => sim.buyPrinter(modelId)),
       buyAmenity: (id) => act(() => sim.buyAmenity(id)),
+      turnAmenity: () => this.turnHeld(),
+      stopMoving: () => store.getState().setMoving(null),
       sellPrinter: (machineId) => act(() => sim.sellPrinter(machineId)),
       signLease: () => act(() => sim.signLease()),
       nextLease: () => sim.nextLease(),
@@ -115,6 +120,18 @@ export class Game {
 
     canvas.addEventListener('pointermove', (event) => {
       this.pointer = { x: event.clientX, y: event.clientY };
+    });
+    // A click, not a drag: the canvas also pans on pointerdown, so a few pixels of travel
+    // means the player was moving the camera and is not trying to pick anything up.
+    canvas.addEventListener('pointerdown', (event) => {
+      this.pressedAt = { x: event.clientX, y: event.clientY };
+    });
+    canvas.addEventListener('pointerup', (event) => {
+      const from = this.pressedAt;
+      this.pressedAt = null;
+      if (!from) return;
+      if (Math.hypot(event.clientX - from.x, event.clientY - from.y) > 5) return;
+      this.clickRoom(event.clientX, event.clientY);
     });
     canvas.addEventListener('pointerleave', () => {
       this.hovered = null;
@@ -164,6 +181,47 @@ export class Game {
     this.ui.render(store.getState());
   }
 
+  /**
+   * Rearranging the room (§7b). Everything bought from the Shop can be picked up, dropped on
+   * any legal tile and turned — so the space is yours rather than a list of slots. Stations
+   * are deliberately *not* movable: they have stand tiles, painted bays and queues, and the
+   * one thing that made this worth building is that a sofa is none of those things.
+   */
+  private clickRoom(clientX: number, clientY: number) {
+    const state = store.getState();
+    if (!state.started || state.gameOver) return;
+    const hit = this.scene.pick(clientX, clientY, this.view.pickables);
+
+    // Already holding something: a click on a legal tile puts it down there, and a click
+    // back on the thing itself turns it a quarter.
+    if (state.moving) {
+      if (hit === state.moving) {
+        this.turnHeld();
+        return;
+      }
+      const tile = this.scene.pickTile(clientX, clientY);
+      const place = amenityPlacement(state.moving);
+      if (tile && place && this.sim.placeAmenity(state.moving, tile.x, tile.y, place.yaw)) {
+        this.sim.publish();
+      }
+      return;
+    }
+
+    if (hit && amenityDef(hit)?.mount === 'floor' && state.amenities.includes(hit)) {
+      store.getState().setMoving(hit);
+    }
+  }
+
+  /** A quarter turn, in place. */
+  private turnHeld() {
+    const id = store.getState().moving;
+    if (!id) return;
+    const place = amenityPlacement(id);
+    if (!place) return;
+    this.sim.placeAmenity(id, place.x, place.y, place.yaw + 1);
+    this.sim.publish();
+  }
+
   private bindKeys() {
     window.addEventListener('keydown', (event) => {
       // Never while somebody is typing. Space paused the game and swallowed the keypress,
@@ -176,6 +234,20 @@ export class Game {
       if (event.code === 'Space') {
         event.preventDefault();
         store.getState().togglePause();
+      }
+      // Rearranging: turn what you are holding, or put it down and stop.
+      if (store.getState().moving) {
+        if (event.key === 'r' || event.key === 'R') {
+          event.preventDefault();
+          this.turnHeld();
+          return;
+        }
+        if (event.key === 'Escape') {
+          // The UI's own Escape handler runs first and unwinds any open popup; this only
+          // sees the key once there is nothing left on top of the room.
+          store.getState().setMoving(null);
+          return;
+        }
       }
       if (event.key === '1') store.getState().setSpeed(1);
       if (event.key === '2') store.getState().setSpeed(2);
@@ -200,7 +272,8 @@ export class Game {
     // A new room needs a new shot of it, so the camera reframes when the floor changes.
     if (this.view.setEra(state.era)) this.scene.resize();
     // Everything bought from the Shop stands in the room the moment it is paid for.
-    this.view.setAmenities(state.amenities);
+    this.view.setAmenities(state.amenities, state.amenityRev);
+    this.view.setPlacing(state.moving);
     // The badge and the name go on the wall the moment the doors open.
     this.view.setSign(
       state.identity?.name ?? '',
@@ -256,6 +329,20 @@ export class Game {
     }
 
     if (this.hovered) {
+      // A comfort says what it is and that it can be picked up — the only place the room
+      // ever advertises that it is rearrangeable.
+      const comfort = amenityDef(this.hovered);
+      if (comfort) {
+        const world = this.view.amenityWorld(this.hovered);
+        if (world) {
+          const p = this.scene.project(world);
+          parts.push(
+            `<div class="label label--station" style="left:${p.x}px;top:${p.y}px">
+              <b>${comfort.name}</b><span>click to move · R turns it</span>
+            </div>`,
+          );
+        }
+      }
       const station = STATION_MAP[this.hovered];
       const world = this.view.stationWorldById(this.hovered);
       if (station && world) {

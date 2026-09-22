@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import type { MachineType, RuntimeSnapshot } from '@/game/types';
-import { GRID, STATIONS, amenitySlots, type StationDef } from '@/machines/layout';
+import {
+  GRID,
+  STATIONS,
+  amenityPlacement,
+  amenityTileFree,
+  type StationDef,
+} from '@/machines/layout';
 import { amenityDef, type AmenityDef } from '@/utils/amenities';
 import { MACHINE } from '@/utils/constants';
 import { iconDataUrl, type IconName } from '@/ui/icons';
@@ -179,7 +185,10 @@ export class SpaceView {
   /** Comforts bought from the Shop, in the order they were bought (§7b). */
   private amenityIds: string[] = [];
   private amenityKey = '';
-  private amenityNodes: THREE.Object3D[] = [];
+  private amenityNodes = new Map<string, THREE.Object3D>();
+  /** The comfort being moved, and the tiles it is allowed to go on. */
+  private placing: string | null = null;
+  private placingMarks: THREE.Object3D[] = [];
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
@@ -335,6 +344,7 @@ export class SpaceView {
       node.rotation.y = yaw;
       node.add(this.buildStation(def));
       node.userData.stationId = def.id;
+      node.userData.pickId = def.id;
       this.group.add(node);
       this.stationNodes.set(def.id, node);
       this.stationZones.set(def.id, zone);
@@ -358,9 +368,15 @@ export class SpaceView {
     if (this.hovered === id) this.hovered = null;
   }
 
-  /** Objects the camera can pick against for hover. */
+  /** Where a comfort is standing, for the hover label above it. */
+  amenityWorld(id: string): THREE.Vector3 | null {
+    const node = this.amenityNodes.get(id);
+    return node ? node.position.clone().setY(node.position.y + 0.95) : null;
+  }
+
+  /** Objects the camera can pick against for hover and for picking something up. */
   get pickables(): THREE.Object3D[] {
-    return [...this.stationNodes.values()];
+    return [...this.stationNodes.values(), ...this.amenityNodes.values()];
   }
 
   /** Light the bay under whichever station the cursor is over. */
@@ -605,13 +621,69 @@ export class SpaceView {
   // The Shop's comforts (§7b)
   // -------------------------------------------------------------------------
 
-  /** Called every frame by `Game`; rebuilds only when the owned list actually changes. */
-  setAmenities(ids: string[]) {
-    const key = ids.join(',');
+  /**
+   * Called every frame by `Game`; rebuilds only when the arrangement actually changes. The
+   * revision counter is in the key as well as the ids, so moving something rebuilds without
+   * the caller having to hash a map of tiles sixty times a second.
+   */
+  setAmenities(ids: string[], rev: number) {
+    const key = `${rev}:${ids.join(',')}`;
     if (key === this.amenityKey) return;
     this.amenityKey = key;
     this.amenityIds = [...ids];
     this.buildAmenities();
+    if (this.placing) this.markPlaceable();
+  }
+
+  /**
+   * Enter or leave move mode. While something is selected it lifts off the floor and every
+   * tile it could stand on is lit — **the legal tiles have to be visible before the click**,
+   * or moving furniture is a guessing game with an invisible rulebook.
+   */
+  setPlacing(id: string | null) {
+    if (id === this.placing) return;
+    this.placing = id;
+    this.markPlaceable();
+    this.liftPlacing();
+  }
+
+  private liftPlacing() {
+    for (const [id, node] of this.amenityNodes) {
+      node.position.y = id === this.placing ? 0.16 : 0;
+    }
+  }
+
+  private markPlaceable() {
+    for (const mark of this.placingMarks) {
+      this.group.remove(mark);
+      (mark as THREE.Mesh).geometry.dispose();
+      ((mark as THREE.Mesh).material as THREE.Material).dispose();
+    }
+    this.placingMarks = [];
+    if (!this.placing) return;
+    // A dot per tile, not a plate. Filling every legal tile with a translucent square
+    // washed the whole floor teal — which says "the room is highlighted", not "these are
+    // the tiles". A small marker reads as a placement grid and leaves the floor alone.
+    const geo = new THREE.BoxGeometry(TILE * 0.2, 0.02, TILE * 0.2);
+    for (let y = 0; y < GRID.height; y += 1) {
+      for (let x = 0; x < GRID.width; x += 1) {
+        if (!amenityTileFree({ x, y }, this.placing)) continue;
+        const mark = new THREE.Mesh(
+          geo.clone(),
+          new THREE.MeshStandardMaterial({
+            color: '#5ecfc0',
+            flatShading: true,
+            transparent: true,
+            opacity: 0.55,
+            emissive: new THREE.Color('#2f8f84'),
+            emissiveIntensity: 0.6,
+          }),
+        );
+        mark.position.copy(toWorld(x, y, 0.014));
+        this.group.add(mark);
+        this.placingMarks.push(mark);
+      }
+    }
   }
 
   /**
@@ -620,7 +692,7 @@ export class SpaceView {
    * arcade cabinet should be standing in the room the moment it is paid for.
    */
   private buildAmenities() {
-    for (const node of this.amenityNodes) {
+    for (const node of this.amenityNodes.values()) {
       this.group.remove(node);
       node.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
@@ -628,32 +700,34 @@ export class SpaceView {
         for (const material of [child.material].flat()) material.dispose();
       });
     }
-    this.amenityNodes = [];
+    this.amenityNodes.clear();
 
-    const slots = amenitySlots();
-    let floorIndex = 0;
     for (const id of this.amenityIds) {
       const def = amenityDef(id);
       if (!def) continue;
       const node = new THREE.Group();
       node.add(this.buildProp(def));
+      node.userData.pickId = id;
 
       if (def.mount === 'wall') {
         this.placeOnWall(node, def);
       } else {
-        const slot = slots[floorIndex];
-        floorIndex += 1;
-        if (!slot) continue; // more comforts than the room has edges; it waits for a lease
-        node.position.copy(toWorld(slot.x, slot.y));
-        // **They face the camera, and that is not the same as facing into the room.** An
-        // isometric camera only ever sees the +x and +z faces, so a fridge turned to look up
-        // the room — which is what a station's stand tile would ask for — presents its back
-        // and becomes a dark box. These have no stand tile and nobody operates them, so the
-        // only thing their facing decides is whether you can see what you paid for.
+        // The room owns where things stand — the player's tile if they moved it, the next
+        // derived slot if they have not.
+        const place = amenityPlacement(id);
+        if (!place) continue; // more comforts than the room has floor; it waits for a lease
+        node.position.copy(toWorld(place.x, place.y));
+        // **They start facing the camera, and that is not the same as facing into the
+        // room.** An isometric camera only ever sees the +x and +z faces, so a fridge turned
+        // to look up the room — which is what a station's stand tile would ask for —
+        // presents its back and becomes a dark box. Nobody operates these, so their facing
+        // is a matter of taste, which is exactly why the player turns them by hand.
+        node.rotation.y = (place.yaw * Math.PI) / 2;
       }
       this.group.add(node);
-      this.amenityNodes.push(node);
+      this.amenityNodes.set(id, node);
     }
+    this.liftPlacing();
   }
 
   /** Wall-mounted kit hangs off the back wall, which is the one the camera reads across. */
@@ -953,8 +1027,10 @@ export class SpaceView {
     this.buildFloor();
     this.buildWalls();
     // The comforts came in the van too, and their slots are derived from the new grid.
-    this.amenityNodes = [];
+    this.amenityNodes.clear();
+    this.placingMarks = [];
     this.buildAmenities();
+    this.markPlaceable();
     this.syncStations();
     return true;
   }

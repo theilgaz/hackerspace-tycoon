@@ -9,6 +9,7 @@ import type {
   ShippedRecord,
 } from './types';
 import type { Ceremony } from '@/systems/RivalSystem';
+import type { Placement } from '@/machines/layout';
 import type { Bill } from '@/utils/economy';
 import { START_CASH } from '@/utils/constants';
 import { ECONOMY } from '@/utils/economy';
@@ -68,6 +69,17 @@ export interface GameState {
   ownedMachines: MachineType[];
   /** Comforts bought from the Shop (§7b). Ids from `AMENITIES`, in the order bought. */
   amenities: string[];
+  /** Where the player has dragged each one, and which way it faces. Anything missing here
+   *  takes the next slot the room derives for it. */
+  amenityPlacements: Record<string, Placement>;
+  /**
+   * Bumped whenever the arrangement changes. The sim re-derives the floor from it, which is
+   * far cheaper than hashing the placement map inside a per-member inner loop. Deliberately
+   * not saved: a fresh Simulation starts behind and syncs on its first tick.
+   */
+  amenityRev: number;
+  /** The comfort currently being moved around the room, if any. Never saved. */
+  moving: string | null;
   /** Offers waiting to be pitched (CLAUDE.md §4a). */
   backlog: BacklogEntry[];
   runtime: RuntimeSnapshot;
@@ -97,6 +109,8 @@ export interface GameState {
   passApplicant: (id: string) => void;
   ownMachine: (type: MachineType) => void;
   buyAmenity: (id: string) => void;
+  placeAmenity: (id: string, placement: Placement) => void;
+  setMoving: (id: string | null) => void;
   disownMachine: (type: MachineType) => void;
   recordShipped: (hype: number, record: ShippedRecord) => void;
   recordReputation: (amount: number) => void;
@@ -137,6 +151,9 @@ export const store = createStore<GameState>((set, get) => ({
   reputation: 0,
   ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
   amenities: [],
+  amenityPlacements: {},
+  amenityRev: 0,
+  moving: null,
   backlog: [],
   applicants: [],
   passed: [],
@@ -173,17 +190,18 @@ export const store = createStore<GameState>((set, get) => ({
     const {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities,
+      passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities,
+      passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
     };
   },
 
-  hydrate: (data) => set({ ...(data as Partial<GameState>), paused: true, speed: 1 }),
+  hydrate: (data) =>
+    set({ ...(data as Partial<GameState>), paused: true, speed: 1, moving: null, amenityRev: 0 }),
 
   setSpeed: (speed) => set({ speed, paused: false }),
   togglePause: () => set((s) => ({ paused: !s.paused })),
@@ -231,7 +249,14 @@ export const store = createStore<GameState>((set, get) => ({
     set((s) => ({ ownedMachines: s.ownedMachines.filter((m) => m !== type) })),
   // Comforts are never sold back: a table tennis table is not an investment decision, and
   // a shop you can churn is a shop that pays for itself.
-  buyAmenity: (id) => set((s) => (s.amenities.includes(id) ? s : { amenities: [...s.amenities, id] })),
+  buyAmenity: (id) =>
+    set((s) => (s.amenities.includes(id) ? s : { amenities: [...s.amenities, id], amenityRev: s.amenityRev + 1 })),
+  placeAmenity: (id, placement) =>
+    set((s) => ({
+      amenityPlacements: { ...s.amenityPlacements, [id]: placement },
+      amenityRev: s.amenityRev + 1,
+    })),
+  setMoving: (id) => set({ moving: id }),
 
   recordPost: (post, reputationDelta) =>
     set((s) => ({

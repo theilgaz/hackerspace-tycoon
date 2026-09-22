@@ -54,6 +54,8 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     hype: 0,
     posts: [],
     amenities: [],
+    amenityPlacements: {},
+    moving: null,
     runtime: emptyRuntime(),
   });
   const sim = new Simulation();

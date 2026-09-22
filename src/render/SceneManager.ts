@@ -15,6 +15,8 @@ function fitFrustum(aspect: number): number {
   return THREE.MathUtils.clamp(span * 1.05 * widen, 5, 26);
 }
 
+const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
 /** Orthographic isometric rig with pan/zoom. No character control (CLAUDE.md §11). */
 export class SceneManager {
   readonly scene = new THREE.Scene();
@@ -132,8 +134,25 @@ export class SceneManager {
     const hit = this.raycaster.intersectObjects(objects, true)[0];
     if (!hit) return null;
     let node: THREE.Object3D | null = hit.object;
-    while (node && !node.userData.stationId) node = node.parent;
-    return (node?.userData.stationId as string) ?? null;
+    while (node && !node.userData.pickId) node = node.parent;
+    return (node?.userData.pickId as string) ?? null;
+  }
+
+  /**
+   * Where on the floor the cursor is, as a grid tile. Used to drop a comfort somewhere:
+   * the floor is a few hundred separate meshes, so it is raycast against the ground plane
+   * rather than against the tiles themselves.
+   */
+  pickTile(clientX: number, clientY: number): { x: number; y: number } | null {
+    this.pointer.set((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const point = new THREE.Vector3();
+    if (!this.raycaster.ray.intersectPlane(GROUND, point)) return null;
+    // The inverse of `toWorld`: the grid is centred on the origin.
+    const x = Math.round(point.x + (GRID.width - 1) / 2);
+    const y = Math.round(point.z + (GRID.height - 1) / 2);
+    if (x < 0 || y < 0 || x >= GRID.width || y >= GRID.height) return null;
+    return { x, y };
   }
 
   /** World position → CSS pixel position, for HTML labels over the scene. */

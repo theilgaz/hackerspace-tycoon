@@ -78,6 +78,8 @@ export interface UIHandlers {
   refillCost(machineId?: string): number;
   buyPrinter(modelId: string): void;
   buyAmenity(id: string): void;
+  turnAmenity(): void;
+  stopMoving(): void;
   sellPrinter(machineId: string): void;
   signLease(): void;
   nextLease(): { era: number; def: EraDef; ready: boolean; afford: boolean } | null;
@@ -324,6 +326,7 @@ export class UI {
   private startEl!: HTMLElement;
   private left!: HTMLElement;
   private members!: HTMLElement;
+  private movingEl!: HTMLElement;
   private log!: HTMLElement;
 
   constructor(root: HTMLElement, handlers: UIHandlers) {
@@ -349,6 +352,7 @@ export class UI {
         </div>
       </div>
 
+      <div class="panel" id="moving"></div>
       <div id="bottombar"></div>
       <div id="modal"></div>
       <div id="start"></div>
@@ -356,6 +360,7 @@ export class UI {
     this.topbar = this.root.querySelector('#topbar')!;
     this.clockPanel = this.root.querySelector('#clockpanel')!;
     this.bottombar = this.root.querySelector('#bottombar')!;
+    this.movingEl = this.root.querySelector('#moving')!;
     this.modal = this.root.querySelector('#modal')!;
     this.startEl = this.root.querySelector('#start')!;
     this.left = this.root.querySelector('#left .body')!;
@@ -687,6 +692,13 @@ export class UI {
           if (value) h.buyPrinter(value);
           this.rerender();
           break;
+        case 'turn-amenity':
+          h.turnAmenity();
+          break;
+        case 'done-moving':
+          h.stopMoving();
+          this.rerender();
+          break;
         case 'shop-open':
           this.openModal = 'shop';
           this.rerender();
@@ -735,7 +747,34 @@ export class UI {
     this.renderMembers(state);
     this.renderLog(state);
     this.renderBottomBar(state);
+    this.renderMoving(state);
     this.renderModal(state);
+  }
+
+  /**
+   * What you are holding while rearranging the room (§7b). It is a strip above the build
+   * menu rather than a modal on purpose: **the thing you are deciding about is the room**,
+   * and a dialog over it would cover the tiles you are choosing between.
+   */
+  private renderMoving(state: GameState) {
+    const def = state.moving ? AMENITIES.find((a) => a.id === state.moving) : null;
+    if (!def) {
+      this.setHTML(this.movingEl, 'moving', '');
+      this.movingEl.classList.remove('on');
+      return;
+    }
+    this.movingEl.classList.add('on');
+    this.setHTML(
+      this.movingEl,
+      'moving',
+      `<span class="icon-chip" style="--tone:${def.tone}">${icon(def.icon, 'ui-icon ui-icon--lg')}</span>
+       <div class="ui-row__main">
+         <b class="ui-title">Moving the ${esc(def.name)}</b>
+         <span class="ui-desc">Click any lit tile to set it down. Click it again to turn it.</span>
+       </div>
+       <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="turn-amenity">${icon('shuffle')}Turn</button>
+       <button class="ui-btn ui-btn--primary ui-btn--sm" data-action="done-moving">${icon('check')}Done</button>`,
+    );
   }
 
   private renderGameOver(state: GameState) {
@@ -2729,8 +2768,8 @@ export class UI {
       content: summary + groups,
       foot: `<span class="ui-desc" style="font-size:10.5px">
         None of this makes a part. It makes people turn up, stay longer and work better —
-        which §13 says is the only constraint that ever really binds. Printers and tools are
-        in <b>Machines</b>.
+        which §13 says is the only constraint that ever really binds. Everything here can be
+        <b>clicked in the room</b> to move or turn it. Printers and tools are in <b>Machines</b>.
       </span>`,
     };
   }

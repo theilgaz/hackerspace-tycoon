@@ -59,7 +59,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -143,6 +143,12 @@ function migrate(file: SaveFile): SaveFile {
   // v6 — the Shop. An older run never had one, so it owns no comforts; mood settles up
   // from wherever it was saved on its own.
   if (!Array.isArray(store.amenities)) store.amenities = [];
+
+  // v7 — comforts can be moved and turned. A file from before that has everybody standing
+  // where the room put them, which is exactly what an empty map means.
+  if (!store.amenityPlacements || typeof store.amenityPlacements !== 'object') {
+    store.amenityPlacements = {};
+  }
 
   file.version = SAVE_VERSION;
   return file;

@@ -114,20 +114,97 @@ export function amenitySlots(): Tile[] {
  * blocking the moment a lease was signed.
  */
 const PROPS = new Set<string>();
-/** How many floor-standing comforts the space owns. Their tiles are derived from it. */
-let amenityCount = 0;
 
-function rebuildProps() {
-  PROPS.clear();
-  const slots = amenitySlots();
-  for (let i = 0; i < Math.min(amenityCount, slots.length); i += 1) {
-    PROPS.add(`${slots[i].x},${slots[i].y}`);
-  }
+/** Where one comfort stands, and which way it faces. `yaw` is quarter turns, 0-3. */
+export interface Placement {
+  x: number;
+  y: number;
+  yaw: number;
 }
 
-/** Called whenever the owned list changes. Wall-mounted items take no floor. */
-export function setAmenityTiles(count: number) {
-  amenityCount = count;
+/** Floor-standing comforts the space owns, in the order they were bought. */
+let amenityFloorIds: string[] = [];
+/** Where the player has put them. Anything not in here takes the next derived slot. */
+let amenityCustom: Record<string, Placement> = {};
+const amenityPlaces = new Map<string, Placement>();
+
+const key = (tile: { x: number; y: number }) => `${tile.x},${tile.y}`;
+
+/**
+ * Tiles a comfort must not stand on. **The stand tiles matter as much as the stations**: a
+ * fridge parked on the tile somebody has to occupy to use the solder bench does not block
+ * the bench, it strands it — the path finder simply never arrives and the station goes
+ * quiet with nothing on screen to explain why.
+ */
+function reservedTiles(): Set<string> {
+  const out = new Set<string>();
+  for (const station of STATIONS) {
+    out.add(key(station.tile));
+    out.add(key(station.stand));
+  }
+  out.add(key(DOOR));
+  for (const tile of IDLE_TILES) out.add(key(tile));
+  return out;
+}
+
+/** Can this comfort stand here? Used by the room's move mode to light the legal tiles. */
+export function amenityTileFree(tile: Tile, ignoreId?: string): boolean {
+  if (tile.x < 0 || tile.y < 0 || tile.x >= GRID.width || tile.y >= GRID.height) return false;
+  if (reservedTiles().has(key(tile))) return false;
+  for (const [id, place] of amenityPlaces) {
+    if (id !== ignoreId && place.x === tile.x && place.y === tile.y) return false;
+  }
+  return true;
+}
+
+/** Where a given comfort currently stands, custom or derived. */
+export function amenityPlacement(id: string): Placement | undefined {
+  return amenityPlaces.get(id);
+}
+
+function rebuildProps() {
+  amenityPlaces.clear();
+  const reserved = reservedTiles();
+  const taken = new Set<string>();
+
+  // Player-chosen tiles are laid down first, so a derived slot can never steal one. A
+  // placement that has stopped being legal — a lease moved a bench onto it — is dropped
+  // here and the item falls back to a derived slot rather than standing inside a table.
+  for (const id of amenityFloorIds) {
+    const custom = amenityCustom[id];
+    if (!custom) continue;
+    const at = key(custom);
+    if (custom.x >= GRID.width || custom.y >= GRID.height) continue;
+    if (reserved.has(at) || taken.has(at)) continue;
+    amenityPlaces.set(id, { ...custom });
+    taken.add(at);
+  }
+
+  const slots = amenitySlots();
+  let next = 0;
+  for (const id of amenityFloorIds) {
+    if (amenityPlaces.has(id)) continue;
+    while (next < slots.length && (taken.has(key(slots[next])) || reserved.has(key(slots[next])))) {
+      next += 1;
+    }
+    if (next >= slots.length) continue; // more comforts than edges; it waits for a lease
+    const slot = slots[next];
+    next += 1;
+    amenityPlaces.set(id, { x: slot.x, y: slot.y, yaw: 0 });
+    taken.add(key(slot));
+  }
+
+  PROPS.clear();
+  for (const place of amenityPlaces.values()) PROPS.add(key(place));
+}
+
+/**
+ * Called whenever the owned list or the player's arrangement changes. Wall-mounted items
+ * are not passed in — they take no floor and cannot be moved.
+ */
+export function setAmenityLayout(floorIds: string[], custom: Record<string, Placement>) {
+  amenityFloorIds = floorIds;
+  amenityCustom = custom;
   rebuildProps();
 }
 
@@ -214,7 +291,9 @@ export function resetStations() {
   for (const s of STATIONS) STATION_MAP[s.id] = s;
   BLOCKED.clear();
   for (const s of STATIONS) BLOCKED.add(`${s.tile.x},${s.tile.y}`);
-  amenityCount = 0;
+  amenityFloorIds = [];
+  amenityCustom = {};
+  amenityPlaces.clear();
   PROPS.clear();
 }
 

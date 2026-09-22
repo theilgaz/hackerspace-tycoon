@@ -932,12 +932,39 @@ is untouched because it falls on day 69, before there is money for any of this. 
 documented day 102-118 is the no-shop pace**; a player who furnishes the place should expect
 the warehouse later and a better-run garage meanwhile.
 
-**They stand in the room.** A comfort you cannot see is a number in a panel, and ₺22,000 of
-arcade cabinet should be in the building the moment it is paid for. Floor-standing ones take
-the open edges — the bottom row and the odd rows of the right-hand column — spaced a tile
-apart for the same reason the printer wall is, and they block those tiles, so people walk
-round them. Air conditioning and the acoustic panels hang on the back wall and take no floor.
-Two things that were wrong first:
+**They stand in the room, and you arrange them.** A comfort you cannot see is a number in a
+panel, and ₺22,000 of arcade cabinet should be in the building the moment it is paid for.
+**Click one in the room to pick it up**: it lifts, every tile it could stand on lights up,
+and a click sets it down or a second click on the item turns it a quarter. `R` turns it too,
+`Escape` puts it down. The strip that appears sits *above* the build menu rather than being
+a dialog, because the thing you are deciding about is the room and a modal would cover the
+tiles you are choosing between.
+
+Where they start is derived — the open edges, the bottom row and the odd rows of the
+right-hand column, spaced a tile apart for the same reason the printer wall is — and a tile
+the player picks simply overrides it. They block their tile either way, so people walk round
+them. Air conditioning and the acoustic panels hang on the back wall, take no floor and do
+not move. **Stations are deliberately not movable**: they have stand tiles, painted bays and
+queues, and the thing that made this worth building is that a sofa is none of those.
+
+Four things that were wrong first, or nearly were:
+
+- **A comfort must not stand on a stand tile.** Blocking the tile somebody has to occupy to
+  use the solder bench does not block the bench, it *strands* it: the path finder never
+  arrives and the station goes quiet with nothing on screen to explain why. The legal-tile
+  test excludes every station's tile *and* its stand, the door, and the idle tiles.
+- **A placement has to survive a lease, or be dropped.** Signing for the warehouse moves
+  every bench, so a tile that was fine can end up under one. Placements are re-derived on
+  every layout change and an illegal one falls back to a default slot rather than leaving
+  the aquarium inside a table.
+- **Dots, not plates.** Filling every legal tile with a translucent square washed the whole
+  floor teal, which says "the room is highlighted" rather than "these are the tiles". A
+  small marker per tile reads as a placement grid and leaves the floor alone.
+- **The selection lives in the store, not in the renderer.** §11 says the UI reads the store
+  and nothing else, and the strip naming what you are holding is UI. `moving` is a store
+  field that is never saved.
+
+Two more, from getting the props on screen at all:
 
 - **A prop faces the camera, not the room.** An isometric camera only ever sees the +x and
   +z faces, so a fridge turned to look up the room — which is what a station's stand tile

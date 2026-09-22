@@ -28,7 +28,8 @@ import {
   installStation,
   installedStations,
   removeStation,
-  setAmenityTiles,
+  amenityTileFree,
+  setAmenityLayout,
   type StationDef,
   resetStations,
   stationOfType,
@@ -262,17 +263,43 @@ export class Simulation {
   private comfortCache: Comforts = NO_COMFORTS;
   private comfortKey = '';
 
+  /** Last arrangement the floor was rebuilt for. Starts behind so the first tick syncs. */
+  private amenityRev = -1;
+
   get comforts(): Comforts {
-    const owned = store.getState().amenities;
+    const state = store.getState();
+    const owned = state.amenities;
     const key = owned.join(',');
     if (key !== this.comfortKey) {
       this.comfortKey = key;
       this.comfortCache = comfortsOf(owned);
-      // Floor-standing comforts are solid: people walk round them, which is part of what
-      // you are paying for when you put a table tennis table in a small room.
-      setAmenityTiles(owned.filter((id) => amenityDef(id)?.mount === 'floor').length);
+    }
+    // Floor-standing comforts are solid: people walk round them, which is part of what you
+    // are paying for when you put a table tennis table in a small room. Keyed off a
+    // revision counter rather than the placement map — this getter runs in a per-member
+    // inner loop and hashing an object there would be the most expensive thing in the tick.
+    if (state.amenityRev !== this.amenityRev) {
+      this.amenityRev = state.amenityRev;
+      setAmenityLayout(
+        owned.filter((id) => amenityDef(id)?.mount === 'floor'),
+        state.amenityPlacements,
+      );
     }
     return this.comfortCache;
+  }
+
+  /**
+   * Move or turn a comfort. The room is the only place this can be done from, so it takes a
+   * tile rather than a slot index — and it checks legality here rather than trusting the
+   * click, because a save from an older room could hand over a tile a bench now stands on.
+   */
+  placeAmenity(id: string, x: number, y: number, yaw: number): boolean {
+    const def = amenityDef(id);
+    const state = store.getState();
+    if (!def || def.mount !== 'floor' || !state.amenities.includes(id)) return false;
+    if (!amenityTileFree({ x, y }, id)) return false;
+    state.placeAmenity(id, { x, y, yaw: ((yaw % 4) + 4) % 4 });
+    return true;
   }
 
   /**
@@ -1099,6 +1126,9 @@ export class Simulation {
     store.setState({ era: next.era });
     // The floor grows with the lease, and everything goes back against a wall.
     applyEraLayout(next.era);
+    // Stations moved, so an arrangement that was legal in the old room may not be in this
+    // one. Re-deriving drops anything that now sits under a bench back to a default slot.
+    this.amenityRev = -1;
     this.log(
       `You signed for ${next.def.name}. ${money(next.def.moveCost)} to move, and the rent goes up.`,
       'good',
@@ -1226,6 +1256,11 @@ export class Simulation {
 
   /** Put a saved run back together. Called on a fresh Simulation, before the first tick. */
   restore(data: SaveFile['sim']) {
+    // Both caches are invalidated by hand: a load reuses this Simulation instance, and a
+    // restored run whose revision counter happens to match the one already in memory would
+    // otherwise keep the floor plan of the game it replaced.
+    this.amenityRev = -1;
+    this.comfortKey = '\u0000';
     this.day = data.day;
     this.time = data.time;
     // Upvotes and best builds arrived with the second set of awards; older saves have neither.
