@@ -16,6 +16,7 @@ import { ECONOMY } from '@/utils/economy';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
 import { uid } from '@/utils/format';
 import { sameText, setLocale as setI18nLocale, type Locale, type Text } from '@/i18n';
+import { freshMarket, type Market } from '@/utils/market';
 
 const MAX_LOG = 140;
 
@@ -85,6 +86,11 @@ export interface GameState {
   moving: string | null;
   /** Offers waiting to be pitched (CLAUDE.md §4a). */
   backlog: BacklogEntry[];
+  /** The order applicants were dealt onto the reputation ladder this run. */
+  ladder: string[];
+  /** What each genre is worth right now (§4d). Moves daily; multiplies payouts. */
+  market: Market;
+  setMarket: (market: Market) => void;
   runtime: RuntimeSnapshot;
   log: LogEntry[];
   /**
@@ -139,6 +145,9 @@ export const emptyRuntime = (): RuntimeSnapshot => ({
   rivals: [],
   season: { year: 1, dayOfYear: 0, length: 1 },
   recruitIn: 0,
+  tables: [],
+  waitingFor: {},
+  seats: {},
 });
 
 export const store = createStore<GameState>((set, get) => ({
@@ -168,6 +177,8 @@ export const store = createStore<GameState>((set, get) => ({
   amenityRev: 0,
   moving: null,
   backlog: [],
+  market: freshMarket(),
+  ladder: [],
   applicants: [],
   passed: [],
   upvotes: 0,
@@ -186,6 +197,8 @@ export const store = createStore<GameState>((set, get) => ({
       identity,
       difficulty,
       cash: DIFFICULTY_MAP[difficulty].startCash,
+      // A new run gets a new market, not whatever was rolled when the page loaded.
+      market: freshMarket(),
       started: true,
       paused: false,
       speed: 1,
@@ -209,14 +222,14 @@ export const store = createStore<GameState>((set, get) => ({
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements,
+      stationPlacements, market, ladder,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements,
+      stationPlacements, market, ladder,
     };
   },
 
@@ -253,6 +266,7 @@ export const store = createStore<GameState>((set, get) => ({
   },
 
   setBacklog: (backlog) => set({ backlog }),
+  setMarket: (market) => set({ market }),
   addOffer: (entry) => set((s) => ({ backlog: [entry, ...s.backlog] })),
   removeOffer: (id) => set((s) => ({ backlog: s.backlog.filter((e) => e.id !== id) })),
   openApplicant: (id) =>

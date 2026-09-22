@@ -69,7 +69,8 @@ const CATALOG_DATA: Draft[] = [
     tier: 'medium',
     teamSize: 2,
     blurb: 'A paying client wants a website they can edit themselves. Unglamorous, keeps the lights on.',
-    work: { concept: 16, cad: 40, simulation: 19, assembly: 63, iterate: 19, release: 21 },
+    // Given margin rather than a nudge (§4): the bigger cast finished it in 4.7 days.
+    work: { concept: 16, cad: 52, simulation: 19, assembly: 82, iterate: 19, release: 21 },
     parts: [],
     bomCost: 400,
     leadDays: 3,

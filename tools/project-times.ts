@@ -19,6 +19,7 @@ import { CATALOG } from '@/utils/catalog';
 import { STAGE_STATION } from '@/machines/layout';
 import { partsPending } from '@/systems/ProjectSystem';
 import type { MachineType, ProjectDef } from '@/game/types';
+import { freshMarket } from '@/utils/market';
 
 const SEEDS = Number(process.argv[2] ?? 5);
 const DT = 0.05;
@@ -49,10 +50,18 @@ function runProject(def: ProjectDef, seed: number): number | null {
     applicants: [], upvotes: 0,
     ownedMachines: [...ALL_MACHINES],
     runtime: emptyRuntime(),
+    // Rolled after the reseed, or every process starts from a different market (§13).
+    market: freshMarket(),
   });
 
   const sim = new Simulation();
   sim.installMachine('cnc');
+  // Best case means a furnished room too (§4d): a table that seats the whole crew and a
+  // seat for every pair of hands, so what is measured is the work and not the queue.
+  sim.buyFurniture('table-large');
+  for (let i = 0; i < 6; i += 1) sim.buyFurniture('software-station');
+  for (let i = 0; i < 4; i += 1) sim.buyFurniture('hardware-station');
+  for (let i = 0; i < 3; i += 1) sim.buyFurniture('assembly-table');
   // Best case means everyone on a full contract.
   for (const data of APPLICANTS) {
     const member = sim.joinMember(data);
@@ -76,7 +85,7 @@ function runProject(def: ProjectDef, seed: number): number | null {
     }
     if (project.team.length < project.teamSize) {
       const candidate = sim.members
-        .filter((m) => !m.team && !m.isCoolingOff(project.id))
+        .filter((m) => !m.team && !m.isCoolingOff(project.id) && sim.canMeet(project, m))
         .sort((a, b) => b.passionMatch(project.tags) - a.passionMatch(project.tags))[0];
       if (candidate) sim.inviteMember(project.id, candidate.id);
     }

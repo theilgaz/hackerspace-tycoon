@@ -15,27 +15,10 @@ export const ui = {
   'ui.tier.small': 'small',
   'ui.tier.medium': 'medium',
   'ui.tier.large': 'large',
-  'ui.activity.away': 'away',
   'ui.activity.idle': 'idle',
-  'ui.activity.walking': 'walking',
-  'ui.activity.working': 'working',
-  'ui.activity.resting': 'resting',
-  'ui.activity.babysitting': 'at printer',
   'ui.source.member': 'proposed',
   'ui.source.sponsor': 'sponsor',
   'ui.source.trending': 'trending',
-  'ui.size.any': 'All sizes',
-  'ui.size.any.short': 'All',
-  'ui.size.any.hint': 'everything on offer',
-  'ui.size.solo': '1-2 people',
-  'ui.size.solo.short': '1-2',
-  'ui.size.solo.hint': 'fits alongside a long build',
-  'ui.size.small': '3-4 people',
-  'ui.size.small.short': '3-4',
-  'ui.size.small.hint': 'most of the space',
-  'ui.size.big': '5+ people',
-  'ui.size.big.short': '5+',
-  'ui.size.big.hint': 'everyone you have',
   'ui.stat.day': 'day',
   'ui.stat.shipped': 'shipped',
   'ui.stat.reputation': 'reputation',
@@ -46,7 +29,6 @@ export const ui = {
   // --- Frame -------------------------------------------------------------------
   'ui.bench.title': 'On the bench',
   'ui.log.title': 'Log',
-  'ui.members.title': 'The People',
   'ui.moving.title': (p: { name: string }) => `Moving the ${p.name}`,
   'ui.moving.howStation': 'Click any lit tile to set it down. Turning it moves the spot people stand on.',
   'ui.moving.howComfort': 'Click any lit tile to set it down. Click it again to turn it.',
@@ -61,6 +43,7 @@ export const ui = {
 
   // --- Start screen ------------------------------------------------------------
   'ui.start.nameLabel': 'Name your hackerspace',
+  'ui.start.playerLabel': 'And your name',
   'ui.start.namePlaceholder': 'Name it',
   'ui.start.shuffle': 'Shuffle',
   'ui.start.shuffleHint': 'Suggest another name',
@@ -99,10 +82,10 @@ export const ui = {
   'ui.top.allocated': 'allocated',
   'ui.top.allocatedHint': 'somebody can only be on one project at a time',
   'ui.top.reputationHint': "cumulative hype from everything you've shipped",
-  'ui.top.seasonHint': (p: { year: number; days: number }) => `${p.year} · ${p.days} days to the awards in October`,
+  'ui.top.seasonHint': (p: { year: number; days: number }) => `${p.year} · ${p.days} days to the awards on 1 December`,
 
   // --- Awards night --------------------------------------------------------------
-  'ui.ceremony.title': (p: { year: number }) => `Awards night · October ${p.year}`,
+  'ui.ceremony.title': (p: { year: number }) => `Awards night · December ${p.year}`,
   'ui.ceremony.won': (p: { won: string; total: number }) => `You took ${p.won} of ${p.total}.`,
   'ui.ceremony.wonRep': (p: { won: string; total: number; reputation: number }) =>
     `You took ${p.won} of ${p.total}, and ${p.reputation} reputation with them.`,
@@ -133,7 +116,7 @@ export const ui = {
   'ui.rank.foot.table':
     'Ranked on reputation, all time. The awards are judged on the year just gone, which is a different question — a quiet year costs you even while you are ahead here.',
   'ui.trophy.none':
-    'No awards night yet — the first is this October. Every category is judged on the year just gone, so there is always one to play for.',
+    'No awards night yet — the first is this December. Every category is judged on the year just gone, so there is always one to play for.',
   'ui.trophy.scoped': (p: { won: string; nights: number }) =>
     `${p.won} of ${p.nights} ${p.nights === 1 ? 'night' : 'nights'}`,
   'ui.trophy.summary': (p: { won: string; count: number; nights: number }) =>
@@ -149,11 +132,11 @@ export const ui = {
   'ui.trophy.notGiven': 'not given out',
   'ui.trophy.category': 'Category',
   'ui.trophy.yours': 'Yours',
-  'ui.trophy.winnerOctober': (p: { year: number }) => `Winner, October ${p.year}`,
+  'ui.trophy.winnerDecember': (p: { year: number }) => `Winner, December ${p.year}`,
   'ui.trophy.yearHint': (p: { year: number; won: number; total: number }) =>
-    `October ${p.year} — you took ${p.won} of ${p.total}`,
+    `December ${p.year} — you took ${p.won} of ${p.total}`,
   'ui.trophy.yearHintRep': (p: { year: number; won: number; total: number; reputation: number }) =>
-    `October ${p.year} — you took ${p.won} of ${p.total}, worth ${p.reputation} reputation`,
+    `December ${p.year} — you took ${p.won} of ${p.total}, worth ${p.reputation} reputation`,
   'ui.trophy.yearBefore': 'The year before',
   'ui.trophy.yearAfter': 'The year after',
   'ui.trophy.hackerspace': 'Hackerspace',
@@ -186,9 +169,9 @@ export const ui = {
   'ui.chart.today': 'today',
   'ui.chart.inDays': (p: { days: number }) => `in ${p.days} days`,
   'ui.chart.noTable': (p: { when: string }) =>
-    `The nights before this one kept no table of the field, so the line starts at this October's awards — ${p.when}.`,
+    `The nights before this one kept no table of the field, so the line starts at this December's awards — ${p.when}.`,
   'ui.chart.empty': (p: { when: string }) =>
-    `Nothing to plot yet. The first awards night is this October, ${p.when}, and every one after it adds a point.`,
+    `Nothing to plot yet. The first awards night is this December, ${p.when}, and every one after it adds a point.`,
   'ui.chart.point': (p: { year: number; place: string; field: number; reputation: string }) =>
     `${p.year} — ${p.place} of ${p.field}, ${p.reputation} reputation`,
   'ui.chart.aria': (p: { place: string; year: number }) => `Finishing place by year. Best: ${p.place} in ${p.year}.`,
@@ -282,11 +265,10 @@ export const ui = {
   'ui.fit.goodEye': 'good eye',
 
   // --- Bottom bar (labels shared with other panels) --------------------------------
-  'ui.bar.jobs': 'Jobs',
 
   // --- On the bench -------------------------------------------------------------------
   'ui.bench.empty': 'Nothing on the bench.',
-  'ui.bench.emptyHint': (p: { jobs: string }) => `Open ${p.jobs} at the bottom of the screen and pitch something.`,
+  'ui.bench.emptyHint': (p: { jobs: string }) => `Open ${p.jobs} at the bottom of the screen and design something.`,
   'ui.bench.partsMade': (p: { made: number; total: number }) => `${p.made}/${p.total} parts`,
   'ui.bench.waitingOnParts': 'waiting on parts',
   'ui.bench.resolving': 'resolving',
@@ -328,15 +310,6 @@ export const ui = {
   // --- Day bar, the People column -------------------------------------------------
   'ui.daybar.left': (p: { hours: string }) => `${p.hours} of your day left`,
   'ui.daybar.on': (p: { project: string }) => `on ${p.project}`,
-  'ui.members.unallocated': 'unallocated',
-  'ui.members.interest': 'interest',
-  'ui.members.energy': 'energy',
-  'ui.members.mood': 'mood',
-  'ui.members.moodHint':
-    'What the place is like to be in. It moves the odds they turn up at all, and how fast they work. The Shop is what raises it.',
-  'ui.members.commit': 'commit',
-  'ui.members.perWeek': (p: { hours: string | number }) => `${p.hours} h/wk`,
-  'ui.members.passion': (p: { category: string; match: string }) => `${p.category}: ${p.match} passion match`,
 
   // --- Machines -------------------------------------------------------------------------
   'ui.machines.title': 'The shop floor',
@@ -384,7 +357,7 @@ export const ui = {
   'ui.projects.col.needs': 'Needs',
   'ui.projects.col.crew': 'Crew',
   'ui.projects.col.net': 'Net',
-  'ui.projects.empty': (p: { jobs: string }) => `Nothing here yet. Open ${p.jobs} and pitch something.`,
+  'ui.projects.empty': (p: { jobs: string }) => `Nothing here yet. Open ${p.jobs} and design something.`,
   'ui.projects.foot.blocked': (p: { n: string }) => `${p.n} of these need something from you`,
   'ui.projects.foot.clear': 'Nothing is blocked',
   'ui.projects.foot.shipped': (p: { count: number; earned: number }) => `${p.count} shipped for ${money(p.earned)}`,

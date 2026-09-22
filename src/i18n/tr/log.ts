@@ -14,7 +14,7 @@ import { ek } from '../turkish';
 export const log: typeof en = {
   // --- The log ---------------------------------------------------------------
   'log.day1': '1. gün. Garaj PLA ve hazır kahve kokuyor.',
-  'log.pickSomething': 'Yapacak bir şey seç — iş listesine bir bak.',
+  'log.pickSomething': 'Yapacak bir şey seç — + Yeni Proje menüsünü aç.',
   'log.noHours': 'Bugün buna ayıracak saatin kalmadı.',
 
   'log.amenity.needsEra': (p) => `${p.item} için ${p.era} gerekiyor.`,
@@ -46,7 +46,6 @@ export const log: typeof en = {
   'fail.thermal': 'termal kaçak koruması devreye girdi',
   'fail.gantry': 'portal parçayı yerinden söktü',
 
-  'log.stage.conceptLocked': (p) => `${p.project}: konsept kesinleşti.`,
   'log.stage.cadDone': (p) =>
     `${p.project}: CAD %${Math.round(p.quality * 100)} kaliteyle bitti, yapılacak ${p.parts} parça var.`,
   'log.stage.simClean': (p) => `${p.project}: simülasyon temiz.`,

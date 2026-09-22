@@ -33,28 +33,40 @@ export function dayName(day: number): string {
 // --- The calendar (§3c) ------------------------------------------------------
 
 /**
- * The run keeps a real date rather than "Y1, day 37". A year is 90 sim-days split into
- * twelve months, the space opens its doors in **January 2026**, and the awards are held
- * every **October** the way a real scene's would be — which also means the first ceremony
- * arrives two months before the year is out, instead of landing on New Year's Eve.
+ * The run keeps a real date rather than "Y1, day 37". **A year is 365 days**, with real
+ * month lengths and no leap years — the space opens its doors on **1 January 2026**, and
+ * the awards are held on **1 December** every year: 1 December 2026, 1 December 2027, and
+ * on. A year used to be ninety days with the night in October; a real year makes a date
+ * mean something, and December closes the year the way a scene's own awards would.
  */
 export const CALENDAR = {
   startYear: 2026,
-  daysPerYear: 90,
-  /** 1-12. The awards are in October, so the award year runs October to October. */
-  awardsMonth: 10,
+  daysPerYear: 365,
+  /** Month and day of the awards night. */
+  awardsMonth: 12,
+  awardsDayOfMonth: 1,
 };
 
-const DAYS_PER_MONTH = CALENDAR.daysPerYear / 12;
+const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/** Day of the year (0-based) that a month and day fall on. */
+function dayOfYearFor(month: number, dayOfMonth: number): number {
+  let total = 0;
+  for (let m = 0; m < month - 1; m += 1) total += MONTH_DAYS[m];
+  return total + dayOfMonth - 1;
+}
 
 /** Day 1 is 1 January 2026. */
 export function gameDate(day: number): { year: number; month: number; dayOfMonth: number } {
   const index = Math.max(0, day - 1);
   const year = CALENDAR.startYear + Math.floor(index / CALENDAR.daysPerYear);
-  const dayOfYear = index % CALENDAR.daysPerYear;
-  const month = Math.min(11, Math.floor(dayOfYear / DAYS_PER_MONTH));
-  const dayOfMonth = Math.floor(dayOfYear - month * DAYS_PER_MONTH) + 1;
-  return { year, month: month + 1, dayOfMonth };
+  let rest = index % CALENDAR.daysPerYear;
+  let month = 0;
+  while (rest >= MONTH_DAYS[month]) {
+    rest -= MONTH_DAYS[month];
+    month += 1;
+  }
+  return { year, month: month + 1, dayOfMonth: rest + 1 };
 }
 
 export function monthName(month: number): string {
@@ -67,9 +79,9 @@ export function shortDate(day: number): string {
   return `${d.dayOfMonth} ${monthName(d.month).slice(0, 3)} ${d.year}`;
 }
 
-/** The first day of the awards month in the calendar year that `day` falls in. */
+/** The awards night (1 December) of the calendar year that `day` falls in. */
 export function awardsDay(day: number): number {
   const d = gameDate(day);
   const yearStartDay = (d.year - CALENDAR.startYear) * CALENDAR.daysPerYear + 1;
-  return yearStartDay + Math.round((CALENDAR.awardsMonth - 1) * DAYS_PER_MONTH);
+  return yearStartDay + dayOfYearFor(CALENDAR.awardsMonth, CALENDAR.awardsDayOfMonth);
 }

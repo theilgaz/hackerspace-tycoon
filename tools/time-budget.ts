@@ -17,6 +17,8 @@ function draftCrew(sim: Simulation, defId: string): string[] {
 import { STAGE_STATION } from '@/machines/layout';
 import { partsPending } from '@/systems/ProjectSystem';
 import { ECONOMY } from '@/utils/economy';
+import { furnish } from './furnish';
+import { freshMarket } from '@/utils/market';
 
 const DT = 0.05;
 const SPEED = 4;
@@ -30,13 +32,14 @@ store.setState({ cash: START_CASH, log: [], era: 1, shippedCount: 0, reputation:
     bill: null,
     bills: [],
     missedBills: 0,
-    gameOver: null, backlog: [], applicants: [], runtime: emptyRuntime() });
+    gameOver: null, backlog: [], applicants: [], runtime: emptyRuntime(), market: freshMarket() });
 const sim = new Simulation();
 
 const budget: Record<string, number> = {};
 const playerBudget: Record<string, number> = {};
 const stageHours: Record<string, number> = {};
 
+let furnishedAt = -1;
 while (sim.day <= DAYS) {
   sim.tick(DT, SPEED);
 
@@ -52,6 +55,12 @@ while (sim.day <= DAYS) {
   // Keep the next bill covered before spending on anything — the same rule era-pace plays by.
   // This was called but never defined, so the harness has been throwing on its first order.
   const spendable = () => state.cash - Math.max(0, -sim.previewBill().net);
+  // The floor is a constraint now (§4d): buy the seat or the table people are queueing
+  // for, once an hour at most so a queue that clears next tick is not bought twice.
+  if (Math.floor(sim.totalHours) !== furnishedAt) {
+    furnishedAt = Math.floor(sim.totalHours);
+    furnish(sim, spendable);
+  }
   // Only start something there are actually free hands for.
     if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
     const offer = state.backlog[0];

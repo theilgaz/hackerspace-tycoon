@@ -31,6 +31,8 @@ function draftCrew(sim: Simulation, defId: string): string[] {
 import { STAGE_STATION } from '@/machines/layout';
 import { partsPending } from '@/systems/ProjectSystem';
 import { ECONOMY } from '@/utils/economy';
+import { furnish } from './furnish';
+import { freshMarket } from '@/utils/market';
 
 const RUNS = Number(process.argv[2] ?? 6);
 const SEED = Number(process.argv[3] ?? 1);
@@ -73,6 +75,8 @@ function runOnce(seed: number, mode: Mode): Result {
     applicants: [], upvotes: 0,
     ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
     runtime: emptyRuntime(),
+    // Rolled after the reseed, or every process starts from a different market (§13).
+    market: freshMarket(),
   });
 
   const sim = new Simulation();
@@ -82,6 +86,7 @@ function runOnce(seed: number, mode: Mode): Result {
   let playerHoursWorked = 0;
   let lastSignature = '';
   let stallHours = 0;
+  let furnishedAt = -1;
 
   while (sim.day <= MAX_DAYS) {
     sim.tick(DT, SPEED);
@@ -97,6 +102,12 @@ function runOnce(seed: number, mode: Mode): Result {
     const state = store.getState();
     if (firstShipDay === null && state.shippedCount > 0) firstShipDay = sim.day;
 
+    // The floor is a constraint now (§4d): buy the seat or the table people are queueing
+    // for, once an hour at most so a queue that clears next tick is not bought twice.
+    if (Math.floor(sim.totalHours) !== furnishedAt) {
+      furnishedAt = Math.floor(sim.totalHours);
+      furnish(sim, spendable);
+    }
     // --- every archetype does the unavoidable ------------------------------
     // Only start something there are actually free hands for.
     if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
@@ -136,7 +147,7 @@ function runOnce(seed: number, mode: Mode): Result {
     for (const project of sim.projects) {
       if (project.team.length >= project.teamSize) continue;
       const candidates = sim.members
-        .filter((m) => !m.team && !m.isCoolingOff(project.id))
+        .filter((m) => !m.team && !m.isCoolingOff(project.id) && sim.canMeet(project, m))
         .sort((a, b) => b.passionMatch(project.tags) - a.passionMatch(project.tags));
       if (candidates.length) sim.inviteMember(project.id, candidates[0].id);
     }

@@ -1,5 +1,6 @@
 import type { IconName } from '@/ui/icons';
 import { COMFORT } from './constants';
+import { t } from '@/i18n';
 
 /**
  * The Shop (CLAUDE.md §7b) — what you buy for the *people* rather than for the work.
@@ -32,6 +33,13 @@ export interface AmenityEffect {
 
 export interface AmenityDef {
   id: string;
+  /**
+   * Which shelf of the Build menu it sits on. Comforts are the Shop as it was — kit for the
+   * people. Decor is smaller and cheaper: a plant, a poster, a rubber duck. It still runs
+   * through mood, and so through the same saturation curve, so a room full of it is nicer
+   * rather than faster (§7b's rule that the fourth nice thing is worth less than the first).
+   */
+  group?: 'comfort' | 'decor';
   name: string;
   /** What it is, in the room. */
   blurb: string;
@@ -51,7 +59,19 @@ export interface AmenityDef {
     | 'pingpong'
     | 'aquarium'
     | 'arcade'
-    | 'acoustics';
+    | 'acoustics'
+    | 'plant'
+    | 'tree'
+    | 'duck'
+    | 'tux'
+    | 'bookshelf'
+    | 'beanbag'
+    | 'rack'
+    | 'neon'
+    | 'whiteboard'
+    | 'poster'
+    | 'terminal'
+    | 'lava';
   mount: 'floor' | 'wall';
   /** The prop's own colour; the room is otherwise deliberately grey. */
   tone: string;
@@ -175,6 +195,175 @@ export const AMENITIES: AmenityDef[] = [
     mount: 'wall',
     tone: '#5a5f6b',
   },
+  // --- Decor (§4d): the room as somewhere you would want to be ---------------
+  {
+    id: 'monstera',
+    group: 'decor',
+    name: 'Monstera',
+    blurb: 'A big leafy plant in a pot. Somebody will adopt it and name it.',
+    icon: 'leaf',
+    era: 1,
+    price: 450,
+    upkeep: 0,
+    effect: { mood: 1 },
+    shape: 'plant',
+    mount: 'floor',
+    tone: '#3f8f4f',
+  },
+  {
+    id: 'olive-tree',
+    group: 'decor',
+    name: 'Indoor Olive Tree',
+    blurb: 'A proper tree in a proper tub. The garage stops feeling like a garage.',
+    icon: 'leaf',
+    era: 1,
+    price: 1400,
+    upkeep: 0,
+    effect: { mood: 2, drift: 0.98 },
+    shape: 'tree',
+    mount: 'floor',
+    tone: '#7a9a4a',
+  },
+  {
+    id: 'lava-lamp',
+    group: 'decor',
+    name: 'Lava Lamp',
+    blurb: 'Orange wax, going up and down, forever. Surprisingly good for thinking.',
+    icon: 'lightbulb',
+    era: 1,
+    price: 250,
+    upkeep: 0,
+    effect: { mood: 1 },
+    shape: 'lava',
+    mount: 'floor',
+    tone: '#ff7a3d',
+  },
+  {
+    id: 'rubber-duck',
+    group: 'decor',
+    name: 'Giant Rubber Duck',
+    blurb: 'Explain the bug to the duck. It works far more often than it should.',
+    icon: 'bot',
+    era: 1,
+    price: 900,
+    upkeep: 0,
+    effect: { mood: 2, focus: 1.01 },
+    shape: 'duck',
+    mount: 'floor',
+    tone: '#f0c429',
+  },
+  {
+    id: 'tux',
+    group: 'decor',
+    name: 'Tux Statue',
+    blurb: 'A knee-high penguin by the door. Visitors take photos with it.',
+    icon: 'users',
+    era: 1,
+    price: 1200,
+    upkeep: 0,
+    effect: { mood: 2, draw: 1.02 },
+    shape: 'tux',
+    mount: 'floor',
+    tone: '#1f2329',
+  },
+  {
+    id: 'bookshelf',
+    group: 'decor',
+    name: 'Shelf of Manuals',
+    blurb: 'Datasheets, animal-cover books and a Horowitz & Hill with a cracked spine.',
+    icon: 'book',
+    era: 1,
+    price: 1600,
+    upkeep: 0,
+    effect: { mood: 1, focus: 1.02 },
+    shape: 'bookshelf',
+    mount: 'floor',
+    tone: '#8a5a3c',
+  },
+  {
+    id: 'beanbags',
+    group: 'decor',
+    name: 'Bean Bags',
+    blurb: 'Two of them, slightly deflated. Every afternoon somebody is asleep in one.',
+    icon: 'home',
+    era: 1,
+    price: 1300,
+    upkeep: 0,
+    effect: { mood: 2, rest: 1.1 },
+    shape: 'beanbag',
+    mount: 'floor',
+    tone: '#c0584a',
+  },
+  {
+    id: 'server-rack',
+    group: 'decor',
+    name: 'Server Rack',
+    blurb: 'Blinkenlights. It hosts the wiki and a Minecraft server, in that order of importance.',
+    icon: 'cpu',
+    era: 1,
+    price: 3800,
+    upkeep: 150,
+    effect: { mood: 1, draw: 1.03 },
+    shape: 'rack',
+    mount: 'floor',
+    tone: '#5ecfc0',
+  },
+  {
+    id: 'neon-sign',
+    group: 'decor',
+    name: 'Neon </> Sign',
+    blurb: 'Pink glass tubing on the back wall. The photo everybody posts of the place.',
+    icon: 'code',
+    era: 1,
+    price: 2200,
+    upkeep: 60,
+    effect: { mood: 2, draw: 1.04 },
+    shape: 'neon',
+    mount: 'wall',
+    tone: '#ff4fd8',
+  },
+  {
+    id: 'whiteboard',
+    group: 'decor',
+    name: 'Whiteboard Wall',
+    blurb: 'Half a wall you can write on. Nobody ever wipes the corner that says DO NOT WIPE.',
+    icon: 'clipboard',
+    era: 1,
+    price: 1100,
+    upkeep: 0,
+    effect: { focus: 1.03 },
+    shape: 'whiteboard',
+    mount: 'wall',
+    tone: '#e8ecf2',
+  },
+  {
+    id: 'circuit-art',
+    group: 'decor',
+    name: 'Circuit Art Print',
+    blurb: 'A framed schematic, drawn as art. It is a real circuit, and it does work.',
+    icon: 'image',
+    era: 1,
+    price: 600,
+    upkeep: 0,
+    effect: { mood: 1 },
+    shape: 'poster',
+    mount: 'wall',
+    tone: '#5ecfc0',
+  },
+  {
+    id: 'retro-terminal',
+    group: 'decor',
+    name: 'Retro Terminal',
+    blurb: 'A beige terminal on a plinth, green text, still connected to something.',
+    icon: 'gamepad',
+    era: 2,
+    price: 2600,
+    upkeep: 0,
+    effect: { mood: 2, draw: 1.03 },
+    shape: 'terminal',
+    mount: 'floor',
+    tone: '#d8cfb8',
+  },
 ];
 
 export const amenityDef = (id: string): AmenityDef | undefined =>
@@ -230,15 +419,20 @@ export function comfortsOf(owned: string[]): Comforts {
   return result;
 }
 
-/** One line per effect, for the shop card and the People panel. Positive reads as good. */
+/**
+ * One line per effect, for the Build cards and the People panel. Positive reads as good.
+ * Rendered in the player's language here rather than at every call site.
+ */
 export function effectLines(effect: AmenityEffect): { label: string; good: boolean }[] {
   const lines: { label: string; good: boolean }[] = [];
   const pct = (value: number) => `${value > 1 ? '+' : '−'}${Math.round(Math.abs(value - 1) * 100)}%`;
-  if (effect.mood) lines.push({ label: `mood +${effect.mood}`, good: true });
-  if (effect.focus) lines.push({ label: `work rate ${pct(effect.focus)}`, good: effect.focus > 1 });
-  if (effect.rest) lines.push({ label: `rest ${pct(effect.rest)}`, good: effect.rest > 1 });
-  if (effect.fatigue) lines.push({ label: `tiring ${pct(effect.fatigue)}`, good: effect.fatigue < 1 });
-  if (effect.drift) lines.push({ label: `drift ${pct(effect.drift)}`, good: effect.drift < 1 });
-  if (effect.draw) lines.push({ label: `word of mouth ${pct(effect.draw)}`, good: effect.draw > 1 });
+  if (effect.mood) lines.push({ label: t('build.effect.mood', { value: String(effect.mood) }), good: true });
+  if (effect.focus) lines.push({ label: t('build.effect.focus', { value: pct(effect.focus) }), good: effect.focus > 1 });
+  if (effect.rest) lines.push({ label: t('build.effect.rest', { value: pct(effect.rest) }), good: effect.rest > 1 });
+  if (effect.fatigue) {
+    lines.push({ label: t('build.effect.fatigue', { value: pct(effect.fatigue) }), good: effect.fatigue < 1 });
+  }
+  if (effect.drift) lines.push({ label: t('build.effect.drift', { value: pct(effect.drift) }), good: effect.drift < 1 });
+  if (effect.draw) lines.push({ label: t('build.effect.draw', { value: pct(effect.draw) }), good: effect.draw > 1 });
   return lines;
 }

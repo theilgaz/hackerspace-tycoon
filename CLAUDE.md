@@ -128,58 +128,139 @@ members to it. This is the player's most direct lever, and it is deliberately no
 LED badge, fume extractor) runs alongside a long build without consuming the space, and teaches
 the whole pipeline in a couple of days. First ship lands around day 4.
 
-## 4c. The Jobs menu
+## 4c. + New Project — designing a build (`src/utils/design.ts`)
 
-The backlog is not a tab. It lives behind **Jobs** in the build menu along the bottom of the
-screen — the bar that will also hold Shop, Events and the space builder in later phases. Jobs
-opens a three-step wizard:
+**The Jobs board is gone, and why is the whole section.** It handed the player a finished
+recipe: every number behind a project — work, parts, money, risk, crew size — had already
+been decided, so the only choice left was which name to click. The game had thought about
+the project so the player did not have to. **+ New Project** replaces it at the head of the
+build menu, and three of its five steps are decisions:
 
-1. **Kind of work** — the ten genres as tiles, each showing how many projects it currently
-   offers, plus an **Offers** tile at the top for proposals, sponsors and trends.
-2. **Project** — the shortlist, with size handled *in place*.
-3. **Crew** — pick who to ask, then pitch.
+  **Genre → Brief → Design → Crew → Review**
 
-**Size is not a step.** It briefly was, and it was redundant: every project already states its
-team size, so the list simply had to say it properly. It now appears three ways at once, which
-is what a step could never do:
+- **Genre** — the ten genres as tiles, each with how many briefs it offers and **what the
+  market is paying for it this week** (§4d), plus an **Offers** row for proposals, sponsors
+  and trends.
+- **Brief** — the catalogue entry: what somebody wants built, the crew size it was
+  *scoped for*, and its price before quality and the market. The catalogue is still the
+  content (§4b); it is no longer the plan.
+- **Design** — three decisions per genre, each a ★ / ★★★ / ★★★★★ option. Software asks
+  *Tool* (Notepad / VS Code / Full IDE), *UI Design* (Template / Custom / Design system) and
+  *Architecture* (One big script / Framework / Services + CI); hardware genres draw from
+  Circuit, Firmware, Enclosure, Design tool, Material, Validation and Documentation
+  (`CATEGORY_AXES`). Every card spells out what it changes — quality, market appeal, work,
+  test risk, parts, printing, delivery, licence cost — and turns red where it costs you.
+- **Crew** — the size, from **1 / 2 / 3 / 4 / 5 / 10**, and who is asked. Size is capped by
+  the biggest table the space owns: five and ten need the Large Project Table.
+- **Review** — the plan worked out: forecast quality in stars, market demand, likely pay
+  and reputation, hand work, machine time, parts, licences, test risk, and which table it
+  will kick off at. The Start button states the cost and what it leaves you with.
 
-- a **segmented filter** above the list (All / 1-2 / 3-4 / 5+) with a count on each;
-- **group headings** when nothing is filtered, so the whole range is visible at a glance, with
-  a `short-handed` badge when the roster cannot fill the smallest job in that band;
-- a **tinted crew badge** leading each row's meta line — "1 person", "3 people".
+**Three stars is the brief as written.** Every three-star option is ×1 on everything, so a
+player who takes the defaults is playing the game as it was balanced, and every harness and
+the Project Manager do exactly that (`defaultPlan`). One star is quicker or cheaper and it
+shows; five stars is dearer or slower and it shows the other way. **No option is a free
+upgrade** — §13's rule for the claim system: a reward with no matching punishment is not a
+choice.
 
-Filtering collapses the group headings, since they would then be saying the same thing twice.
-The general rule: a wizard step should ask something the list cannot answer.
+**Crew size is the biggest single lever on quality** (`teamFit`). Under the size a brief was
+scoped for, the plan is thin; up to twice it, more eyes make it better; past that it is too
+many cooks. It is applied at the end of the kickoff *from whoever actually sat down*, not
+from the seats the pitch asked for. Speed is left to the existing crowd curve (§3b), and the
+other cost of a big crew is physical: **the whole crew has to be at the table at once**
+(§4d), which gets less likely with every chair.
 
-**The breadcrumb navigates.** A completed step is a button back to itself — the check-marked
-crumbs take a pill background on hover so they read as clickable. The current step and the ones
-ahead are plain text: you are already on one and the others do not exist yet. Back still walks
-one step at a time; the breadcrumb is for jumping past it.
+**`planProject` is the single source of truth.** The wizard previews with it and
+`startProject` builds from it, so what the review screen promised is what the build carries.
+Never compute a plan's numbers anywhere else.
 
-**The wizard is built from the design-system primitives (§11), not bespoke markup.** The first
-version used ten saturated left borders, emoji at mixed sizes and cards of different heights —
-which is what "assembled rather than designed" looks like.
+Carried over from the Jobs wizard, because they were right: **it is a fixed box** (780×700
+now — three option cards a row with their effects do not fit in 680), `npm run click-check`
+asserts the size is identical on every step; **completed breadcrumbs navigate**; the crew
+step **arrives already picked** with the best matches, a proposer is locked in, and **a crew
+the player has touched is never re-suggested over**. The picker shows each person's shift
+(FT / AM / PM), and a crew with a morning and an afternoon part-timer gets a warning in the
+step itself — they are never in the building together (§4d).
 
-**The wizard is a fixed box — 680×660, never content-sized.** A dialog that resizes between
-steps is unpleasant to use and makes the Back button move under the cursor. The body scrolls; the
-header, footer and the Pitch button stay put. The crew step would otherwise be mostly empty, so
-it carries the commitment breakdown: every stage with its work (under the genre's own stage
-names) and every part with its machine hours — or, for software, the line that says it never
-touches the machine queue at all. `npm run click-check` asserts the box is identical on every
-step; without the fix it measures 529 → 326 → 238 → 474.
+## 4d. Tables, workstations and the kickoff (`src/utils/furniture.ts`, `machines/layout.ts`)
 
-**Crews are picked on the pitch screen, and they arrive already picked.** Each backlog and
-catalog card carries a crew selector listing unallocated members ranked by passion match,
-capped at the project's team size. Choosing a project **ticks the best of them for you** — the
-crew step should open on the answer, not on an empty form, because ranking the list and then
-making the player re-derive the top of it is work the screen has already done.
+**Every project starts at a project table.** The first stage — Concept, now **Kickoff** in
+every genre — only progresses while **every crew member is sitting at the table at the same
+time**; each person's share of the meeting shows as a gold bar over their head. Once it is
+done the table goes back and the crew works *individually* at workstations, each with a
+teal bar showing their share of the stage against an even split.
 
-Two rules keep the suggestion from being a nuisance: anybody who has since been taken is
-dropped before it fills, and **a draft the player has touched is never suggested over again**
-(`draftTouched`), so stepping back and forth cannot undo a hand-picked crew. Pitching still
-asks each of them and they can still refuse — the suggestion decides who gets asked, never who
-says yes, which is the volunteer model surviving contact with a convenience feature.
-Mid-project changes still happen on the project card.
+**One person to a workstation.** Software Station (code, CAD, simulation, docs), Hardware
+Station (electronics assembly), Assembly Table (mechanical assembly, seats two). Anybody
+who wants a seat of a kind and finds every one taken stands about saying so, the Build bar
+button counts them, and the Build panel says which kind. Before this, eight people did the
+CAD at one desk. **The room is now a constraint**, and the floor — which grows with the
+lease — is what limits how much of it you can buy.
+
+| | Seats | Price |
+|---|---|---|
+| Small Project Table | 4 | 900 |
+| Large Project Table (two tiles) | 10 | 4,800 |
+| Software Station | 1 | 1,800 |
+| Hardware Station | 1 | 2,400 |
+| Assembly Table | 2 | 1,500 |
+
+The garage opens with one small table, two software stations, one hardware station and an
+assembly table.
+
+**Five things that were wrong first, each worth not repeating:**
+
+- **A table held from the pitch deadlocked the garage.** One crew that could never meet —
+  a morning part-timer and an afternoon one — kept the only table for the rest of the run
+  while every project behind it waited. **A table is now booked only by a crew who are all
+  in the building**, and the booking lapses the moment one leaves. Progress is pooled on
+  the project, so giving the table up costs nothing.
+- **A crew does not wait for ever** (`KICKOFF.missLimit`). On a working day when a kickoff
+  went nowhere, anybody who was not in while most of the crew was gets a mark; two, and the
+  log says *the crew went ahead without them*. One rule covers the Ghost and the shift that
+  never overlaps, and it tells a story instead of stalling silently (§13's invisible-gate
+  rule). Volunteers, re-pitches and the Project Manager never sign somebody onto a kickoff
+  they could not sit in on (`canMeet`); the player still can, with the warning.
+- **A ghost entry in a team list became a deadlock.** A member who proposed a project was
+  signed onto it while still listed on their old team. Harmless while it only inflated a
+  count; fatal once a kickoff needed everybody on the list to sit down. `addToTeam` now
+  removes them from the old team, and a nightly sweep drops anybody a team lists who does
+  not list it back.
+- **The kickoff is a meeting, not a stage.** At the old Concept stage's size it took a day
+  and a half, which was invisible when every project could hold its concept at once and was
+  the bottleneck of the whole garage once they queued for one table. `DESIGN.kickoffScale`
+  is 0.4, and a bigger crew adds `kickoffPerSeat` — more people, more to agree.
+- **The derived comfort slots walled in the door.** Only a move by hand checked that every
+  station stayed reachable, so the bottom row filled one comfort at a time until the door
+  was sealed and every station in the room went quiet at once. Every prop is now laid down
+  with the room still walkable, nothing is placed beside the door, tables keep a clear ring
+  round them (their chairs are drawn there), and a floor item with no safe tile left is
+  refused at the till rather than paid for and never shown. Reachability is one flood fill
+  from the door, not a path search per station — it runs for every candidate tile.
+
+**A seat is a drawing position, not a tile.** Ten people round a table would need a room the
+garage does not have; the path finder walks everybody to the stand tile and the renderer
+puts them in their chair (`seatPosition`), facing the table.
+
+### The market (`src/utils/market.ts`)
+
+One number per genre, around 1.0, that multiplies what a release pays. It wanders daily and
+is pulled back toward normal, a trending offer warms its genre, and **every ship cools its
+own genre** — the counterpart of `REPEAT` at the scale of a whole genre, and the reason
+"more software" is not the answer to every month.
+
+**What a release is worth is now four things**: the brief's price, the market, the design's
+appeal, and the quality it actually reached (`qualityPay` / `qualityHype`). Payout used to
+ignore quality entirely, which made every quality decision in the game cosmetic. The curve
+is **centred on the build a default design produces** (about 0.45 in `era-pace`): centred on
+0.5 at first, it paid the typical build 5% under the catalogue and quietly cost the campaign
+a fifth of its reputation.
+
+**A new random draw has to be reset by every harness.** The market is rolled when the store
+module loads, from an RNG seeded by the clock. Harnesses reseed the RNG but did not reset the
+market, so the same seed produced 46 ships in one process and 100 in the next. `begin()` and
+every harness now roll it after the reseed. Before trusting a measurement, run the same seed
+twice.
 
 ## 3a. You (the player character)
 
@@ -365,6 +446,10 @@ award needs is the opposite shape: rare and enormous, `0.08 / [8, 12]`, which cl
 about once a year. Work the ceiling out (`rep × 1.3 × boostHigh × norm`) before tuning it;
 the seeds will not tell you, because a shot this rare barely shows up in eight of them.
 
+**Konya was trimmed a touch** (ship pace 0.40 → 0.38, reputation per build 68 → 65; about
+9% less reputation over a run). It is still the busiest space and still takes Most Projects;
+it is no longer the wall at the top of the standings.
+
 **Konya's pace carries its cash with it, so watch Deepest Pockets.** Raising Konya's ship rate
 by 3.4x at its old ₺1,700 a project made it the richest space as well as the busiest, and it
 took Deepest Pockets *and* Rising Star nearly every night. Per-project cash was cut to ₺350 to
@@ -375,13 +460,28 @@ usually second.
 Their pace **compounds with their reputation**, as the player's does. Without that they grow
 linearly while the player's roster snowballs, and by day 200 the table is a formality.
 
-**The run keeps a real date.** The space opens on **1 January 2026**; a year is 90 sim-days
-split into twelve months, and the **awards are held every October**, the way a real scene's
-would be. That also means the first ceremony arrives two months before the year is out rather
-than landing on New Year's Eve — which matters, because a player who cannot reach a ceremony
-never sees one of the game's four set pieces.
+**The run keeps a real date.** The space opens on **1 January 2026**; **a year is 365 days**
+with real month lengths and no leap years, and the **awards are held every 1 December** —
+1 December 2026 (day 335), 1 December 2027, and so on. It used to be a ninety-day year with
+the night in October; a real year makes a date mean something.
 
-**A year is 90 days, and it ends with an awards night.** Five categories, judged on the year
+**What the longer year changed** (measured over 400 days, past the first night):
+
+- **Rival compounding needed a knee.** Their pace grows with reputation, which was tuned over
+  a 220-day horizon; run on to day 400 it overtook the player, whose own growth flattens once
+  the roster is full, and a normal run finished 5th-6th. Past `RIVAL_GROWTH_KNEE` (14,000
+  reputation, roughly where the field stood on day 220) a rival keeps its pace but stops
+  accelerating. Everything before the knee is exactly as it was.
+- **Biggest Crew is set against the crew a player has on 1 December**, not against the full
+  cast. The cast grew to twenty-five, so at fifteen the player took it every night; at
+  twenty-six Dallas did. Dallas caps at 22: a committed hirer edges it on normal and easy, a
+  hard start does not.
+- Measured: normal first in 8/8 (about 1.05-1.3× the field), easy 8/8, hard 4/8 and usually
+  in the top three; the player takes 19 of 40 first-night awards on normal and easy, 8 on
+  hard. Most Projects still goes to Konya and Deepest Pockets to Garaj on the first night —
+  their identities, and the two locks worth watching.
+
+**A year ends with an awards night.** Five categories, judged on the year
 just gone rather than all time, so a bad year costs you even when you are ahead overall:
 
 - **Most Projects** (200) · **Biggest Crew** (140) · **Deepest Pockets** (100) · **Space of the
@@ -506,9 +606,9 @@ is the one moment a year that is already a checkpoint. Four things worth keeping
 
 Winning pays reputation. Two tuning notes worth keeping:
 
-- **Every category must be winnable.** Açık Atölye's crew is capped at 15 because a complete
-  roster is you plus fourteen — so Biggest Crew is reachable, but only if you have hired
-  everybody. It was capped at 40 first, which made one of the awards decoration.
+- **Every category must be winnable.** Biggest Crew is the one that keeps moving: capped at 15
+  when the roster was you plus fourteen, now at 22 against a cast of twenty-five (see above).
+  It was capped at 40 once, which made one of the awards decoration.
 - `npm run era-pace [seeds]` prints the first awards night, the day each era arrives, and the
   final standings. Targets: an engaged player takes **one or two of five** on the first night
   (currently 2.0 on normal, 1.5 on hard, 3.25 on easy), finishes **first overall** by day 220
@@ -725,6 +825,19 @@ Stage renaming is what makes a genre feel like itself: a software build runs
 `Spec → Architecture → Prototype → Build Pipeline → Implementation → QA → Bugfix → Launch`,
 at a desk, on the `software` skill. **Always resolve stages through `stageLabel` / `stageSkill` /
 `stageStation`,** never by reading `STAGE_MAP` or `STAGE_STATION` directly.
+
+### Who is on the books (`ROSTER`, `APPLICANTS`, `LADDER`)
+
+Safa and Abdullah are there on day one; the rest of the cast — twenty-three of them — are
+applicants. **Who turns up in what order is shuffled every run**: the reputation ladder's
+rungs are fixed (`LADDER`), and `shuffleLadder` deals the applicants onto them when the run
+starts, keeping the order in the save. The pace stays the difficulty's to set; the faces do
+not repeat from run to run. People can be taken on one at a time or all at once — **Take all
+on** hires everybody waiting, full-time where they can be and part-time for anybody with a
+day job, each still paying their induction fee.
+
+You are named too: the start screen asks for your name as well as the space's, and it is
+what the room labels you with (`Identity.player`; left empty, you are "You").
 
 ### How fast people turn up (`Simulation.tickRecruiting`)
 
@@ -1021,7 +1134,20 @@ a few thousand under. There were five of them.
 It now makes the bill *worse* — you lose their dues — so it is a way to free a seat, not a way
 to save money. The button stays, its meaning is inverted, and the People panel says so.
 
-## 7b. The Shop — BUILT (`src/utils/amenities.ts`)
+## 7b. The Shop — BUILT (`src/utils/amenities.ts`), now the Comforts shelf of **Build**
+
+**Build replaced the Shop on the menu** (§4d). It has three shelves: **Workspace** (tables and
+workstations), **Comforts** (everything below), and **Decor** — twelve smaller things, a
+Monstera, an olive tree, a lava lamp, a giant rubber duck, a Tux statue, a shelf of manuals,
+bean bags, a server rack, a neon `</>`, a whiteboard wall, a circuit-art print and, from Unit
+4B, a retro terminal. Decor runs through the same mood curve as the comforts, so a room full
+of it is nicer rather than faster, and the harnesses do not buy it.
+
+**Every card carries a picture of the thing**, rendered once from the same model that stands
+in the room (`render/Thumbnails.ts`) and cached as a data URL — a card with a name is a
+spreadsheet row, a card with the thing on it is a shop, and the picture cannot drift from
+what turns up.
+
 
 **Machines make parts; the Shop makes the place worth turning up to.** Nine comforts, gated
 by the lease, bought once and never sold back — a coffee machine and a water cooler in the
@@ -1080,6 +1206,10 @@ and a click sets it down or a second click on the item turns it a quarter. `R` t
 `Escape` puts it down. The strip that appears sits *above* the build menu rather than being
 a dialog, because the thing you are deciding about is the room and a modal would cover the
 tiles you are choosing between.
+
+**While something is held, clicking another piece picks that one up instead.** Moving five
+things used to be pick up, drop, press Done, and start again — five times. Done is now only
+for when you have finished rearranging.
 
 Where they start is derived — the open edges, the bottom row and the odd rows of the
 right-hand column, spaced a tile apart for the same reason the printer wall is — and a tile
@@ -1284,9 +1414,9 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   **You is a readout again** — hours, energy, and what you are on, where the task line is
   itself the way back to that build on the bench. A panel with no buttons is not a panel
   missing something.
-- **The right column folds.** Two panels share it, so either can be collapsed to give the
-  other the room — the log starts folded at two lines, because that is enough to notice
-  something happened, and the roster is what you actually read.
+- **The right column is the log, alone.** It used to share it with "The People", a roster
+  that duplicated the People panel in the build menu and took most of the column to do it.
+  The roster went; the log opens unfolded and takes the room.
 - **"You" is three pixels under the clock.** It was a panel in the right column, then a
   panel in the bottom-left corner, and both were a box, a heading and a stack of rows spent
   on one number. Your day is now a slim bar tucked under the clock — which is where it
@@ -1297,11 +1427,19 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   One trap worth the line: the clock panel is a flex *row*, so a bar dropped into it with
   `flex: none` and no width rendered at zero pixels and simply was not there. It takes a
   wrapped row of its own.
-- **The build menu is the spine of the UI.** Jobs, Projects, Ranking, Machines, People,
-  Shop, Socials. A panel
-  belongs here rather than in a permanent sidebar whenever you only touch it a few times a day.
-  The clock sits alone in the top-left because it is the one thing glanced at constantly and it
-  changes every frame; cash is coloured by state, not merely printed.
+- **The build menu is the spine of the UI.** + New Project, Projects, Ranking, Machines,
+  People, Build, Socials. A panel belongs here rather than in a permanent sidebar whenever you
+  only touch it a few times a day. The clock sits alone in the top-left because it is the one
+  thing glanced at constantly and it changes every frame.
+- **The top bar is four groups, not eight boxes**: who you are (badge, name, lease), money,
+  reputation, and what is on. **Cash and the bill are one column** — the balance, and under
+  it what the next bill will do to it, with the dues-against-costs breakdown in its tooltip.
+  Side by side as two numbers ("Kasa", "Fatura") nobody could tell which was about which.
+  It has its own `tb-*` classes on purpose: the generic `.stat` picked up a bordered card
+  style for the space screen, and every top-bar figure turned into a box overnight.
+- **Scrollbars are styled once, globally** — thin and dark. Left to the platform, macOS with
+  "always show scrollbars" drew a white gutter down every panel, and the bench's verb row
+  (a fixed three-column grid) pushed a button past the edge and added a sideways one.
 - **Design system (`styles.css` + `src/ui/icons.ts`)** — shadcn-shaped, and not optional:
   - **Tokens first.** `--background / --card / --muted / --muted-foreground / --border /
     --primary / --destructive / --radius` and friends live in `:root`. **Never write a raw hex
@@ -1504,6 +1642,27 @@ is visible rather than rediscovered:
 
 ## 14. Development Priority
 
+**Phase 1.13 — Designing projects and building the room — BUILT.**
+The Jobs board is replaced by **+ New Project** (§4c): a brief, three star-rated design
+decisions and a crew size, previewed by the same `planProject` the sim builds from. Projects
+kick off round a **project table** with the whole crew seated at once, then work at
+**one-person workstations** (§4d); a daily **market** per genre and the build's quality now
+set what a release pays. **Build** replaces the Shop, with Workspace, Comforts and Decor
+shelves and a rendered picture on every card.
+
+Measured (`era-pace`, 8 seeds, against the same base without it): normal first in 8/8
+either way, the first awards night unchanged at 16 of 40, final reputation about 17,000
+against 23,000; hard first in 5/8 and never below third (8/8 before) — which is §3c's stated
+shape for hard, "you usually win, you sometimes do not, and you are never buried"; easy
+first in 8/8. `project-times` 52/52 with a furnished room. **Era pacing moved later** — Era 2
+lands on day 61 in nearly every seed and Era 3 around day 120-215 — because the autoplayer
+spends on desks and tables the cash it used to bank for the lease. That is the §7b shape
+again: the room competes with the next lease, which is the decision.
+
+Every string it added lives in its own i18n area, `src/i18n/{en,tr}/build.ts`, so the
+feature's copy travels together. Design options, furniture and decor are *content*, and
+stay English with the catalogue until the content files move.
+
 **Phase 1.12 — The scene: identity, rivals and awards — BUILT.**
 A start screen that names and badges the space (§3c), simulated rival hackerspaces whose
 pace compounds like yours, a season timeline in the top bar, a Ranking panel, and a yearly awards
@@ -1566,7 +1725,7 @@ raise mood, which was the one stat the doc described and nothing ever wrote to. 
 in the room, they carry monthly upkeep, and what they really cost you is the next lease.
 Phase 4 — Space builder: tile painting, machine placement, rooms, power, adjacency.
 Phase 5 — Recruitment: events, policies, mood/commitment loop. *(The applicant pool is built:
-twelve named people join when a shipped project matches their passions — see §5.)*
+twenty-three named applicants, dealt onto the reputation ladder in a new order every run — see §4b.)*
 Phase 6 — Eras 1→3, milestones, lease decisions.
 Phase 7 — Project variety through the motorcycle capstone; certifications, safety, maintenance.
 Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
@@ -1589,13 +1748,20 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     `subreddits.ts` or `HypeSystem.ts`. **The careful player must beat both others**; when the
     reckless one wins, the claim is not a decision.
   - `npm run era-pace [seeds] [easy|normal|hard]` — what day each era arrives for a committed
-    player, plus the final standings against the rival spaces. Run it after changing
+    player, plus the final standings against the rival spaces. Plays 400 days by default
+    (`DAYS=n` to change it) so a run reaches the first 1 December awards night. Run it after changing
     throughput, team sizes, the catalog, or anything in `rivals.ts` — **and run all three
     difficulties**, since they now hand the player different crews and a change that suits one
     can break another.
   - `NO_SHOP=1 npm run era-pace [seeds] [level]` — the same run with the Shop never opened.
     Run both after touching `amenities.ts` or `COMFORT`: a comfort is only worth its upkeep
     if the pair disagree, and §7b records what the gap currently is.
+  - `TRACE=1 TRACE_SEED=n TRACE_FROM=d TRACE_DAYS=d [TRACE_LAYOUT=1] npm run era-pace` —
+    prints one seed's day at half past ten: what everybody is doing and why, projects by
+    stage, what the floor is short of, and with `TRACE_LAYOUT` every station's path from the
+    door. Every stall in §4d was found with this, not by tuning.
+  - `tools/furnish.ts` — the one furnishing rule every harness shares: buy the seat or table
+    people are queueing for (`Simulation.workspaceNeeds`), when comfortably affordable.
   - `npm run click-check` — needs `npm run dev` running. Drives the real UI with real mouse
     press/release pairs while the sim runs, and counts DOM rebuilds. Run it after touching
     anything in `src/ui/`.

@@ -197,6 +197,8 @@ export class MemberEntity {
       mood: this.data.mood,
       tile: this.tile,
       pos: { ...this.pos },
+      seat: null,
+      share: null,
       note: this.note,
     };
   }

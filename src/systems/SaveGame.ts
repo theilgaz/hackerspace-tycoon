@@ -59,7 +59,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 10;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -84,7 +84,14 @@ export interface SaveFile {
     members: MemberSave[];
     player: PlayerSave;
     machines: MachineSave[];
-    installedStations: { id: string; type: MachineType; model?: string; label?: string }[];
+    installedStations: {
+      id: string;
+      type: MachineType;
+      model?: string;
+      label?: string;
+      span?: number;
+      furniture?: boolean;
+    }[];
   };
   /** Shown on the start screen so you know what you are returning to. */
   summary: {
@@ -161,6 +168,35 @@ function migrate(file: SaveFile): SaveFile {
       if (!Array.isArray(ceremony.standings)) ceremony.standings = [];
     }
   }
+
+  // v9 — projects are designed, planned at a table, and priced by a market (§4d). A build
+  // already under way was planned under the old rules, so it counts as kicked off: sending
+  // a half-finished drone back to a table it never needed would be the save punishing the
+  // player for an update. Its quality becomes craft with no bonus — exactly what it was.
+  for (const raw of sim.projects ?? []) {
+    const project = raw as ProjectData & Record<string, unknown>;
+    if (project.kickedOff === undefined) {
+      project.kickedOff = true;
+      project.tableId = null;
+      project.design = {};
+      project.craft = project.quality;
+      project.bonus = 0;
+      project.appeal = 1;
+      project.testRisk = project.simulationSkipped ? 1.9 : 1;
+      project.contrib = {};
+    }
+  }
+  if (!store.market || typeof store.market !== 'object') {
+    store.market = Object.fromEntries(
+      ['software', 'electronics', 'iot', 'radio', 'robotics', 'mechanical', 'retro', 'home', 'tooling', 'civic'].map(
+        (category) => [category, 1],
+      ),
+    );
+  }
+
+  // v10 — applicants are dealt onto the ladder in a shuffled order per run. An older run
+  // met them in the catalogue's order, which is what an empty order means.
+  if (!Array.isArray(store.ladder)) store.ladder = [];
 
   file.version = SAVE_VERSION;
   return file;

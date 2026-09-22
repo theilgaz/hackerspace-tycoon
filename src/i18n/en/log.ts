@@ -17,7 +17,7 @@ const plural = (count: number, one: string, many: string) => (count === 1 ? one 
 export const log = {
   // --- The log ---------------------------------------------------------------
   'log.day1': 'Day 1. The garage smells of PLA and instant coffee.',
-  'log.pickSomething': 'Pick something to build — check the backlog.',
+  'log.pickSomething': 'Pick something to build — open + New Project.',
   'log.noHours': 'No hours left today for that.',
 
   'log.amenity.needsEra': (p: { item: string; era: string }) => `The ${p.item} needs ${p.era}.`,
@@ -61,7 +61,6 @@ export const log = {
   'fail.thermal': 'thermal runaway trip',
   'fail.gantry': 'part knocked loose by the gantry',
 
-  'log.stage.conceptLocked': (p: { project: string }) => `${p.project}: concept locked.`,
   'log.stage.cadDone': (p: { project: string; quality: number; parts: number }) =>
     `${p.project}: CAD done at ${Math.round(p.quality * 100)}% quality, ${p.parts} parts to make.`,
   'log.stage.simClean': (p: { project: string }) => `${p.project}: simulation clean.`,

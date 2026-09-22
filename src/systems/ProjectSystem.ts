@@ -1,6 +1,14 @@
-import type { BacklogEntry, PartData, ProjectData, ProjectDef, StageKey } from '@/game/types';
-import { STAGE_MAP, STAGE_ORDER, SOURCING, TEST } from '@/utils/constants';
+import type {
+  BacklogEntry,
+  MachineType,
+  PartData,
+  ProjectData,
+  ProjectPlan,
+  StageKey,
+} from '@/game/types';
+import { STAGE_ORDER, SOURCING, TEST } from '@/utils/constants';
 import { CATALOG_MAP } from '@/utils/catalog';
+import { defaultPlan, planProject } from '@/utils/design';
 import { uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
 
@@ -17,17 +25,22 @@ function emptyProgress(): Record<StageKey, number> {
   };
 }
 
-/** Per-project work requirements: the def's overrides on top of the stage defaults. */
-function requirements(def: ProjectDef): Record<StageKey, number> {
-  const out = emptyProgress();
-  for (const key of STAGE_ORDER) {
-    out[key] = def.work[key] ?? STAGE_MAP[key].work;
-  }
-  return out;
-}
-
-export function startProject(entry: BacklogEntry, day: number): ProjectData {
+/**
+ * A live project from a brief and a plan (§4d). Every number the design changes — work,
+ * parts, money, risk — is worked out once here by `planProject`, the same function the
+ * wizard previews with, so what the review screen promised is what the build carries.
+ */
+export function startProject(
+  entry: BacklogEntry,
+  day: number,
+  plan?: ProjectPlan,
+  owned: MachineType[] = [],
+): ProjectData {
   const def = CATALOG_MAP[entry.defId];
+  const chosen = plan ?? defaultPlan(def);
+  const summary = planProject(def, chosen, owned);
+  const required = emptyProgress();
+  for (const key of STAGE_ORDER) required[key] = summary.work[key];
   return {
     id: uid('proj'),
     defId: def.id,
@@ -36,21 +49,21 @@ export function startProject(entry: BacklogEntry, day: number): ProjectData {
     tags: [...def.tags],
     stage: 'concept',
     progress: emptyProgress(),
-    required: requirements(def),
+    required,
     quality: 0.5,
     scope: 1,
     team: [],
-    teamSize: def.teamSize,
+    teamSize: Math.max(1, chosen.seats),
     parts: [],
     defects: [],
     bounties: [],
-    simulationSkipped: false,
+    simulationSkipped: summary.skipSim,
     testAttempts: 0,
     shipped: false,
-    bomCost: def.bomCost,
-    leadDays: def.leadDays,
+    bomCost: summary.bomCost,
+    leadDays: summary.leadDays,
     // A weekend build has nothing to order, so it must not sit waiting on a delivery.
-    partsOrdered: def.bomCost === 0,
+    partsOrdered: summary.bomCost === 0,
     partsArriveAt: 0,
     sponsorCash: entry.sponsorCash ?? 0,
     hypeMultiplier: entry.hypeMultiplier ?? 1,
@@ -58,13 +71,31 @@ export function startProject(entry: BacklogEntry, day: number): ProjectData {
     proposerId: entry.proposerId,
     startedOnDay: day,
     idleDays: 0,
+    design: { ...chosen.design },
+    craft: 0.5,
+    // The design's share of quality is known at the pitch; the crew's is added at the end
+    // of the kickoff, from whoever actually sat down (see `Simulation.finishKickoff`).
+    bonus: summary.designQuality,
+    appeal: summary.appeal,
+    testRisk: summary.testRisk,
+    tableId: null,
+    kickedOff: false,
+    contrib: {},
   };
+}
+
+/** Quality is craft plus what the design and the crew added, and never quite zero. */
+export function refreshQuality(project: ProjectData) {
+  project.quality = Math.max(0.05, Math.min(1, project.craft + project.bonus));
 }
 
 /** Parts appear once CAD is done — you cannot print what nobody has modelled. */
 export function generateParts(project: ProjectData) {
   const def = CATALOG_MAP[project.defId];
-  project.parts = def.parts.map((part) => ({
+  // The design scales the print list (a bare board prints almost nothing, a paper sketch
+  // wastes filament) — the same numbers the wizard showed.
+  const parts = planProject(def, { design: project.design ?? {}, seats: project.teamSize }).parts;
+  project.parts = parts.map((part) => ({
     ...part,
     id: uid('part'),
     status: 'pending' as const,
@@ -83,7 +114,8 @@ export function addWork(project: ProjectData, amount: number, craft: number) {
 
   if (stage === 'cad' || stage === 'iterate') {
     const total = before + amount;
-    project.quality = total > 0 ? (project.quality * before + craft * amount) / total : craft;
+    project.craft = total > 0 ? (project.craft * before + craft * amount) / total : craft;
+    refreshQuality(project);
   }
 }
 
@@ -173,7 +205,10 @@ export interface TestOutcome {
 export function resolveTest(project: ProjectData): TestOutcome {
   const pass = TEST.basePass + (project.quality - 0.5) * 2 * TEST.qualityWeight;
   let fail = Math.max(0.02, 1 - pass);
-  if (project.simulationSkipped) fail *= TEST.skippedSimPenalty;
+  // Every risk the build carries lives in one multiplier: the design's (eyeballing it
+  // instead of simulating is one of them) and the Skip button's, which multiplies itself in
+  // when pressed. Two places deciding the same penalty is how it gets applied twice.
+  fail *= project.testRisk ?? 1;
   fail = Math.max(0.02, fail - project.testAttempts * TEST.attemptBonus);
   fail = Math.min(0.95, fail);
 

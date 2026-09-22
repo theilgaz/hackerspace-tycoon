@@ -11,10 +11,12 @@ import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 import { partsPending } from '@/systems/ProjectSystem';
 import { ECONOMY } from '@/utils/economy';
 import { STAGE_STATION } from '@/machines/layout';
+import { furnish } from './furnish';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
 import { CLAIMS, SUBREDDITS, tasteMatch, type ClaimKey } from '@/utils/subreddits';
 import { merit, react } from '@/systems/HypeSystem';
 import type { ProjectData, StageKey } from '@/game/types';
+import { freshMarket } from '@/utils/market';
 
 const LEVEL = (process.argv[3] ?? 'normal') as DifficultyKey;
 const SEEDS = Number(process.argv[2] ?? 6);
@@ -68,11 +70,14 @@ function run(style: Style, seed: number) {
     difficulty: LEVEL, cash: DIFFICULTY_MAP[LEVEL].startCash, log: [], era: 1, shippedCount: 0,
     reputation: 0, hype: 0, posts: [], ceremony: null, ceremonies: [], bill: null, bills: [],
     missedBills: 0, gameOver: null, backlog: [], applicants: [], upvotes: 0, runtime: emptyRuntime(),
+    // Rolled after the reseed, or every process starts from a different market (§13).
+    market: freshMarket(),
   });
   const sim = new Simulation();
   let posts = 0;
   let burned = 0;
   let lastPostDay = 0;
+  let furnishedAt = -1;
   while (sim.day <= 180) {
     sim.tick(0.05, 4);
     if (store.getState().bill) store.getState().setBill(null);
@@ -83,6 +88,12 @@ function run(style: Style, seed: number) {
     if (state.ceremony) {
       store.getState().setCeremony(null);
       store.setState({ paused: false });
+    }
+    // The floor is a constraint now (§4d): buy the seat or the table people are queueing
+    // for, once an hour at most so a queue that clears next tick is not bought twice.
+    if (Math.floor(sim.totalHours) !== furnishedAt) {
+      furnishedAt = Math.floor(sim.totalHours);
+      furnish(sim, spendable);
     }
     const funded = (id: string) => spendable() >= CATALOG_MAP[id].bomCost;
     if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
@@ -107,7 +118,7 @@ function run(style: Style, seed: number) {
       if (p.stage === 'fabrication' && p.parts.some((x) => x.status === 'pending')) sim.queueAllPending(p.id);
       if (p.team.length < p.teamSize) {
         const c = sim.members
-          .filter((m) => !m.team && !m.isCoolingOff(p.id))
+          .filter((m) => !m.team && !m.isCoolingOff(p.id) && sim.canMeet(p, m))
           .sort((a, b) => b.passionMatch(p.tags) - a.passionMatch(p.tags))[0];
         if (c) sim.inviteMember(p.id, c.id);
       }

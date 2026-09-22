@@ -113,10 +113,37 @@ export interface MemberSnapshot {
   tile: Tile;
   /** Smooth world position for rendering. */
   pos: { x: number; y: number };
+  /** Where they are sitting, when they are sitting somewhere. Drawn instead of `pos`. */
+  seat: Seat | null;
+  /**
+   * Their own share of the stage they are working, 0-1 — the bar over their head. The
+   * stage is pooled work, so this is what they have put in against an even split.
+   */
+  share: number | null;
   note: string;
 }
 
-export type MemberActivity = 'away' | 'idle' | 'walking' | 'working' | 'resting' | 'babysitting';
+export type MemberActivity =
+  | 'away'
+  | 'idle'
+  | 'walking'
+  | 'working'
+  | 'resting'
+  | 'babysitting'
+  /** At the project table for a kickoff, waiting for the rest of the crew to sit down. */
+  | 'waiting';
+
+/**
+ * Where somebody is sitting, in fractional tile coordinates. A table seats ten people on
+ * two tiles, so a seat is a drawing position rather than a grid tile — the path finder
+ * only ever walks them to the table's stand tile.
+ */
+export interface Seat {
+  x: number;
+  y: number;
+  /** The point they face — the middle of the table, or the bench in front of them. */
+  look: { x: number; y: number };
+}
 
 // ---------------------------------------------------------------------------
 // The player (CLAUDE.md §3a) — a member you *can* command, with scarce hours
@@ -135,6 +162,8 @@ export interface PlayerSnapshot {
   stage: StageKey | null;
   tile: Tile;
   pos: { x: number; y: number };
+  seat: Seat | null;
+  share: number | null;
   note: string;
   skills: Skills;
 }
@@ -229,6 +258,33 @@ export interface ProjectDef {
 
 export type BacklogSource = 'catalog' | 'member' | 'sponsor' | 'trending';
 
+/**
+ * The decisions a project is designed with (CLAUDE.md §4d). Each genre asks three of these,
+ * and every answer is one of three options — a one-star shortcut, the three-star default and
+ * a five-star version that costs something real.
+ */
+export type DesignAxisId =
+  | 'editor'
+  | 'ui'
+  | 'architecture'
+  | 'board'
+  | 'firmware'
+  | 'enclosure'
+  | 'cadtool'
+  | 'material'
+  | 'validation'
+  | 'docs';
+
+/** Option index per axis: 0 is the one-star choice, 2 the five-star one. */
+export type DesignChoice = Partial<Record<DesignAxisId, number>>;
+
+/** What the New Project wizard hands the sim: the design, and how many seats. */
+export interface ProjectPlan {
+  design: DesignChoice;
+  /** Seats at the table — the crew size the project is planned for. */
+  seats: number;
+}
+
 /** How loudly you said it (§6). The claim is the decision; the room judges it. */
 export type ClaimKey = 'wip' | 'works' | 'bold';
 
@@ -304,6 +360,30 @@ export interface ProjectData {
   startedOnDay: number;
   /** Consecutive days with nobody — crew or player — working on it. */
   idleDays: number;
+  /** How it was designed (§4d). */
+  design: DesignChoice;
+  /**
+   * Quality that comes from the work itself: craft blended in over CAD and Iterate. The
+   * `quality` field above is this plus `bonus`, kept in step so every reader stays simple.
+   */
+  craft: number;
+  /** Quality from the design and from the size of the crew that planned it. */
+  bonus: number;
+  /** Market appeal from the design — multiplies payout and hype at release. */
+  appeal: number;
+  /** Multiplier on the chance the build fails its test. */
+  testRisk: number;
+  /** The project table it holds for its kickoff, if it has one. */
+  tableId: string | null;
+  /** True once the whole crew has sat down together and planned it. */
+  kickedOff: boolean;
+  /** Work each person has put into the current stage, for the bar over their head. */
+  contrib: Record<string, number>;
+  /**
+   * Working days each crew member was missing while the rest of the crew waited to kick
+   * off. At `KICKOFF.missLimit` the crew goes ahead without them.
+   */
+  kickoffMisses?: Record<string, number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,7 +398,10 @@ export type MachineType =
   | 'lounge'
   | 'cnc'
   | 'reflow'
-  | 'drybox';
+  | 'drybox'
+  /** Project tables (§4d). Nothing is built on them — they are where a crew plans. */
+  | 'table-small'
+  | 'table-large';
 
 export interface JobSnapshot {
   id: string;
@@ -362,6 +445,23 @@ export interface RuntimeSnapshot {
    * pace the player cannot see reads as the applicant list being broken — see §13.
    */
   recruitIn: number;
+  /** Every project table, and whose kickoff it is hosting. */
+  tables: TableSnapshot[];
+  /**
+   * People standing about because every seat of a kind is taken, by station type. A queue
+   * the player cannot see reads as people being lazy; this is what the Build panel shows.
+   */
+  waitingFor: Partial<Record<MachineType, number>>;
+  /** Seats per station type the space owns — its working capacity, for the Build panel. */
+  seats: Partial<Record<MachineType, number>>;
+}
+
+export interface TableSnapshot {
+  id: string;
+  type: MachineType;
+  label: string;
+  seats: number;
+  projectId: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -426,6 +526,8 @@ export interface Identity {
   name: string;
   icon: string;
   colour: string;
+  /** What the player is called in the room. Older saves have none and read as "You". */
+  player?: string;
 }
 
 export interface LogEntry {

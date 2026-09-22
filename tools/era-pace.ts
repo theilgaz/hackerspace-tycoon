@@ -14,13 +14,18 @@ const ROLES = Object.keys(ROLE_LABEL) as Role[];
 import { CLAIMS, SUBREDDITS, tasteMatch } from '@/utils/subreddits';
 import { merit } from '@/systems/HypeSystem';
 import { AMENITIES } from '@/utils/amenities';
-import { STAGE_STATION } from '@/machines/layout';
+import { STAGE_STATION, STATIONS, GRID, DOOR, IDLE_TILES, isBlocked } from '@/machines/layout';
+import { findPath } from '@/utils/grid';
+import { furnish } from './furnish';
+import { freshMarket } from '@/utils/market';
 
 const rows: string[] = [];
 const standings: string[] = [];
 const firstNight: string[] = [];
 const outcomes: string[] = [];
 const SEEDS = Number(process.argv[2] ?? 4);
+/** How long a run is played for. Long enough to reach the first 1 December awards night. */
+const DAYS = Number(process.env.DAYS ?? 400);
 // Difficulty now sets the crew you start with and how fast more arrive, so it has to be
 // measurable here rather than assumed to be 'normal'.
 const LEVEL = (process.argv[3] ?? 'normal') as DifficultyKey;
@@ -57,17 +62,22 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     amenityPlacements: {},
     moving: null,
     runtime: emptyRuntime(),
+    // Rolled after the reseed, or every process starts from a different market (§13).
+    market: freshMarket(),
   });
   const sim = new Simulation();
   const arrived: Record<number, number> = {};
   let lastPostDay = 0;
+  let furnishedAt = -1;
+  let traceDay = 0;
   let night: string | null = null;
   let stuckTicks = 0;
   let lastDay = sim.day;
   // The board as it stood on the morning of the awards, read before the night resets the year.
   let eve: ScoreRow[] = [];
   let eveDay = 0;
-  while (sim.day <= 220) {
+  // Past the first awards night (1 December, day 335) and into the second year.
+  while (sim.day <= DAYS) {
     if (sim.day !== eveDay) {
       eve = sim.scoreboard();
       eveDay = sim.day;
@@ -87,6 +97,32 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     }
     if (store.getState().bill) store.getState().setBill(null);
     if (store.getState().gameOver) break;
+    // `TRACE=1` prints the first seed day by day — §13: when a run looks wrong, trace the
+    // state rather than tune the numbers.
+    if (process.env.TRACE === '1' && seed === Number(process.env.TRACE_SEED ?? 1) && sim.day !== traceDay && sim.day >= Number(process.env.TRACE_FROM ?? 1) && sim.time >= 10.5 && sim.day <= Number(process.env.TRACE_DAYS ?? 40)) {
+      traceDay = sim.day;
+      if (process.env.TRACE_LAYOUT === '1') {
+        console.log('     grid ' + GRID.width + 'x' + GRID.height + ' door ' + JSON.stringify(DOOR) + ' idle ' + JSON.stringify(IDLE_TILES));
+        for (const st of STATIONS) {
+          const path = findPath(DOOR, st.stand, GRID.width, GRID.height, isBlocked);
+          console.log(`     ${st.id} ${st.type} tile ${st.tile.x},${st.tile.y} stand ${st.stand.x},${st.stand.y} span ${st.span ?? 1} path ${path.length} standBlocked ${isBlocked(st.stand)}`);
+        }
+        const custom = store.getState().stationPlacements;
+        console.log('     placements ' + JSON.stringify(custom));
+      }
+      const doing = [...sim.members, sim.player].map((m) => `${m.name}:${m.present ? m.activity : 'away'}${m.note ? `(${m.note})` : ''}`);
+      console.log('     ' + doing.join(' · '));
+      const st = store.getState();
+      const kick = sim.projects.filter((p) => !p.kickedOff);
+      const inB = kick.filter((p) => p.team.length && p.team.every((id) => sim.members.find((m) => m.id === id)?.present === false) === false);
+      console.log(
+        `  d${sim.day} cash ${Math.round(st.cash)} crew ${sim.members.length} free ${sim.members.filter((m) => !m.team).length}` +
+          ` | open ${sim.projects.length} kickoff ${kick.length} (crewed ${kick.filter((p) => p.team.length).length}, tabled ${kick.filter((p) => p.tableId).length})` +
+          ` | stages ${Object.entries(sim.projects.reduce<Record<string, number>>((o, p) => ({ ...o, [p.stage]: (o[p.stage] ?? 0) + 1 }), {})).map(([k, v]) => `${k}:${v}`).join(' ')}` +
+          ` | needs ${JSON.stringify(sim.workspaceNeeds())} | stations ${STATIONS.map((x) => x.type).join(',')}` +
+          ` | ${inB.length}`,
+      );
+    }
     // Keep the next bill covered — the *net* of it, since dues arrive at the same moment.
     const reserve = Math.max(0, -sim.previewBill().net);
     const spendable = () => store.getState().cash - reserve;
@@ -138,6 +174,12 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     const lease = sim.nextLease();
     if (lease?.ready && spendable() >= lease.def.moveCost * 1.15) sim.signLease();
 
+    // The floor is a constraint now (§4d): buy the seat or the table people are queueing
+    // for, once an hour at most so a queue that clears next tick is not bought twice.
+    if (Math.floor(sim.totalHours) !== furnishedAt) {
+      furnishedAt = Math.floor(sim.totalHours);
+      furnish(sim, spendable);
+    }
     // Only start something there are free hands *and* parts money for. Pitching buys the bill
     // of materials there and then, so an unfunded pitch is cash poured into a project that
     // then sits at assembly — and the cash it burns is the cash that would have hired somebody.
@@ -158,7 +200,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       if (!p.partsOrdered && spendable() >= p.bomCost) sim.orderParts(p.id);
       if (p.stage === 'fabrication' && p.parts.some((x) => x.status === 'pending')) sim.queueAllPending(p.id);
       if (p.team.length < p.teamSize) {
-        const c = sim.members.filter((m) => !m.team && !m.isCoolingOff(p.id)).sort((a, b) => b.passionMatch(p.tags) - a.passionMatch(p.tags))[0];
+        const c = sim.members.filter((m) => !m.team && !m.isCoolingOff(p.id) && sim.canMeet(p, m)).sort((a, b) => b.passionMatch(p.tags) - a.passionMatch(p.tags))[0];
         if (c) sim.inviteMember(p.id, c.id);
       }
     }
@@ -182,7 +224,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     // **The new verb, overused on purpose** (§13). An engaged player buys every comfort the
     // lease allows as soon as it is comfortably affordable — which is the worst case for the
     // balance, because the shop has no ceiling and its upkeep lands on the player alone.
-    for (const amenity of SHOPS ? AMENITIES : []) {
+    for (const amenity of SHOPS ? AMENITIES.filter((a) => a.group !== 'decor') : []) {
       if (amenity.era > store.getState().era) continue;
       if (store.getState().amenities.includes(amenity.id)) continue;
       if (spendable() >= amenity.price * 2.5) sim.buyAmenity(amenity.id);
@@ -271,13 +313,18 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       `shipped ${store.getState().shippedCount}, rep ${store.getState().reputation}, ` +
       `printers ${sim.machines.filter((m) => m.type === 'fdm').map((m) => m.label).join('+') || 'none'}, ` +
       `cash ₺${Math.round(store.getState().cash)}, filament ${Math.round(sim.printer.consumable)}g\n` +
+      // What the designing and the crew sizes add up to, and what the floor ended up holding.
+      `           quality ${(store.getState().shipped.reduce((n, r) => n + r.quality, 0) / Math.max(1, store.getState().shippedCount)).toFixed(2)} avg · ` +
+      `hype/ship ${Math.round(store.getState().shipped.reduce((n, r) => n + r.hype, 0) / Math.max(1, store.getState().shippedCount))} · ` +
+      `pay/ship ${Math.round(store.getState().shipped.reduce((n, r) => n + r.payout, 0) / Math.max(1, store.getState().shippedCount))} · ` +
+      `floor ${Object.entries(STATIONS.reduce<Record<string, number>>((o, x) => ({ ...o, [x.type]: (o[x.type] ?? 0) + 1 }), {})).map(([k, v]) => `${k}×${v}`).join(' ')}\n` +
       `           open: ${stuck.join(', ') || 'none'}`,
   );
 }
-console.log(`\n  ERA PACING (220 days, engaged player, ${LEVEL})\n` + rows.join('\n'));
+console.log(`\n  ERA PACING (${DAYS} days, engaged player, ${LEVEL})\n` + rows.join('\n'));
 const wins = firstNight.reduce((n, line) => n + (line.match(/: US/g) ?? []).length, 0);
 console.log(
-  `\n  FIRST AWARDS NIGHT (October) — you took ${wins} of ${firstNight.length * AWARDS.length} across ${firstNight.length} runs\n` +
+  `\n  FIRST AWARDS NIGHT (1 December) — you took ${wins} of ${firstNight.length * AWARDS.length} across ${firstNight.length} runs\n` +
     firstNight.join('\n'),
 );
 console.log('\n  THE BOOKS\n' + outcomes.join('\n'));

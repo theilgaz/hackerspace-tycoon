@@ -1,4 +1,4 @@
-import type { MemberData, SkillKey, Skills, StageDef, StageKey, TraitKey } from '@/game/types';
+import type { MachineType, MemberData, SkillKey, Skills, StageDef, StageKey, TraitKey } from '@/game/types';
 
 // ---------------------------------------------------------------------------
 // BALANCE CONSTANTS — starting values for the open questions in CLAUDE.md §13.
@@ -205,12 +205,12 @@ export const FAB = {
 export const STAGES: StageDef[] = [
   {
     key: 'concept',
-    label: 'Concept',
+    label: 'Kickoff',
     skill: null,
     work: 18,
     optional: false,
     appeal: 0.95,
-    blurb: 'Arguing about it on a whiteboard. Everyone loves this part.',
+    blurb: 'The whole crew round the project table, agreeing what they are building.',
   },
   {
     key: 'cad',
@@ -491,7 +491,11 @@ function skills(partial: Partial<Record<SkillKey, number>>): Record<SkillKey, nu
   };
 }
 
-/** Day one is you and one other person. Everybody else is hired (§5). */
+/**
+ * Day one: Safa and Abdullah are there from the start. Everybody else is hired (§5), and
+ * which of them gets in touch first is shuffled per run (`LADDER`), so no two runs meet the
+ * same people in the same order.
+ */
 export const ROSTER: MemberData[] = [
   {
     id: 'safa',
@@ -506,6 +510,29 @@ export const ROSTER: MemberData[] = [
     prefers: 'morning',
     window: [9, 18],
   },
+  {
+    id: 'abdullah',
+    name: 'Abdullah',
+    skills: skills({ software: 3, electronics: 3, docs: 3 }),
+    passions: { radio: 0.7, software: 0.6, civic: 0.5 },
+    prefers: 'afternoon',
+    energy: 82,
+    mood: 70,
+    commitment: 12,
+    traits: ['nightOwl'],
+    window: [9, 18],
+  },
+];
+
+/**
+ * The reputation each rung of the applicant ladder asks for, lowest first. **The rungs are
+ * fixed and the people on them are not**: `shuffleLadder` deals the applicants onto them at
+ * the start of every run, so the pace of recruitment stays the difficulty's to set while who
+ * turns up first is different each time.
+ */
+export const LADDER: number[] = [
+  0, 40, 90, 150, 220, 300, 400, 510, 640, 790, 950, 1130, 1330, 1550, 1790, 2050, 2330, 2640,
+  2970, 3330, 3710, 4120, 4550,
 ];
 
 /**
@@ -514,37 +541,37 @@ export const ROSTER: MemberData[] = [
  * is the "projects and tools are magnets" idea made concrete.
  */
 export const APPLICANTS: MemberData[] = [
+  // `repRequired` below is only the default order. `shuffleLadder` re-deals it every run.
   {
-    id: 'mehmet', name: 'Mehmet', repRequired: 0,
+    id: 'mehmet', name: 'Mehmet Taha', repRequired: 0,
     skills: skills({ electronics: 3, machining: 3, docs: 2 }),
     passions: { iot: 0.7, electronics: 0.6, fpv: 0.45 },
     prefers: 'morning',
     energy: 88, mood: 72, commitment: 15, traits: [], window: [9, 18],
   },
   {
-    id: 'deniz', name: 'Deniz', repRequired: 80,
+    id: 'deniz', name: 'Deniz', repRequired: 40,
     skills: skills({ cad: 3, electronics: 4, software: 2 }),
     passions: { fpv: 0.9, electronics: 0.6, iot: 0.45, software: 0.35, retro: 0.35, radio: 0.3 },
     prefers: 'afternoon',
     energy: 85, mood: 70, commitment: 14, traits: ['nightOwl'], window: [17, 24],
   },
   {
-    id: 'bektas', name: 'Bektaş', repRequired: 160,
+    id: 'bektas', name: 'Bektaş', repRequired: 90,
     skills: skills({ machining: 3, welding: 4, electronics: 2 }),
     passions: { fpv: 0.7, machining: 0.6, robotics: 0.45 },
     prefers: 'morning',
     energy: 90, mood: 66, commitment: 14, traits: [], window: [12, 20],
   },
   {
-    id: 'ada', name: 'Ada', repRequired: 260,
-    skills: skills({ cad: 4, machining: 2, docs: 2 }),
-    passions: { cad: 0.75, design: 0.65, robotics: 0.45, fpv: 0.35, machining: 0.3 },
-    partTimeOnly: true,
+    id: 'faruk', name: 'Faruk', repRequired: 150,
+    skills: skills({ cad: 3, machining: 3, welding: 2 }),
+    passions: { machining: 0.7, robotics: 0.55, fpv: 0.35 },
     prefers: 'morning',
-    energy: 90, mood: 75, commitment: 10, traits: ['perfectionist'], window: [10, 18],
+    energy: 86, mood: 70, commitment: 14, traits: [], window: [9, 18],
   },
   {
-    id: 'kerem', name: 'Kerem', repRequired: 360,
+    id: 'kerem', name: 'Kerem', repRequired: 220,
     skills: skills({ machining: 3, welding: 2, electronics: 2, docs: 2 }),
     passions: { machining: 0.65, civic: 0.55, woodworking: 0.45, fpv: 0.4, food: 0.35 },
     partTimeOnly: true,
@@ -552,7 +579,14 @@ export const APPLICANTS: MemberData[] = [
     energy: 80, mood: 60, commitment: 8, traits: ['ghost'], window: [13, 21],
   },
   {
-    id: 'ibrahim', name: 'İbrahim', repRequired: 500,
+    id: 'ferit', name: 'Ferit', repRequired: 300,
+    skills: skills({ software: 4, electronics: 2, docs: 2 }),
+    passions: { software: 0.8, iot: 0.5, civic: 0.3 },
+    prefers: 'morning',
+    energy: 84, mood: 72, commitment: 13, traits: ['perfectionist'], window: [9, 18],
+  },
+  {
+    id: 'ibrahim', name: 'İbrahim', repRequired: 400,
     skills: skills({ cad: 4, machining: 2, docs: 2 }),
     passions: { cad: 0.8, design: 0.75, fpv: 0.3 },
     partTimeOnly: true,
@@ -560,11 +594,27 @@ export const APPLICANTS: MemberData[] = [
     energy: 82, mood: 78, commitment: 9, traits: ['mentor'], window: [10, 17],
   },
   {
-    id: 'fatih', name: 'Fatih', repRequired: 700,
+    id: 'halil', name: 'Halil', repRequired: 510,
+    skills: skills({ electronics: 4, software: 2 }),
+    passions: { radio: 0.7, electronics: 0.6, retro: 0.4 },
+    partTimeOnly: true,
+    prefers: 'morning',
+    energy: 83, mood: 68, commitment: 10, traits: [], window: [9, 14],
+  },
+  {
+    id: 'fatih', name: 'Fatih', repRequired: 640,
     skills: skills({ electronics: 4, docs: 2, cad: 2 }),
     passions: { retro: 0.85, electronics: 0.65, design: 0.4 },
     prefers: 'morning',
     energy: 84, mood: 70, commitment: 13, traits: ['perfectionist'], window: [11, 19],
+  },
+  {
+    id: 'cagri', name: 'Çağrı', repRequired: 790,
+    skills: skills({ cad: 4, software: 3 }),
+    passions: { design: 0.8, cad: 0.6, robotics: 0.4 },
+    partTimeOnly: true,
+    prefers: 'afternoon',
+    energy: 85, mood: 74, commitment: 10, traits: ['scopeCreeper'], window: [14, 18],
   },
   {
     id: 'zahid', name: 'Zahid', repRequired: 950,
@@ -575,14 +625,29 @@ export const APPLICANTS: MemberData[] = [
     energy: 88, mood: 65, commitment: 10, traits: ['gatekeeper'], window: [12, 20],
   },
   {
-    id: 'omer', name: 'Ömer', repRequired: 1250,
+    id: 'burak', name: 'Burak', repRequired: 1130,
+    skills: skills({ electronics: 3, machining: 2, cad: 2 }),
+    passions: { fpv: 0.85, electronics: 0.5, robotics: 0.45 },
+    prefers: 'afternoon',
+    energy: 90, mood: 71, commitment: 15, traits: ['nightOwl'], window: [9, 18],
+  },
+  {
+    id: 'omer', name: 'Ömer', repRequired: 1330,
     skills: skills({ electronics: 4, software: 3 }),
     passions: { radio: 0.85, electronics: 0.6, iot: 0.5 },
     prefers: 'afternoon',
     energy: 80, mood: 68, commitment: 16, traits: ['nightOwl'], window: [19, 24],
   },
   {
-    id: 'arif', name: 'Arif', repRequired: 1600,
+    id: 'huseyin', name: 'Hüseyin', repRequired: 1550,
+    skills: skills({ welding: 4, machining: 3 }),
+    passions: { machining: 0.75, woodworking: 0.55, food: 0.4 },
+    partTimeOnly: true,
+    prefers: 'morning',
+    energy: 87, mood: 66, commitment: 9, traits: [], window: [9, 14],
+  },
+  {
+    id: 'arif', name: 'Arif', repRequired: 1790,
     skills: skills({ docs: 4, software: 2, electronics: 2 }),
     passions: { civic: 0.85, iot: 0.5, software: 0.35 },
     partTimeOnly: true,
@@ -590,7 +655,15 @@ export const APPLICANTS: MemberData[] = [
     energy: 80, mood: 76, commitment: 8, traits: ['documenter'], window: [10, 18],
   },
   {
-    id: 'furkan', name: 'Furkan', repRequired: 2100,
+    id: 'hasan', name: 'Hasan', repRequired: 2050,
+    skills: skills({ docs: 3, electronics: 2, software: 2 }),
+    passions: { civic: 0.8, iot: 0.45, food: 0.3 },
+    partTimeOnly: true,
+    prefers: 'afternoon',
+    energy: 81, mood: 73, commitment: 9, traits: ['documenter'], window: [14, 18],
+  },
+  {
+    id: 'furkan', name: 'Furkan', repRequired: 2330,
     skills: skills({ software: 4, cad: 3, electronics: 2 }),
     passions: { robotics: 0.8, software: 0.65, design: 0.35 },
     partTimeOnly: true,
@@ -598,7 +671,14 @@ export const APPLICANTS: MemberData[] = [
     energy: 86, mood: 74, commitment: 11, traits: ['scopeCreeper'], window: [13, 21],
   },
   {
-    id: 'yakup', name: 'Yakup', repRequired: 2700,
+    id: 'vedat', name: 'Vedat', repRequired: 2640,
+    skills: skills({ machining: 3, electronics: 3 }),
+    passions: { robotics: 0.75, machining: 0.5, software: 0.35 },
+    prefers: 'morning',
+    energy: 84, mood: 75, commitment: 14, traits: ['mentor'], window: [9, 18],
+  },
+  {
+    id: 'yakup', name: 'Yakup', repRequired: 2970,
     skills: skills({ machining: 3, welding: 2, cad: 2 }),
     passions: { woodworking: 0.8, food: 0.6, machining: 0.45 },
     partTimeOnly: true,
@@ -606,22 +686,62 @@ export const APPLICANTS: MemberData[] = [
     energy: 78, mood: 62, commitment: 7, traits: ['ghost'], window: [14, 21],
   },
   {
-    id: 'abdullah', name: 'Abdullah', repRequired: 3400,
-    skills: skills({ software: 3, electronics: 3, docs: 3 }),
-    passions: { radio: 0.7, software: 0.6, civic: 0.5 },
+    id: 'enes', name: 'Enes', repRequired: 3330,
+    skills: skills({ software: 3, cad: 2, docs: 2 }),
+    passions: { retro: 0.7, software: 0.6, design: 0.45 },
     partTimeOnly: true,
     prefers: 'afternoon',
-    energy: 82, mood: 70, commitment: 9, traits: ['nightOwl'], window: [17, 24],
+    energy: 83, mood: 69, commitment: 8, traits: ['ghost'], window: [14, 18],
   },
   {
-    id: 'safa-kemal', name: 'Safa Kemal', repRequired: 4500,
+    id: 'bilal', name: 'Bilal', repRequired: 3710,
+    skills: skills({ cad: 3, welding: 2, machining: 2 }),
+    passions: { woodworking: 0.75, design: 0.5, food: 0.45 },
+    partTimeOnly: true,
+    prefers: 'morning',
+    energy: 85, mood: 70, commitment: 9, traits: [], window: [9, 14],
+  },
+  {
+    id: 'muhammed', name: 'Muhammed', repRequired: 4120,
+    skills: skills({ software: 4, electronics: 3 }),
+    passions: { iot: 0.75, software: 0.6, radio: 0.4 },
+    prefers: 'morning',
+    energy: 86, mood: 72, commitment: 15, traits: [], window: [9, 18],
+  },
+  {
+    id: 'muhammed-safa', name: 'Muhammed Safa', repRequired: 4550,
     skills: skills({ cad: 5, software: 4 }),
     passions: { cad: 0.8, design: 0.7, robotics: 0.5 },
     partTimeOnly: true,
     prefers: 'afternoon',
-    energy: 76, mood: 80, commitment: 6, traits: ['mentor'], window: [20, 24],
+    energy: 76, mood: 80, commitment: 6, traits: ['mentor'], window: [14, 18],
   },
 ];
+
+/**
+ * Deal the applicants onto the ladder's rungs in a given order — or a fresh shuffle when no
+ * order is given — and return the order so a save can put it back. Mutates `repRequired`
+ * in place: every reader of an applicant's bar (the recruitment clock, the People panel,
+ * the day-one crew) reads it from there.
+ */
+export function shuffleLadder(order?: string[], random: () => number = Math.random): string[] {
+  const known = new Set(APPLICANTS.map((a) => a.id));
+  let ids = (order ?? []).filter((id) => known.has(id));
+  // Anybody the saved order does not know about (added since) joins at the back.
+  for (const a of APPLICANTS) if (!ids.includes(a.id)) ids.push(a.id);
+  if (!order) {
+    ids = [...ids];
+    for (let i = ids.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(random() * (i + 1));
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+    }
+  }
+  ids.forEach((id, index) => {
+    const person = APPLICANTS.find((a) => a.id === id)!;
+    person.repRequired = LADDER[Math.min(index, LADDER.length - 1)];
+  });
+  return ids;
+}
 
 /**
  * §5 — you do not get members, you get *applicants*. Reputation opens the pool, and a
@@ -687,3 +807,84 @@ export const TRAIT_BLURB: Record<TraitKey, string> = {
 export const PERFECTIONIST_QUALITY_GATE = 0.55;
 /** Ghost: attendance chance multiplier decays by this each day they attend. */
 export const GHOST_DECAY = 0.82;
+
+// --- Designing a project (§4d) ----------------------------------------------
+
+/**
+ * How the New Project wizard's decisions land. The three-star option on every axis is the
+ * catalogue's own numbers, so these only describe the *difference* a choice makes.
+ */
+export const DESIGN = {
+  /** Quality per halving of the crew below the size the brief was scoped for. */
+  teamUnder: 0.2,
+  /** Quality per doubling above it, up to twice the size. */
+  teamOver: 0.14,
+  /** Quality lost per doubling past twice the size — too many cooks. */
+  teamCrowd: 0.2,
+  /**
+   * The kickoff is a meeting, not a stage of work: an afternoon round the table, not the
+   * day and a half the old Concept stage took. That mattered less when every project could
+   * hold its concept at once; with one table per kickoff it was the bottleneck of the whole
+   * garage.
+   */
+  kickoffScale: 0.4,
+  /** Kickoff work added per seat beyond the first: a bigger crew has more to agree on. */
+  kickoffPerSeat: 0.18,
+  /**
+   * What quality is worth at release: `payBase + payPerQuality × q`. **Centred on the build
+   * a default design actually produces** (about 0.45, measured by `era-pace`), so taking
+   * every three-star option earns exactly what the catalogue says, a 0.7 build about a
+   * quarter more and a 0.2 build about a quarter less. Centred on 0.5 at first, it quietly
+   * paid the typical build 5% under the catalogue and cost the campaign a fifth of its
+   * reputation. Payout used to ignore quality entirely, which made every quality decision
+   * in the game cosmetic.
+   */
+  payBase: 0.6,
+  payPerQuality: 0.9,
+  hypeBase: 0.75,
+  hypePerQuality: 0.6,
+};
+
+/**
+ * What the market wants (§4d). One number per genre, drifting a little every day and
+ * pulled back toward normal, so a genre that is hot this week is not hot forever. Shipping
+ * into a genre cools it — the counterpart of `REPEAT` at the scale of a whole genre, and
+ * the reason the answer to every month is not "more software".
+ */
+export const MARKET = {
+  start: [0.85, 1.15] as [number, number],
+  min: 0.55,
+  max: 1.6,
+  /** Fraction of the gap back to 1.0 closed each day. */
+  revert: 0.07,
+  /** Daily wander, as a spread either side. */
+  noise: 0.07,
+  /** A ship multiplies its genre's demand by this. */
+  shipDip: 0.92,
+  /** A trending offer lifts its genre by this much. */
+  trendBump: 0.14,
+};
+
+/**
+ * A kickoff needs the whole crew at the table at once (§4d), which is exactly where a
+ * Ghost, or a morning part-timer on a crew of afternoon ones, stops a project dead. A real
+ * crew does not wait for ever: after this many working days of being the one missing,
+ * they go ahead without you.
+ */
+export const KICKOFF = {
+  missLimit: 2,
+};
+
+/**
+ * Seats per station (§4d). **One person to a workstation** is the rule that makes the space
+ * itself a constraint: eight people cannot all do the CAD at one desk, so a crew of eight
+ * needs somewhere to sit. Anything not listed here — the sofa, the printers — has no seat
+ * limit, because nobody works at them.
+ */
+export const SEATS: Partial<Record<MachineType, number>> = {
+  'cad-desk': 1,
+  bench: 1,
+  assembly: 2,
+  'table-small': 4,
+  'table-large': 10,
+};

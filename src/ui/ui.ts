@@ -12,6 +12,9 @@ import type {
   ShippedRecord,
   SkillKey,
   Identity,
+  DesignChoice,
+  MachineType,
+  ProjectPlan,
 } from '@/game/types';
 import type { Ceremony, CeremonyAward, YearStanding } from '@/systems/RivalSystem';
 import { ROLE_BLURB, ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
@@ -21,6 +24,7 @@ import {
   categoryAffinity,
   profileOf,
   stageLabel,
+  stageSkill,
   topCategories,
 } from '@/utils/categories';
 import {
@@ -28,6 +32,7 @@ import {
   FILAMENT,
   MACHINE,
   PLAYER,
+  REPEAT,
   ROSTER,
   STAGE_MAP,
   STAGE_ORDER,
@@ -50,6 +55,21 @@ import {
 import { CLAIMS, SUBREDDITS, SUBREDDIT_MAP, tasteMatch } from '@/utils/subreddits';
 import { merit, projectSubject, react, type Subject } from '@/systems/HypeSystem';
 import type { PrinterModel } from '@/utils/printers';
+import {
+  AXES,
+  CATEGORY_AXES,
+  SEAT_OPTIONS,
+  defaultDesign,
+  optionOf,
+  planProject,
+  qualityHype,
+  qualityPay,
+  qualityStars,
+  teamFit,
+  type DesignOption,
+} from '@/utils/design';
+import { demandLabel } from '@/utils/market';
+import { FURNITURE, FURNITURE_MAP, furnitureSeats, type FurnitureDef } from '@/utils/furniture';
 import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { AWARDS, LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import { DIFFICULTIES, type DifficultyKey } from '@/utils/difficulty';
@@ -60,7 +80,12 @@ import { SHELVE } from '@/utils/constants';
 
 export interface UIHandlers {
   setSpeed(speed: number): void;
-  pitch(defId: string, offerId: string | undefined, team: string[]): void;
+  pitch(defId: string, offerId: string | undefined, team: string[], plan: ProjectPlan): void;
+  buyFurniture(id: string): void;
+  /** Could a piece of furniture go anywhere on the floor right now? */
+  furnitureFits(type: MachineType, span: number): boolean;
+  /** A rendered picture of a buyable thing, or null where there is no renderer. */
+  thumbnail(key: string): string | null;
   workOn(projectId: string): void;
   stopWork(): void;
   calibrate(): void;
@@ -100,7 +125,7 @@ export interface UIHandlers {
   spaceSubject(): Subject;
   hireCost(memberId: string, employment: Employment): number;
   canHireFullTime(memberId: string): boolean;
-  begin(name: string, logo: number, difficulty: DifficultyKey): void;
+  begin(name: string, logo: number, difficulty: DifficultyKey, player: string): void;
   dismissCeremony(): void;
   dismissBill(): void;
   continueRun(): void;
@@ -122,33 +147,10 @@ export interface UIHandlers {
   totalHours(): number;
 }
 
-const MEMBER_COLORS: Record<string, string> = {
-  deniz: '#5ecfc0',
-  ada: '#f0b429',
-  kerem: '#e2725b',
-};
-
 /** Everyone who could ever be in the space, starting roster plus applicants. */
 const MEMBER_DATA: Record<string, (typeof ROSTER)[number]> = Object.fromEntries(
   [...ROSTER, ...APPLICANTS].map((m) => [m.id, m]),
 );
-
-/** Stable colour for recruits, so a person keeps the same dot all game. */
-function personColor(id: string): string {
-  const palette = ['#7fb2f0', '#c58ef0', '#8fd88f', '#f08fa4', '#e0c36a', '#6fd0e0', '#d49a6a'];
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  return palette[hash % palette.length];
-}
-
-const ACTIVITY_LABEL: Record<MemberSnapshot['activity'], MessageKey> = {
-  away: 'ui.activity.away',
-  idle: 'ui.activity.idle',
-  walking: 'ui.activity.walking',
-  working: 'ui.activity.working',
-  resting: 'ui.activity.resting',
-  babysitting: 'ui.activity.babysitting',
-};
 
 const SOURCE_BADGE: Record<BacklogEntry['source'], { label: MessageKey | null; cls: string }> = {
   catalog: { label: null, cls: '' },
@@ -157,7 +159,7 @@ const SOURCE_BADGE: Record<BacklogEntry['source'], { label: MessageKey | null; c
   trending: { label: 'ui.source.trending', cls: 'src-trending' },
 };
 
-type JobStep = 'category' | 'project' | 'crew';
+type NewStep = 'genre' | 'brief' | 'design' | 'crew' | 'review';
 type RankKey =
   | 'projectsThisYear'
   | 'projects'
@@ -173,27 +175,6 @@ type RankKey =
 
 
 /** Narrow enough to keep six numeric columns comparable at a glance. */
-
-type SizeFilter = 'any' | 'solo' | 'small' | 'big';
-
-/**
- * Team-size buckets. These narrow and group the job list in place — size was briefly its own
- * wizard step, which was redundant: every project already states its team size, so the list
- * just had to say it properly.
- */
-const SIZE_FILTERS: {
-  key: SizeFilter;
-  label: MessageKey;
-  short: MessageKey;
-  hint: MessageKey;
-  test: (team: number) => boolean;
-}[] = [
-  { key: 'any', label: 'ui.size.any', short: 'ui.size.any.short', hint: 'ui.size.any.hint', test: () => true },
-  { key: 'solo', label: 'ui.size.solo', short: 'ui.size.solo.short', hint: 'ui.size.solo.hint', test: (n) => n <= 2 },
-  { key: 'small', label: 'ui.size.small', short: 'ui.size.small.short', hint: 'ui.size.small.hint', test: (n) => n >= 3 && n <= 4 },
-  { key: 'big', label: 'ui.size.big', short: 'ui.size.big.short', hint: 'ui.size.big.hint', test: (n) => n >= 5 },
-];
-const SIZE_GROUPS = SIZE_FILTERS.filter((f) => f.key !== 'any');
 
 /** The promise each tier makes about length (CLAUDE.md §4). */
 const TIER_DAYS: Record<ProjectDef['tier'], string> = {
@@ -215,6 +196,110 @@ function tierBadge(tier: ProjectDef['tier']): string {
   return `<span class="ui-badge ui-badge--tone" style="--tone:${tone}">${t(`ui.tier.${tier}`)} · ${t('ui.days.short', { days: TIER_DAYS[tier] })}</span>`;
 }
 
+/**
+ * Stars, as line icons with a fill. Half stars are real — a 0.63 build is three and a half —
+ * and the empty ones are drawn too, so a two-star option reads as two *of five*.
+ */
+function starRow(value: number): string {
+  const out: string[] = [];
+  for (let i = 1; i <= 5; i += 1) {
+    const kind = value >= i ? 'on' : value >= i - 0.5 ? 'half' : 'off';
+    out.push(`<i class="star star--${kind}">${icon('star', 'ui-icon')}</i>`);
+  }
+  return `<span class="stars" title="${esc(t('build.stars', { value }))}">${out.join('')}</span>`;
+}
+
+/** What the market wants this week, as a badge: a trend arrow and the multiplier. */
+function demandBadge(value: number): string {
+  const { tone } = demandLabel(value);
+  const colour = { hot: 'var(--success)', warm: 'var(--primary)', flat: 'var(--muted-foreground)', cold: 'var(--warning)' }[tone];
+  return `<span class="ui-badge ui-badge--tone" style="--tone:${colour}"
+    title="${esc(t('build.demand.hint'))}">
+    ${icon(value >= 1 ? 'trendUp' : 'trendDown')}${t(`build.demand.${tone}` as MessageKey)} ×${num(Number(value.toFixed(2)))}
+  </span>`;
+}
+
+/** One badge per thing a design option changes. Good reads green, a cost reads red. */
+function optionEffects(option: DesignOption, seats: number): string {
+  const out: string[] = [];
+  const badge = (text: string, good: boolean | null, title = '') =>
+    `<span class="ui-badge ${good === null ? '' : 'ui-badge--tone'}" ${
+      good === null ? '' : `style="--tone:var(--${good ? 'success' : 'destructive'})"`
+    } title="${title}">${text}</span>`;
+  const signed = (v: number) => `${v > 0 ? '+' : '−'}${Math.round(Math.abs(v) * 100)}`;
+  const change = (v: number) => `${v > 1 ? '+' : '−'}${Math.round(Math.abs(v - 1) * 100)}%`;
+  if (option.quality) out.push(badge(t('build.fx.quality', { value: signed(option.quality) }), option.quality > 0));
+  if (option.appeal && option.appeal !== 1) {
+    out.push(badge(t('build.fx.appeal', { value: change(option.appeal) }), option.appeal > 1, t('build.fx.appealHint')));
+  }
+  if (option.work && option.work !== 1) out.push(badge(t('build.fx.work', { value: change(option.work) }), option.work < 1));
+  if (option.testRisk && option.testRisk !== 1) {
+    out.push(badge(t('build.fx.testRisk', { value: change(option.testRisk) }), option.testRisk < 1));
+  }
+  if (option.bom && option.bom !== 1) out.push(badge(t('build.fx.parts', { value: change(option.bom) }), option.bom < 1));
+  if (option.print && option.print !== 1) {
+    out.push(badge(t('build.fx.printing', { value: change(option.print) }), option.print < 1));
+  }
+  if (option.lead) out.push(badge(t('build.fx.delivery', { days: option.lead }), false));
+  const cost = (option.cost ?? 0) + (option.perSeat ?? 0) * Math.max(1, seats);
+  if (cost) {
+    const text = option.perSeat
+      ? t('build.fx.perSeat', { cost, each: option.perSeat })
+      : t('build.fx.cost', { cost });
+    out.push(badge(text, false, t('build.fx.costHint')));
+  }
+  if (option.skipSim) out.push(badge(t('build.fx.noSim'), null));
+  if (option.requires?.length) {
+    out.push(badge(t('build.fx.needs', { machines: option.requires.map((m) => MACHINE_LABEL[m]).join(', ') }), null));
+  }
+  if (!out.length) out.push(badge(t('build.fx.asBrief'), null));
+  return out.join('');
+}
+
+/** Where on the size curve a crew sits: under, right, generous, crowded. */
+function fitMeter(ideal: number, seats: number): string {
+  const marks = SEAT_OPTIONS.map((n) => {
+    const q = teamFit(n, ideal).quality;
+    const tone = q >= 0.04 ? 'good' : q <= -0.04 ? 'bad' : 'flat';
+    return `<i class="fit-cell fit-cell--${tone} ${n === seats ? 'fit-cell--on' : ''}" title="${n}: ${esc(fitLabel(n, ideal))}">${n}</i>`;
+  }).join('');
+  return `<div class="fit-meter">${marks}</div>`;
+}
+
+function shiftShort(m: MemberSnapshot): string {
+  return t(m.employment === 'full-time' ? 'build.shift.ftShort' : m.shift === 'afternoon' ? 'build.shift.pmShort' : 'build.shift.amShort');
+}
+function shiftLabel(m: MemberSnapshot): string {
+  return t(m.employment === 'full-time' ? 'build.shift.ft' : m.shift === 'afternoon' ? 'build.shift.pm' : 'build.shift.am');
+}
+
+/** A crew size's place on the curve, in words. */
+function fitLabel(seats: number, ideal: number): string {
+  return t(`build.fit.${teamFit(seats, ideal).key}` as MessageKey);
+}
+
+/**
+ * A morning part-timer and an afternoon one are never in the building together, so a
+ * crew with both can never hold its kickoff (§4d). Returns the names that clash, or null.
+ */
+function shiftClash(crew: MemberSnapshot[]): string | null {
+  const mornings = crew.filter((m) => m.employment === 'part-time' && m.shift !== 'afternoon');
+  const afternoons = crew.filter((m) => m.employment === 'part-time' && m.shift === 'afternoon');
+  if (!mornings.length || !afternoons.length) return null;
+  return t('build.np.clashNames', {
+    mornings: mornings.map((m) => m.name).join(', '),
+    afternoons: afternoons.map((m) => m.name).join(', '),
+  });
+}
+
+/** How many of a piece of furniture the space owns, from the runtime's own counts. */
+function ownedFurniture(state: GameState, def: FurnitureDef): number {
+  if (def.type === 'table-small' || def.type === 'table-large') {
+    return state.runtime.tables.filter((t) => t.type === def.type).length;
+  }
+  return Math.round((state.runtime.seats[def.type] ?? 0) / furnitureSeats(def));
+}
+
 function bar(value: number, max: number, tone = ''): string {
   const ratio = Math.max(0, Math.min(1, max === 0 ? 0 : value / max));
   return `<div class="bar ${tone}"><i style="width:${(ratio * 100).toFixed(1)}%"></i></div>`;
@@ -232,17 +317,16 @@ function ordinal(place: number): string {
 export class UI {
   private readonly root: HTMLElement;
   private readonly handlers: UIHandlers;
-  /** Crews picked on the pitch screen but not yet pitched. Survives the re-render. */
-  private draftTeams = new Map<string, Set<string>>();
-  /** Drafts the player has actually touched — those are never re-suggested over. */
-  private draftTouched = new Set<string>();
   private lastState: GameState | null = null;
   /** Last HTML written per section, so unchanged sections keep their DOM nodes. */
   private htmlCache = new Map<string, string>();
 
   /** Which build-menu panel is open, if any. */
   private openModal:
-    | 'jobs' | 'people' | 'ranking' | 'machines' | 'projects' | 'reddit' | 'shop' | null = null;
+    | 'new' | 'people' | 'ranking' | 'machines' | 'projects' | 'reddit' | 'build' | null = null;
+
+  /** Which shelf of the Build panel is open. */
+  private buildTab: 'workspace' | 'comfort' | 'decor' = 'workspace';
 
   /** Which group of projects is on screen. Falls through when the chosen one is empty. */
   private projectsTab: 'all' | 'on' | 'done' = 'all';
@@ -275,8 +359,11 @@ export class UI {
   /** A space the player has opened from either table. Null is the table itself. */
   private rankSpace: string | null = null;
 
-  /** Right-column panels the player has folded away. The log starts small on purpose. */
-  private folded: { log: boolean; members: boolean } = { log: true, members: false };
+  /**
+   * Whether the log is folded. It used to share the right column with a roster, and started
+   * folded to give that room; the roster is gone (People has it), so the log opens.
+   */
+  private folded: { log: boolean } = { log: false };
 
   /** Which standing job is showing its list of candidates. */
   private roleOpen: Role | null = null;
@@ -294,6 +381,8 @@ export class UI {
     // Pre-named and pre-badged: an empty form with a dead CTA is a worse first frame
     // than a suggestion you can shuffle or type straight over (the field is selected).
     name: '',
+    /** Your own name. Left empty, you are "You". */
+    player: '',
     logo: Math.floor(Math.random() * LOGOS.length),
     difficulty: 'normal' as DifficultyKey,
     /** With a saved run on the table, the new-game form waits folded until asked for. */
@@ -323,15 +412,31 @@ export class UI {
   /** Which column the leaderboard is sorted by. */
   private rankSort: { key: RankKey; dir: 1 | -1 } = { key: 'reputation', dir: -1 };
 
-  /** The Jobs wizard: pick a genre, choose the build, crew it up. */
-  private jobs: {
-    open: boolean;
-    step: JobStep;
-    source: ProjectCategory | 'offers' | 'bestfit' | null;
-    size: SizeFilter;
+  /** The New Project wizard (§4d). Survives re-renders; reset each time it is opened. */
+  private np: {
+    step: NewStep;
+    genre: ProjectCategory | 'offers' | null;
     defId: string | null;
     offerId: string | null;
-  } = { open: false, step: 'category', source: null, size: 'any', defId: null, offerId: null };
+    design: DesignChoice;
+    seats: number;
+    crew: Set<string>;
+    /** A crew the player has edited is never re-suggested over (§4c). */
+    crewTouched: boolean;
+  } = this.freshWizard();
+
+  private freshWizard() {
+    return {
+      step: 'genre' as NewStep,
+      genre: null,
+      defId: null,
+      offerId: null,
+      design: {},
+      seats: 1,
+      crew: new Set<string>(),
+      crewTouched: false,
+    };
+  }
 
   /**
    * Write HTML only when it actually differs. Replacing innerHTML destroys nodes, which
@@ -358,7 +463,6 @@ export class UI {
   private modal!: HTMLElement;
   private startEl!: HTMLElement;
   private left!: HTMLElement;
-  private members!: HTMLElement;
   private movingEl!: HTMLElement;
   private devEl!: HTMLElement;
   /**
@@ -392,10 +496,6 @@ export class UI {
           <h2 data-action="panel-toggle" data-value="log">Log<i class="fold"></i></h2>
           <div class="body"></div>
         </div>
-        <div class="panel" id="members">
-          <h2 data-action="panel-toggle" data-value="members">The People<i class="fold"></i></h2>
-          <div class="body"></div>
-        </div>
       </div>
 
       <div class="panel" id="moving"></div>
@@ -412,7 +512,6 @@ export class UI {
     this.modal = this.root.querySelector('#modal')!;
     this.startEl = this.root.querySelector('#start')!;
     this.left = this.root.querySelector('#left .body')!;
-    this.members = this.root.querySelector('#members .body')!;
     this.log = this.root.querySelector('#log .body')!;
   }
 
@@ -494,10 +593,10 @@ export class UI {
     // Enter in the name box opens the doors: the field and the button are the whole form.
     this.root.addEventListener('keydown', (event) => {
       const target = event.target as HTMLElement;
-      if (target.id !== 'space-name' || event.key !== 'Enter') return;
+      if ((target.id !== 'space-name' && target.id !== 'player-name') || event.key !== 'Enter') return;
       event.preventDefault();
       const name = this.nameField().trim();
-      if (name) this.handlers.begin(name, this.start.logo, this.start.difficulty);
+      if (name) this.handlers.begin(name, this.start.logo, this.start.difficulty, this.playerField());
     });
 
     // pointerdown, NOT click. The panels re-render as the sim advances, so the element
@@ -515,9 +614,9 @@ export class UI {
           break;
         case 'noop':
           break;
-        case 'jobs-open':
-          this.openModal = 'jobs';
-          this.jobs = { open: true, step: 'category', source: null, size: 'any', defId: null, offerId: null };
+        case 'new-open':
+          this.openModal = 'new';
+          this.np = this.freshWizard();
           this.rerender();
           break;
         case 'rank-view':
@@ -576,7 +675,7 @@ export class UI {
           break;
         case 'panel-toggle': {
           // Two panels compete for one column; folding one gives the other the room.
-          const key = value as 'log' | 'members';
+          const key = value as 'log';
           if (key) this.folded[key] = !this.folded[key];
           this.rerender();
           break;
@@ -616,15 +715,18 @@ export class UI {
           break;
         case 'lang':
           if (!this.lastState?.started) this.start.name = this.nameField();
+          this.start.player = this.playerField();
           h.setLocale(value as Locale);
           break;
         case 'logo':
           this.start.name = this.nameField();
+          this.start.player = this.playerField();
           this.start.logo = Number(value);
           this.rerender();
           break;
         case 'difficulty':
           this.start.name = this.nameField();
+          this.start.player = this.playerField();
           this.start.difficulty = value as DifficultyKey;
           this.rerender();
           break;
@@ -662,7 +764,7 @@ export class UI {
         case 'begin': {
           const name = this.nameField().trim();
           if (!name) break;
-          h.begin(name, this.start.logo, this.start.difficulty);
+          h.begin(name, this.start.logo, this.start.difficulty, this.playerField());
           break;
         }
         case 'people-open':
@@ -704,61 +806,70 @@ export class UI {
           if (id) h.hire(id, (value as Employment) ?? 'full-time');
           this.rerender();
           break;
+        case 'hire-all':
+          for (const applicant of [...(this.lastState?.applicants ?? [])]) {
+            h.hire(applicant, h.canHireFullTime(applicant) ? 'full-time' : 'part-time');
+          }
+          this.rerender();
+          break;
         case 'pass-applicant':
           if (id) h.passApplicant(id);
           this.rerender();
           break;
-        case 'jobs-back':
-          this.jobs.step = this.jobs.step === 'crew' ? 'project' : 'category';
+        case 'np-back': {
+          const order: NewStep[] = ['genre', 'brief', 'design', 'crew', 'review'];
+          this.np.step = order[Math.max(0, order.indexOf(this.np.step) - 1)];
           this.rerender();
           break;
-        case 'jobs-step':
+        }
+        case 'np-step':
           // Breadcrumb: a step you have already completed is a way back to it.
-          this.jobs.step = value as JobStep;
+          this.np.step = value as NewStep;
           this.rerender();
           break;
-        case 'jobs-category':
-          this.jobs.source =
-            value === 'offers' || value === 'bestfit'
-              ? (value as 'offers' | 'bestfit')
-              : (value as ProjectCategory);
-          this.jobs.size = 'any';
-          this.jobs.step = 'project';
+        case 'np-genre':
+          this.np.genre = value === 'offers' ? 'offers' : (value as ProjectCategory);
+          this.np.step = 'brief';
           this.rerender();
           break;
-        case 'jobs-size':
-          // Narrows the list in place; it is a filter, not a step.
-          this.jobs.size = value as SizeFilter;
+        case 'np-brief':
+          if (id && this.lastState) this.npChooseBrief(id, id2 || null, this.lastState);
+          this.np.step = 'design';
           this.rerender();
           break;
-        case 'jobs-project': {
-          this.jobs.defId = id ?? null;
-          this.jobs.offerId = id2 || null;
-          this.jobs.step = 'crew';
-          const chosen = id ? CATALOG_MAP[id] : null;
-          if (chosen && this.lastState) this.suggestCrew(chosen, this.lastState);
+        case 'np-option':
+          if (value) this.np.design = { ...this.np.design, [value]: Number(id) };
           this.rerender();
           break;
-        }
-        case 'pitch': {
+        case 'np-seats':
+          this.np.seats = Number(value) || 1;
+          if (this.lastState) this.npSuggestCrew(this.lastState);
+          this.rerender();
+          break;
+        case 'np-crew': {
           if (!id) break;
-          const draft = [...(this.draftTeams.get(id) ?? [])];
-          h.pitch(id, id2 || undefined, draft);
-          this.draftTeams.delete(id);
-          this.draftTouched.delete(id);
-          this.openModal = null;
+          if (this.np.crew.has(id)) this.np.crew.delete(id);
+          else if (this.np.crew.size < this.np.seats) this.np.crew.add(id);
+          // From here the crew is the player's, not a suggestion.
+          this.np.crewTouched = true;
           this.rerender();
           break;
         }
-        case 'draft': {
-          if (!id || !id2) break;
-          const def = CATALOG_MAP[id];
-          const set = this.draftTeams.get(id) ?? new Set<string>();
-          if (set.has(id2)) set.delete(id2);
-          else if (set.size < def.teamSize) set.add(id2);
-          this.draftTeams.set(id, set);
-          // From here the crew is the player's, not a suggestion — stop overwriting it.
-          this.draftTouched.add(id);
+        case 'np-next':
+          if (this.np.step === 'design') {
+            this.np.step = 'crew';
+            if (this.lastState) this.npSuggestCrew(this.lastState);
+          } else if (this.np.step === 'crew') {
+            this.np.step = 'review';
+          }
+          this.rerender();
+          break;
+        case 'np-start': {
+          const def = this.npDef();
+          if (!def) break;
+          h.pitch(def.id, this.np.offerId ?? undefined, [...this.np.crew], this.npPlan());
+          this.openModal = null;
+          this.np = this.freshWizard();
           this.rerender();
           break;
         }
@@ -825,8 +936,16 @@ export class UI {
           h.stopMoving();
           this.rerender();
           break;
-        case 'shop-open':
-          this.openModal = 'shop';
+        case 'build-open':
+          this.openModal = 'build';
+          this.rerender();
+          break;
+        case 'build-tab':
+          this.buildTab = (value as 'workspace' | 'comfort' | 'decor') ?? 'workspace';
+          this.rerender();
+          break;
+        case 'buy-furniture':
+          if (value) h.buyFurniture(value);
           this.rerender();
           break;
         case 'buy-amenity':
@@ -847,6 +966,12 @@ export class UI {
 
   private rerender() {
     if (this.lastState) this.render(this.lastState);
+  }
+
+  /** Your own name, as typed; empty means "You". Read live for the same reason as the space's. */
+  private playerField(): string {
+    const input = this.root.querySelector<HTMLInputElement>('#player-name');
+    return (input ? input.value : this.start.player).trim();
   }
 
   /** The live value of the name box, so a re-render never eats what was typed. */
@@ -870,8 +995,6 @@ export class UI {
     this.renderTopbar(state);
     this.renderProjects(state);
     this.root.querySelector('#log')?.classList.toggle('folded', this.folded.log);
-    this.root.querySelector('#members')?.classList.toggle('folded', this.folded.members);
-    this.renderMembers(state);
     this.renderLog(state);
     this.renderBottomBar(state);
     this.renderMoving(state);
@@ -890,11 +1013,9 @@ export class UI {
     };
     head('#left > h2', esc(t('ui.bench.title')));
     head('#log > h2', `${esc(t('ui.log.title'))}<i class="fold"></i>`);
-    head('#members > h2', `${esc(t('ui.members.title'))}<i class="fold"></i>`);
-    // The build menu is being rebuilt on another branch and has not been translated yet.
-    // Saying it is English keeps Turkish casing rules off it: "Ranking" must not become
-    // RANKİNG. Drop this when it goes through t().
-    this.bottombar.lang = 'en';
+    // The build menu is translated now, so it takes the page's language — which is what
+    // lets Turkish casing rules uppercase its labels correctly.
+    this.bottombar.removeAttribute('lang');
   }
 
   /** English / Türkçe. Each language names itself, so the way back is always readable. */
@@ -1080,6 +1201,12 @@ export class UI {
               </div>
             </div>
           </header>
+          <div class="start-player">
+            <label class="ui-label" for="player-name">${t('ui.start.playerLabel')}</label>
+            <input id="player-name" class="start-player__input" maxlength="20"
+              placeholder="${esc(t('ui.you'))}" autocomplete="off" spellcheck="false"
+              value="${esc(this.start.player)}" />
+          </div>
           <p class="ui-desc start-intro">${esc(level.intro)}</p>
 
           <section class="start-section">
@@ -1245,47 +1372,64 @@ export class UI {
 
     // Money reads as a state, not a number: in the black, running low, or under water.
     const cashTone = state.cash < 0 ? 'bad' : state.cash < FILAMENT.spoolCost ? 'warn' : 'good';
+    const next = this.handlers.previewBill();
+    const billTone = next.net < 0 && state.cash + next.net < 0 ? 'bad' : next.net < 0 ? 'warn' : 'good';
+    const era = eraDef(state.era);
+    const target = Number.isFinite(era.repToAdvance) ? era.repToAdvance : null;
+    const lease = this.handlers.nextLease();
+    /**
+     * The top bar is four groups, not eight boxes: who you are, what you have, how far the
+     * name has got, and what is on. **Cash and the bill are one column** — the balance, and
+     * under it what the next bill will do to it — because "Kasa" and "Fatura" side by side
+     * as two numbers never said which one the other was about.
+     */
     this.setHTML(this.topbar, 'topbar', `
-      <div class="row" style="gap:8px">
-        <span class="icon-chip" style="--tone:${state.identity?.colour ?? 'var(--primary)'};width:28px;height:28px">
+      <div class="tb-group tb-identity">
+        <span class="icon-chip" style="--tone:${state.identity?.colour ?? 'var(--primary)'};width:30px;height:30px">
           ${icon((state.identity?.icon ?? 'wrench') as IconName)}
         </span>
-        <div class="stat"><b style="font-size:12.5px">${esc(state.identity?.name ?? t('ui.top.yourSpace'))}</b>
-          <span>${eraDef(state.era).name}</span></div>
-        ${(() => {
-          const lease = this.handlers.nextLease();
-          if (!lease?.ready) return '';
-          return `<button class="ui-btn ${lease.afford ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
-            data-action="sign-lease" ${lease.afford ? '' : 'disabled'}
-            title="${esc(t('ui.top.leaseHint', { space: lease.def.name }))}">
-            ${icon('building')}${esc(t('ui.top.moveTo', { space: lease.def.name }))} · ${money(lease.def.moveCost)}
-          </button>`;
-        })()}
-      </div>
-      <div class="sep"></div>
-      <div class="stat"><b class="cash cash--${cashTone}">${money(state.cash)}</b><span>${t('ui.stat.cash')}</span></div>
-      ${(() => {
-        const next = this.handlers.previewBill();
-        const tone = next.net < 0 && state.cash + next.net < 0 ? 'bad' : next.net < 0 ? 'warn' : 'good';
-        return `<div class="stat" title="${esc(t('ui.top.billHint'))}">
-          <b class="cash cash--${tone}">${next.net < 0 ? '−' : '+'}${money(Math.abs(next.net))}</b>
-          <span>${t('ui.top.billIn', { days: next.dueInDays })}</span>
-        </div>`;
-      })()}
-      <div class="stat"><b>${state.runtime.projects.length}</b><span>${t('ui.top.projects')}</span></div>
-      <div class="stat" title="${esc(t('ui.top.allocatedHint'))}">
-        <b>${allocation.used}/${allocation.total}</b><span>${t('ui.top.allocated')}</span>
-      </div>
-      <div class="stat"><b>${state.shippedCount}</b><span>${t('ui.stat.shipped')}</span></div>
-      <div class="stat" title="${esc(t('ui.top.reputationHint'))}">
-        <b>${state.reputation}${
-          Number.isFinite(eraDef(state.era).repToAdvance)
-            ? `<span class="muted" style="font-size:10px">/${eraDef(state.era).repToAdvance}</span>`
+        <div class="tb-text">
+          <b class="tb-name">${esc(state.identity?.name ?? t('ui.top.yourSpace'))}</b>
+          <span class="tb-sub">${esc(era.name)}</span>
+        </div>
+        ${
+          lease?.ready
+            ? `<button class="ui-btn ${lease.afford ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
+                data-action="sign-lease" ${lease.afford ? '' : 'disabled'}
+                title="${esc(t('ui.top.leaseHint', { space: lease.def.name }))}">
+                ${icon('building')}${esc(t('ui.top.moveTo', { space: lease.def.name }))} · ${money(lease.def.moveCost)}
+              </button>`
             : ''
-        }</b>
-        <span>${t('ui.stat.reputation')}</span>
+        }
       </div>
-      <div class="sep"></div>
+      <div class="tb-group" title="${esc(t('build.top.moneyHint', { income: next.income, costs: next.costs, days: next.dueInDays }))}">
+        <span class="tb-icon">${icon('coins')}</span>
+        <div class="tb-text">
+          <b class="tb-value cash cash--${cashTone}">${money(state.cash)}</b>
+          <span class="tb-sub">
+            <em class="cash cash--${billTone}">${next.net < 0 ? '−' : '+'}${money(Math.abs(next.net))}</em>
+            ${t('build.top.atBill', { days: next.dueInDays })}
+          </span>
+        </div>
+      </div>
+      <div class="tb-group" title="${esc(t('ui.top.reputationHint'))}">
+        <span class="tb-icon">${icon('flame')}</span>
+        <div class="tb-text">
+          <b class="tb-value">${num(state.reputation)}${target ? `<small>/${num(target)}</small>` : ''}</b>
+          ${
+            target
+              ? `<span class="tb-meter"><i style="width:${Math.min(100, (state.reputation / target) * 100).toFixed(1)}%"></i></span>`
+              : `<span class="tb-sub">${t('ui.stat.reputation')}</span>`
+          }
+        </div>
+      </div>
+      <div class="tb-group" title="${esc(t('ui.top.allocatedHint'))}">
+        <span class="tb-icon">${icon('clipboard')}</span>
+        <div class="tb-text">
+          <b class="tb-value">${t('build.top.projects', { count: state.runtime.projects.length })}</b>
+          <span class="tb-sub">${t('build.top.busy', { used: allocation.used, total: allocation.total })} · ${t('build.top.shipped', { count: state.shippedCount })}</span>
+        </div>
+      </div>
       <button class="season" data-action="ranking-open"
         title="${esc(t('ui.top.seasonHint', { year: season.year, days: daysLeft }))}">
         <span class="season-label">${season.year}</span>
@@ -1309,6 +1453,9 @@ export class UI {
    */
   private renderBottomBar(state: GameState) {
     const offers = state.backlog.length;
+    // People standing about because every seat of their kind is taken — the Build panel's
+    // reason to exist, said from across the room.
+    const seatQueue = Object.values(state.runtime.waitingFor).reduce((n, v) => n + (v ?? 0), 0);
     const machines = state.runtime.machines;
     const jobs = machines.reduce((n, m) => n + m.queue.length + (m.current ? 1 : 0), 0);
     // The one thing the bar must say from across the room: something needs a human.
@@ -1320,57 +1467,54 @@ export class UI {
     this.setHTML(
       this.bottombar,
       'bottombar',
-      `<button class="bar-item ${this.openModal === 'jobs' ? 'active' : ''}" data-action="jobs-open"
-         title="Start something new">
-         ${icon('clipboard', 'ui-icon bar-icon')}
-         <span class="bar-label">Jobs</span>
+      // The bar's one call to action, so it reads as a button rather than a tab: starting
+      // something is the verb every other panel in the game is downstream of.
+      `<button class="bar-item bar-item--cta ${this.openModal === 'new' ? 'active' : ''}" data-action="new-open"
+         title="${esc(t('build.bar.newHint'))}">
+         ${icon('plus', 'ui-icon bar-icon')}
+         <span class="bar-label">${t('build.bar.new')}</span>
          ${offers ? `<i class="pip">${offers}</i>` : ''}
        </button>
        <button class="bar-item ${this.openModal === 'projects' ? 'active' : ''}" data-action="projects-open"
-         title="Everything on, waiting and done">
+         title="${esc(t('build.bar.projectsHint'))}">
          ${icon('clipboard', 'ui-icon bar-icon')}
-         <span class="bar-label">Projects</span>
+         <span class="bar-label">${t('build.bar.projects')}</span>
          ${state.runtime.projects.length ? `<i class="pip">${state.runtime.projects.length}</i>` : ''}
        </button>
        <button class="bar-item ${this.openModal === 'ranking' ? 'active' : ''}" data-action="ranking-open"
-         title="How the other spaces are doing">
+         title="${esc(t('build.bar.rankingHint'))}">
          ${icon('flame', 'ui-icon bar-icon')}
-         <span class="bar-label">Ranking</span>
+         <span class="bar-label">${t('build.bar.ranking')}</span>
        </button>
        <button class="bar-item ${this.openModal === 'machines' ? 'active' : ''} ${needsHand ? 'bar-item--alert' : ''}"
          data-action="machines-open"
-         title="${needsHand ? 'A machine wants calibrating or feeding' : 'The shop floor and its queues'}">
+         title="${esc(t(needsHand ? 'build.bar.machinesAlert' : 'build.bar.machinesHint'))}">
          ${icon('printer', 'ui-icon bar-icon')}
-         <span class="bar-label">Machines</span>
+         <span class="bar-label">${t('build.bar.machines')}</span>
          ${jobs ? `<i class="pip">${jobs}</i>` : ''}
        </button>
        <button class="bar-item ${this.openModal === 'people' ? 'active' : ''} ${state.applicants.length ? 'bar-item--news' : ''}"
          data-action="people-open"
-         title="${state.applicants.length ? `${state.applicants.length} waiting on an answer` : 'Who is here, and who you could take on'}">
+         title="${esc(state.applicants.length ? t('build.bar.peopleWaiting', { count: state.applicants.length }) : t('build.bar.peopleHint'))}">
          ${icon('users', 'ui-icon bar-icon')}
-         <span class="bar-label">People</span>
+         <span class="bar-label">${t('build.bar.people')}</span>
          ${state.applicants.length ? `<i class="pip">${state.applicants.length}</i>` : ''}
        </button>
-       <button class="bar-item ${this.openModal === 'shop' ? 'active' : ''}" data-action="shop-open"
-         title="Comforts for the people, not for the work">
-         ${icon('coins', 'ui-icon bar-icon')}
-         <span class="bar-label">Shop</span>
-         ${
-           AMENITIES.some((a) => a.era <= state.era && !state.amenities.includes(a.id))
-             ? `<i class="pip">${AMENITIES.filter((a) => a.era <= state.era && !state.amenities.includes(a.id)).length}</i>`
-             : ''
-         }
+       <button class="bar-item ${this.openModal === 'build' ? 'active' : ''} ${seatQueue ? 'bar-item--alert' : ''}"
+         data-action="build-open"
+         title="${esc(seatQueue ? t('build.bar.buildQueue', { count: seatQueue }) : t('build.bar.buildHint'))}">
+         ${icon('hammer', 'ui-icon bar-icon')}
+         <span class="bar-label">${t('build.bar.build')}</span>
+         ${seatQueue ? `<i class="pip">${seatQueue}</i>` : ''}
        </button>
        <button class="bar-item ${this.openModal === 'reddit' ? 'active' : ''}" data-action="reddit-open"
-         title="Put something in front of an audience — attention falls on its own">
+         title="${esc(t('build.bar.socialsHint'))}">
          ${icon('flame', 'ui-icon bar-icon')}
-         <span class="bar-label">Socials</span>
+         <span class="bar-label">${t('build.bar.socials')}</span>
          ${state.hype >= 1 ? `<i class="pip">${Math.round(state.hype)}</i>` : ''}
        </button>`,
     );
   }
-
-  // --- the Jobs wizard ------------------------------------------------------
 
   /** The awards night takes the screen until it is dismissed. */
   /**
@@ -1740,7 +1884,7 @@ export class UI {
             <th class="space-head trophy-cat">
               <span class="trophy-cat-line"><span>${t('ui.trophy.category')}</span><span>${t('ui.trophy.yours')}</span></span>
             </th>
-            <th class="space-head">${t('ui.trophy.winnerOctober', { year: active.year })}</th>
+            <th class="space-head">${t('ui.trophy.winnerDecember', { year: active.year })}</th>
           </tr></thead>
           <tbody>${body}</tbody>
         </table>
@@ -2049,7 +2193,7 @@ export class UI {
 
     if (!points.length) {
       // Say when the line starts rather than only that it is empty: a run that predates the
-      // record reads "no table was recorded" as a fault, when it is simply not October yet.
+      // record reads "no table was recorded" as a fault, when it is simply not December yet.
       const season = state.runtime.season;
       const days = Math.max(0, season.length - season.dayOfYear);
       const when = days === 0 ? t('ui.chart.today') : t('ui.chart.inDays', { days });
@@ -2196,27 +2340,26 @@ export class UI {
               ? this.projectsBody(state)
               : this.openModal === 'reddit'
                 ? this.redditBody(state)
-                : this.openModal === 'shop'
-                  ? this.shopBody(state)
-                  : this.jobsBody(state);
+                : this.openModal === 'build'
+                  ? this.buildBody(state)
+                  : this.newProjectBody(state);
     this.setHTML(
       this.modal,
       'modal',
       `<div class="modal-backdrop" data-action="jobs-close">
-        <div ${
-          // Jobs and the Shop are still English (they are being replaced); see renderChrome.
-          this.openModal === 'jobs' || this.openModal === 'shop' ? 'lang="en"' : ''
-        } class="modal ${
+        <div class="modal ${
           this.openModal === 'machines' ||
           this.openModal === 'projects' ||
           this.openModal === 'people' ||
-          this.openModal === 'shop'
+          this.openModal === 'build'
             ? 'modal--fit'
             : ''
         } ${
-          this.openModal === 'projects' || this.openModal === 'people' || this.openModal === 'shop'
+          this.openModal === 'projects' || this.openModal === 'people' || this.openModal === 'build'
             ? 'modal--wide'
-            : ''
+            : this.openModal === 'new'
+              ? 'modal--wizard'
+              : ''
         }"
           data-action="noop">
           <header>
@@ -2599,12 +2742,28 @@ export class UI {
     const rows =
       tab === 'free' ? free.map(memberRow) : tab === 'on' ? busy.map(memberRow) : [...free, ...busy].map(memberRow);
 
+    // One press for the whole queue: full-time where they can, part-time for anybody with a
+    // day job. Each still costs its induction fee and an hour of yours, and the sim stops
+    // taking people on when either runs out.
+    const hireAllCost = open.reduce(
+      (sum, id) => sum + this.handlers.hireCost(id, this.handlers.canHireFullTime(id) ? 'full-time' : 'part-time'),
+      0,
+    );
+    const hireAll = open.length > 1
+      ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="hire-all"
+          ${this.affordable(state, hireAllCost) ? '' : 'disabled'}
+          title="${esc(t('build.people.hireAllHint'))}">
+          ${icon('check')}${t('build.people.hireAll', { count: open.length, cost: hireAllCost })}
+        </button>`
+      : '';
+
     const waiting =
       open.length && tab !== 'open'
         ? `<div class="candidate-banner">
             ${icon('users', 'ui-icon')}
             <span>${t('ui.people.wantToJoin', { count: open.length, n: `<b>${open.length}</b>` })}
               <span class="muted">· ${open.map((a) => esc(MEMBER_DATA[a]?.name ?? a)).join(', ')}</span></span>
+            ${hireAll}
             <button class="ui-btn ui-btn--primary ui-btn--sm" data-action="people-tab" data-value="open">
               ${t('ui.people.review')}
             </button>
@@ -2613,7 +2772,8 @@ export class UI {
 
     const body =
       tab === 'open'
-        ? `<div class="candidates">${open.map(candidateCard).join('')}</div>`
+        ? `${hireAll ? `<div class="row" style="justify-content:flex-end;margin-bottom:10px">${hireAll}</div>` : ''}
+           <div class="candidates">${open.map(candidateCard).join('')}</div>`
         : rows.length
           ? `<table class="rank-table people-table">
               <thead><tr>
@@ -2654,124 +2814,184 @@ export class UI {
     };
   }
 
-  private jobsBody(state: GameState): { head: string; content: string; foot: string } {
-    const steps: { key: JobStep; label: string }[] = [
-      { key: 'category', label: 'Kind of work' },
-      { key: 'project', label: 'Project' },
-      { key: 'crew', label: 'Crew' },
-    ];
-    const current = steps.findIndex((x) => x.key === this.jobs.step);
+  // --- + New Project: design a build, then crew it (§4d) ---------------------
+
+  /**
+   * The New Project wizard. It replaced the Jobs board, which handed the player a finished
+   * recipe — every number behind a project had already been decided, so the only choice
+   * left was which name to click. Five steps now, and three of them are decisions:
+   *
+   *   Genre → Brief → **Design → Crew → Review**
+   *
+   * The brief is still the catalogue (what the market is asking for, and what it pays), but
+   * how it is built, and by how many, is the player's. The review screen is the whole plan
+   * worked out by the same `planProject` the sim builds from, so what it promises is what
+   * the build carries.
+   */
+  private newProjectBody(state: GameState): { head: string; content: string; foot: string } {
+    const steps: { key: NewStep; label: string }[] = (
+      ['genre', 'brief', 'design', 'crew', 'review'] as NewStep[]
+    ).map((key) => ({ key, label: t(`build.np.step.${key}` as MessageKey) }));
+    const current = steps.findIndex((x) => x.key === this.np.step);
     const trail = steps
       .map((x, index) => {
-        const state = index === current ? 'now' : index < current ? 'done' : '';
-        const inner = `<i>${state === 'done' ? icon('check', 'ui-icon step-check') : index + 1}</i>${x.label}`;
+        const tone = index === current ? 'now' : index < current ? 'done' : '';
+        const inner = `<i>${tone === 'done' ? icon('check', 'ui-icon step-check') : index + 1}</i>${x.label}`;
         // Only a completed step is a destination; the current one is where you are and the
-        // ones ahead do not exist yet.
-        return state === 'done'
-          ? `<button class="step done" data-action="jobs-step" data-value="${x.key}"
-               title="Back to ${x.label.toLowerCase()}">${inner}</button>`
-          : `<span class="step ${state}">${inner}</span>`;
+        // ones ahead do not exist yet (§4c).
+        return tone === 'done'
+          ? `<button class="step done" data-action="np-step" data-value="${x.key}"
+               title="${esc(t('build.np.backTo', { step: x.label }))}">${inner}</button>`
+          : `<span class="step ${tone}" data-step="${x.key}">${inner}</span>`;
       })
       .join(`<span class="step-sep">${icon('chevronRight', 'ui-icon')}</span>`);
 
+    const content =
+      this.np.step === 'genre'
+        ? this.npGenreStep(state)
+        : this.np.step === 'brief'
+          ? this.npBriefStep(state)
+          : this.np.step === 'design'
+            ? this.npDesignStep(state)
+            : this.np.step === 'crew'
+              ? this.npCrewStep(state)
+              : this.npReviewStep(state);
+
+    const next =
+      this.np.step === 'design' || this.np.step === 'crew'
+        ? `<button class="ui-btn ui-btn--primary ui-btn--sm" data-action="np-next" style="margin-left:auto">
+             ${t(this.np.step === 'design' ? 'build.np.step.crew' : 'build.np.step.review')}${icon('chevronRight')}
+           </button>`
+        : '';
     return {
       head: `<div class="steps">${trail}</div>`,
-      content:
-        this.jobs.step === 'category'
-          ? this.jobsCategoryStep(state)
-          : this.jobs.step === 'project'
-            ? this.jobsProjectStep(state)
-            : this.jobsCrewStep(state),
+      content,
       foot: `
         ${
-          this.jobs.step === 'category'
+          this.np.step === 'genre'
             ? ''
-            : `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="jobs-back">
-                 ${icon('arrowLeft')}Back
+            : `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="np-back">
+                 ${icon('arrowLeft')}${t('build.np.back')}
                </button>`
         }
         <span class="ui-desc" style="font-size:10.5px">
-          Pitching is free and orders the parts there and then. No limit on how many run at
-          once — people are.
-        </span>`,
+          ${t(
+            this.np.step === 'design'
+              ? 'build.np.foot.design'
+              : this.np.step === 'crew'
+                ? 'build.np.foot.crew'
+                : 'build.np.foot.other',
+          )}
+        </span>
+        ${next}`,
     };
   }
 
-  /**
-   * What the people standing around are actually good for. Genre tiles ask you to know which
-   * genre your idle members suit; this asks the list instead, across every genre at once, and
-   * ranks by how well the free crew matches — weighted down when there are not enough of them
-   * to fill the team, because a job you cannot crew is not a good fit however well it reads.
-   */
-  private bestFitDefs(state: GameState): { def: ProjectDef; fit: number; names: string[] }[] {
-    const free = state.runtime.members.filter((m) => !m.team);
-    if (!free.length) return [];
-    return this.availableDefs(state)
-      .map((def) => {
-        const ranked = free
-          .map((m) => ({
-            name: m.name,
-            match: categoryAffinity(MEMBER_DATA[m.id]?.passions ?? {}, def.category),
-          }))
-          .sort((a, b) => b.match - a.match)
-          .slice(0, def.teamSize);
-        const coverage = ranked.length / def.teamSize;
-        const average = ranked.reduce((sum, r) => sum + r.match, 0) / Math.max(1, ranked.length);
-        return { def, fit: average * coverage, names: ranked.map((r) => r.name) };
-      })
-      .filter((entry) => entry.fit > 0)
-      .sort((a, b) => b.fit - a.fit);
+  private npDef(): ProjectDef | null {
+    return this.np.defId ? CATALOG_MAP[this.np.defId] ?? null : null;
   }
 
-  /** Step 1: what kind of work, or one of the offers that came to you. */
-  private jobsCategoryStep(state: GameState): string {
+  private npPlan(): ProjectPlan {
+    return { design: { ...this.np.design }, seats: this.np.seats };
+  }
+
+  /** The biggest crew any table in the space can seat — what the size picker is capped at. */
+  private maxSeats(state: GameState): number {
+    return Math.max(0, ...state.runtime.tables.map((t) => t.seats));
+  }
+
+  /** The seat option closest to what the brief was scoped for, within what the tables allow. */
+  private seatsFor(def: ProjectDef, state: GameState): number {
+    const allowed = SEAT_OPTIONS.filter((n) => n <= Math.max(1, this.maxSeats(state)));
+    return allowed.reduce((best, n) =>
+      Math.abs(Math.log(n / def.teamSize)) < Math.abs(Math.log(best / def.teamSize)) ? n : best,
+    allowed[0] ?? 1);
+  }
+
+  private npChooseBrief(defId: string, offerId: string | null, state: GameState) {
+    const def = CATALOG_MAP[defId];
+    if (!def) return;
+    this.np.defId = defId;
+    this.np.offerId = offerId;
+    this.np.design = defaultDesign(def.category);
+    this.np.seats = this.seatsFor(def, state);
+    this.np.crew = new Set();
+    this.np.crewTouched = false;
+    this.npSuggestCrew(state);
+  }
+
+  /** Everybody free, best match for this genre first — the picker's order, and the suggestion's. */
+  private rankedFree(def: ProjectDef, state: GameState) {
+    return state.runtime.members
+      .filter((m) => !m.team)
+      .map((m) => ({ m, match: categoryAffinity(MEMBER_DATA[m.id]?.passions ?? {}, def.category) }))
+      .sort((a, b) => b.match - a.match);
+  }
+
+  /**
+   * Open the crew step on the obvious answer: the proposer if there is one, then the best
+   * matches up to the seats. A crew the player has touched is never suggested over (§4c) —
+   * stepping back and forth must not undo a hand-picked crew.
+   */
+  private npSuggestCrew(state: GameState) {
+    const def = this.npDef();
+    if (!def) return;
+    const free = new Set(state.runtime.members.filter((m) => !m.team).map((m) => m.id));
+    const crew = new Set([...this.np.crew].filter((id) => free.has(id)));
+    const proposer = this.npProposer(state);
+    if (proposer && free.has(proposer)) crew.add(proposer);
+    if (!this.np.crewTouched) {
+      for (const { m } of this.rankedFree(def, state)) {
+        if (crew.size >= this.np.seats) break;
+        crew.add(m.id);
+      }
+    }
+    // Fewer seats than people ticked: the weakest matches give theirs up first.
+    const order = this.rankedFree(def, state).map((r) => r.m.id);
+    while (crew.size > this.np.seats) {
+      const drop = [...crew]
+        .filter((id) => id !== proposer)
+        .sort((a, b) => order.indexOf(b) - order.indexOf(a))[0];
+      if (!drop) break;
+      crew.delete(drop);
+    }
+    this.np.crew = crew;
+  }
+
+  private npProposer(state: GameState): string | null {
+    const offer = this.np.offerId ? state.backlog.find((e) => e.id === this.np.offerId) : null;
+    return offer?.proposerId ?? null;
+  }
+
+  /** Step 1: what kind of work — and what the market thinks of it this week. */
+  private npGenreStep(state: GameState): string {
     const available = this.availableDefs(state);
-    const offers = state.backlog.length;
     const tiles = CATEGORY_ORDER.map((category) => {
       const count = available.filter((def) => def.category === category).length;
       const profile = profileOf(category);
-      return `<button class="ui-option" data-action="jobs-category" data-value="${category}"
+      return `<button class="ui-option" data-action="np-genre" data-value="${category}"
         ${count ? '' : 'disabled'}>
         <div class="ui-option__head">
           <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[category], 'ui-icon ui-icon--lg')}</span>
-          <span class="ui-title">${profile.label}</span>
+          <span class="ui-title">${profileOf(category).label}</span>
           <span class="ui-badge">${count || '—'}</span>
         </div>
-        <span class="ui-option__desc ui-clamp-2">${esc(profile.blurb)}</span>
+        <span class="ui-option__desc ui-clamp-2">${esc(profileOf(category).blurb)}</span>
+        ${demandBadge(state.market[category] ?? 1)}
       </button>`;
     }).join('');
 
-    const bestFit = this.bestFitDefs(state);
-    const idle = state.runtime.members.filter((m) => !m.team).length;
+    const offers = state.backlog.length;
     return `
       ${
-        bestFit.length
-          ? `<button class="ui-row offers-row" data-action="jobs-category" data-value="bestfit">
-              <span class="icon-chip" style="--tone:var(--warning)">${icon('users', 'ui-icon ui-icon--lg')}</span>
-              <span class="ui-row__main">
-                <span class="ui-title">Best for your idle hands</span>
-                <p class="ui-desc" style="margin:3px 0 0">
-                  What the ${idle === 1 ? 'one person' : `${idle} people`} with nothing to do
-                  would actually be good at
-                </p>
-              </span>
-              <span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">
-                top ${pct(bestFit[0].fit)}
-              </span>
-              <span class="ui-row__chevron">${icon('chevronRight')}</span>
-            </button>
-            <hr class="ui-sep" />`
-          : ''
-      }
-      ${
         offers
-          ? `<button class="ui-row offers-row" data-action="jobs-category" data-value="offers">
+          ? `<button class="ui-row offers-row" data-action="np-genre" data-value="offers">
               <span class="icon-chip" style="--tone:var(--primary)">${icon('mail', 'ui-icon ui-icon--lg')}</span>
               <span class="ui-row__main">
-                <span class="ui-title">Offers</span>
-                <p class="ui-desc" style="margin:3px 0 0">Proposals, sponsors, and whatever Reddit is excited about</p>
+                <span class="ui-title">${t('build.np.offers')}</span>
+                <p class="ui-desc" style="margin:3px 0 0">${t('build.np.offersHint')}</p>
               </span>
-              <span class="ui-badge ui-badge--accent">${offers} waiting</span>
+              <span class="ui-badge ui-badge--accent">${t('build.np.offersWaiting', { count: offers })}</span>
               <span class="ui-row__chevron">${icon('chevronRight')}</span>
             </button>
             <hr class="ui-sep" />`
@@ -2781,163 +3001,296 @@ export class UI {
     `;
   }
 
-  /** Step 2: the shortlist, with size filtered and grouped in place. */
-  private jobsProjectStep(state: GameState): string {
-    if (this.jobs.source === 'offers') {
-      return `<div class="ui-label" style="margin-bottom:9px">Offers</div>
-        ${state.backlog.map((entry) => this.jobCard(CATALOG_MAP[entry.defId], state, entry)).join('')}`;
+  /** Step 2: the brief — what somebody wants built, and what it is worth to them. */
+  private npBriefStep(state: GameState): string {
+    if (this.np.genre === 'offers') {
+      return `<div class="ui-label" style="margin-bottom:9px">${t('build.np.offers')}</div>
+        ${state.backlog.map((entry) => this.briefRow(CATALOG_MAP[entry.defId], state, entry)).join('')}`;
     }
-    if (this.jobs.source === 'bestfit') {
-      const ranked = this.bestFitDefs(state);
-      if (!ranked.length) return `<p class="ui-desc">Everybody is already on something.</p>`;
-      return `<div class="ui-label" style="margin-bottom:9px">
-          Best for your idle hands · ${esc(ranked[0].names.join(', '))} and co.
+    const category = this.np.genre as ProjectCategory;
+    const defs = this.availableDefs(state)
+      .filter((def) => def.category === category)
+      .sort((a, b) => a.teamSize - b.teamSize || a.payout - b.payout);
+    return `
+      <div class="row between" style="gap:10px;margin-bottom:11px">
+        <span class="ui-label">${t('build.np.asking')}</span>
+        <span class="row" style="gap:6px">${categoryChip(category)}${demandBadge(state.market[category] ?? 1)}</span>
+      </div>
+      ${defs.length ? defs.map((def) => this.briefRow(def, state)).join('') : `<p class="ui-desc">${t('build.np.nothingInGenre')}</p>`}`;
+  }
+
+  private briefRow(def: ProjectDef, state: GameState, entry?: BacklogEntry): string {
+    const badge = entry ? SOURCE_BADGE[entry.source] : null;
+    const missing = missingMachines(def, state.ownedMachines);
+    const profile = profileOf(def.category);
+    const printHours = def.parts.reduce((sum, part) => sum + part.hours, 0);
+    return `<button class="ui-row" data-action="np-brief"
+      data-id="${def.id}" data-id2="${entry?.id ?? ''}" ${missing.length ? 'disabled' : ''}>
+      <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[def.category], 'ui-icon ui-icon--lg')}</span>
+      <span class="ui-row__main">
+        <span class="row between" style="gap:8px">
+          <span class="ui-title">${esc(def.name)}</span>
+          ${badge?.label ? `<span class="ui-badge ui-badge--accent">${t(badge.label)}</span>` : ''}
+        </span>
+        <p class="ui-desc ui-clamp-2" style="margin:4px 0 0">${esc(def.blurb)}</p>
+        <span class="ui-row__meta">
+          ${tierBadge(def.tier)}
+          <span class="ui-badge ui-badge--tone" style="--tone:var(--primary)" title="${esc(t('build.np.scopedForHint'))}">
+            ${icon('users')}${t('build.np.scopedFor', { count: def.teamSize })}
+          </span>
+          ${
+            def.payout
+              ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)" title="${esc(t('build.np.payoutHint'))}">${icon('coins')}${money(def.payout)}</span>`
+              : `<span class="ui-badge">${icon('coins')}${t('build.np.keepIt')}</span>`
+          }
+          <span class="ui-badge" title="${esc(t('build.np.hypeHint'))}">${icon('flame')}${num(def.hype)}</span>
+          <span class="ui-badge" title="${esc(t('build.np.machineTimeHint'))}">${icon('printer')}${printHours ? hours(printHours) : t('build.np.none')}</span>
+          <span class="ui-badge" title="${esc(t('build.np.bomHint'))}">
+            ${icon('package')}${def.bomCost ? `${money(def.bomCost)} · ${t('build.days', { days: def.leadDays })}` : t('build.np.none')}
+          </span>
+        </span>
+        ${entry ? this.offerMeta(entry, state) : ''}
+        ${
+          missing.length
+            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning);margin-top:6px"
+                 title="${esc(t('build.np.needsHint'))}">
+                 ${icon('printer')}${t('build.np.needs', { machines: missing.map((m) => MACHINE_LABEL[m]).join(' + ') })}
+               </span>`
+            : ''
+        }
+      </span>
+      <span class="ui-row__chevron">${icon('chevronRight')}</span>
+    </button>`;
+  }
+
+  /** Step 3: how it gets built. Three decisions, each a one-, three- or five-star option. */
+  private npDesignStep(state: GameState): string {
+    const def = this.npDef();
+    if (!def) return `<p class="empty">${t('build.np.pickBrief')}</p>`;
+    const axes = CATEGORY_AXES[def.category];
+    const sections = axes
+      .map((axisId) => {
+        const axis = AXES[axisId];
+        const chosen = Math.round(this.np.design[axisId] ?? 1);
+        const cards = axis.options
+          .map((option, index) => {
+            const missing = (option.requires ?? []).filter((m) => !state.ownedMachines.includes(m));
+            const on = index === chosen;
+            return `<button class="ui-option design-option ${on ? 'ui-option--on' : ''}"
+              data-action="np-option" data-value="${axisId}" data-id="${index}"
+              aria-pressed="${on}" ${missing.length ? 'disabled' : ''}
+              title="${missing.length ? esc(t('build.np.needsMachine', { machines: missing.map((m) => MACHINE_LABEL[m]).join(' + ') })) : ''}">
+              <span class="row between" style="width:100%">
+                <span class="ui-title">${esc(option.label)}</span>
+                ${starRow(option.stars)}
+              </span>
+              <span class="ui-option__desc ui-clamp-3">${esc(option.blurb)}</span>
+              <span class="ui-row__meta" style="margin:0">${optionEffects(option, this.np.seats)}</span>
+            </button>`;
+          })
+          .join('');
+        return `<div class="design-axis">
+          <div class="design-axis__head">
+            <span class="ui-label">${esc(axis.label)}</span>
+            <span class="ui-desc">${esc(axis.question)}</span>
+          </div>
+          <div class="ui-grid ui-grid--3">${cards}</div>
+        </div>`;
+      })
+      .join('');
+    return `${this.npHeader(def)}${sections}`;
+  }
+
+  /** The brief being designed, as a line at the top of each step after it. */
+  private npHeader(def: ProjectDef): string {
+    const profile = profileOf(def.category);
+    return `<div class="row" style="gap:11px;margin-bottom:12px">
+      <span class="icon-chip" style="--tone:${profile.accent};width:36px;height:36px">
+        ${icon(CATEGORY_ICON[def.category], 'ui-icon ui-icon--lg')}
+      </span>
+      <div style="flex:1;min-width:0">
+        <div class="row between" style="gap:8px">
+          <span class="ui-title" style="font-size:15px">${esc(def.name)}</span>
+          ${categoryChip(def.category)}
         </div>
-        ${ranked
-          .slice(0, 8)
-          .map((entry) => this.jobCard(entry.def, state, undefined, entry))
-          .join('')}`;
-    }
+        <p class="ui-desc ui-clamp-2" style="margin:2px 0 0">${esc(def.blurb)}</p>
+      </div>
+    </div>`;
+  }
 
-    const all = this.availableDefs(state).filter((def) => def.category === this.jobs.source);
-    const active = SIZE_FILTERS.find((f) => f.key === this.jobs.size)!;
-    const free = state.runtime.members.filter((m) => !m.team).length;
-
-    const segmented = `<div class="ui-segmented">
-      ${SIZE_FILTERS.map((filter) => {
-        const count = all.filter((def) => filter.test(def.teamSize)).length;
-        return `<button data-action="jobs-size" data-value="${filter.key}"
-          aria-pressed="${filter.key === this.jobs.size}" ${count ? '' : 'disabled'}>
-          ${t(filter.short)}<span class="seg-count">${count}</span>
+  /** Step 4: how many seats, and who is asked to fill them. */
+  private npCrewStep(state: GameState): string {
+    const def = this.npDef();
+    if (!def) return `<p class="empty">${t('build.np.pickBrief')}</p>`;
+    const max = this.maxSeats(state);
+    const fit = teamFit(this.np.seats, def.teamSize);
+    const sizes = `<div class="ui-segmented seat-picker">
+      ${SEAT_OPTIONS.map((n) => {
+        const blocked = n > max;
+        return `<button data-action="np-seats" data-value="${n}" aria-pressed="${n === this.np.seats}"
+          ${blocked ? 'disabled' : ''}
+          title="${esc(blocked ? t('build.np.seatBlocked', { count: n, table: FURNITURE_MAP['table-large'].name }) : t('build.people', { count: n }))}">
+          ${icon('users')}${n}
         </button>`;
       }).join('')}
     </div>`;
 
-    const shown = all.filter((def) => active.test(def.teamSize));
-    if (!shown.length) {
-      return `
-        <div class="row between" style="margin-bottom:10px">${segmented}${categoryChip(this.jobs.source as ProjectCategory)}</div>
-        <p class="ui-desc">Nothing this size. Try another.</p>`;
-    }
-
-    // Grouped by size when nothing is filtered, so the whole range is visible at once.
-    const groups =
-      this.jobs.size === 'any'
-        ? SIZE_GROUPS.map((group) => {
-            const defs = shown.filter((def) => group.test(def.teamSize)).sort((a, b) => a.teamSize - b.teamSize);
-            if (!defs.length) return '';
-            const short = free < Math.min(...defs.map((d) => d.teamSize));
-            return `<div class="job-group">
-              <div class="job-group__head">
-                <span class="ui-label">${t(group.label)}</span>
-                <span class="ui-desc" style="font-size:10.5px">${t(group.hint)}</span>
-                ${short ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">short-handed</span>` : ''}
-              </div>
-              ${defs.map((def) => this.jobCard(def, state)).join('')}
-            </div>`;
-          }).join('')
-        : shown
-            .sort((a, b) => a.teamSize - b.teamSize)
-            .map((def) => this.jobCard(def, state))
-            .join('');
-
-    return `
-      <div class="row between" style="gap:10px;margin-bottom:11px">
-        ${segmented}
-        ${categoryChip(this.jobs.source as ProjectCategory)}
-      </div>
-      ${groups}`;
-  }
-
-  /** Step 3: who is going to do it. */
-  private jobsCrewStep(state: GameState): string {
-    const def = this.jobs.defId ? CATALOG_MAP[this.jobs.defId] : null;
-    if (!def) return `<p class="empty">Pick a project first.</p>`;
-    const entry = this.jobs.offerId
-      ? state.backlog.find((candidate) => candidate.id === this.jobs.offerId)
-      : undefined;
-    // The commit step has room to spare, so show what is actually being committed to.
-    // It doubles as the place the genre's stage names are introduced.
-    const stages = STAGE_ORDER.map((key) => {
-      const need = def.work[key] ?? STAGE_MAP[key].work;
-      const label = stageLabel(def.category, key);
-      const machine = key === 'fabrication';
-      const value = machine
-        ? def.parts.length
-          ? `${def.parts.reduce((sum, part) => sum + part.hours, 0)}h machine`
-          : '—'
-        : need > 0
-          ? `${need}`
-          : '—';
-      return `<div class="breakdown-row ${need > 0 || machine ? '' : 'skip'}">
-        <span>${label}</span><span class="mono">${value}</span>
-      </div>`;
-    }).join('');
-
-    const parts = def.parts.length
-      ? `<div class="ui-label" style="margin-bottom:6px">Parts to make</div>
-         ${def.parts
-           .map(
-             (part) => `<div class="breakdown-row">
-               <span>${esc(part.name)}</span>
-               <span class="mono">${hours(part.hours)}${part.material ? ` · ${part.material}g` : ''}</span>
-             </div>`,
-           )
-           .join('')}`
-      : `<div class="ui-label" style="margin-bottom:6px">Parts to make</div>
-         <p class="ui-desc">Nothing to print. It never touches the machine queue.</p>`;
-
-    const profile = profileOf(def.category);
-    return `
-      <div class="row" style="gap:11px;margin-bottom:9px">
-        <span class="icon-chip" style="--tone:${profile.accent};width:38px;height:38px">
-          ${icon(CATEGORY_ICON[def.category], 'ui-icon ui-icon--lg')}
+    const fitTone = fit.quality >= 0.04 ? 'var(--success)' : fit.quality <= -0.04 ? 'var(--destructive)' : 'var(--muted-foreground)';
+    const fitCard = `<div class="ui-card fit-card">
+      <div class="row between" style="gap:10px">
+        <span class="ui-title">${t('build.people', { count: this.np.seats })} · ${fitLabel(this.np.seats, def.teamSize)}</span>
+        <span class="ui-badge ui-badge--tone" style="--tone:${fitTone}" title="${esc(t('build.np.fitQualityHint'))}">
+          ${icon('star')}${t('build.np.fitQuality', { value: `${fit.quality >= 0 ? '+' : '−'}${Math.round(Math.abs(fit.quality) * 100)}` })}
         </span>
-        <div style="flex:1;min-width:0">
-          <div class="row between" style="gap:8px">
-            <span class="ui-title" style="font-size:15px">${esc(def.name)}</span>
-            ${categoryChip(def.category)}
+      </div>
+      ${fitMeter(def.teamSize, this.np.seats)}
+      <p class="ui-desc" style="margin:6px 0 0">${t('build.np.fitExplain', { count: def.teamSize })}</p>
+    </div>`;
+
+    const free = this.rankedFree(def, state);
+    const proposer = this.npProposer(state);
+    const crew = [...this.np.crew];
+    const picker = free.length
+      ? `<div class="ui-card" style="padding:11px;margin-top:10px">
+          <div class="row between" style="margin-bottom:8px">
+            <span class="ui-label" data-crew="${this.np.crew.size}/${this.np.seats}">${t('build.np.ask', { picked: this.np.crew.size, seats: this.np.seats })}</span>
+            <span class="ui-desc" style="font-size:10.5px">${t('build.np.canSayNo')}</span>
           </div>
-          <p class="ui-desc" style="margin:3px 0 0">${esc(def.blurb)}</p>
-        </div>
+          <div class="row wrap" style="gap:5px">
+            ${free
+              .slice(0, 12)
+              .map(({ m, match }) => {
+                const on = this.np.crew.has(m.id);
+                const locked = m.id === proposer;
+                const full = !on && this.np.crew.size >= this.np.seats;
+                return `<button class="ui-toggle" aria-pressed="${on}" ${full || locked ? 'disabled' : ''}
+                  data-action="np-crew" data-id="${m.id}"
+                  title="${esc(locked ? t('build.np.proposerLocked') : `${t('build.np.match', { genre: profileOf(def.category).label, match: pct(match), shift: shiftLabel(m) })}${m.present ? '' : ` · ${t('build.np.notIn')}`}`)}">
+                  ${icon(on ? 'check' : 'plus')}${esc(m.name)}
+                  <span class="ui-toggle__pct">${pct(match)} · ${shiftShort(m)}</span>
+                </button>`;
+              })
+              .join('')}
+          </div>
+        </div>`
+      : `<div class="ui-card" style="padding:11px;margin-top:10px">
+          <p class="ui-desc" style="margin:0">${t('build.np.everyoneBusy')}</p>
+        </div>`;
+
+    const clash = shiftClash(crew.map((id) => state.runtime.members.find((m) => m.id === id)).filter(Boolean) as MemberSnapshot[]);
+    return `${this.npHeader(def)}
+      <div class="row between" style="gap:10px;margin-bottom:10px">
+        <span class="ui-label">${t('build.np.crewSize')}</span>
+        ${sizes}
       </div>
-      ${this.defStats(def)}
-      ${entry ? this.offerMeta(entry, state) : ''}
-      ${this.draftPicker(def, state)}
-      <hr class="ui-sep" />
-      <div class="breakdown">
-        <div>
-          <div class="ui-label" style="margin-bottom:6px">Stages</div>
-          ${stages}
-        </div>
-        <div>${parts}</div>
-      </div>
+      ${fitCard}
+      ${picker}
       ${
-        def.bomCost > state.cash
-          ? `<p class="defect" style="margin:0 0 8px">${icon('package')} You cannot cover the
-             ${money(def.bomCost)} bill of materials. You can still pitch it, but nothing can be
-             assembled until the parts are ordered.</p>`
+        clash
+          ? `<p class="defect" style="margin:10px 0 0">${icon('clock')} ${esc(t('build.np.clash', { names: clash }))}</p>`
           : ''
       }
-      <button class="ui-btn ui-btn--primary ui-btn--lg pitch-cta" data-action="pitch"
-        data-id="${def.id}" data-id2="${entry?.id ?? ''}">
-        Pitch ${esc(def.name)}${def.bomCost ? ` · ${money(def.bomCost)}` : ''}
+      ${
+        max < 5
+          ? `<p class="ui-desc" style="margin:10px 0 0;font-size:10.5px">${icon('table')} ${t('build.np.largeHint', {
+              table: `<b>${esc(FURNITURE_MAP['table-large'].name)}</b>`,
+              build: `<b>${t('build.bar.build')}</b>`,
+            })}</p>`
+          : ''
+      }`;
+  }
+
+  /** Step 5: everything the plan works out to, and the button. */
+  private npReviewStep(state: GameState): string {
+    const def = this.npDef();
+    if (!def) return `<p class="empty">${t('build.np.pickBrief')}</p>`;
+    const entry = this.np.offerId ? state.backlog.find((e) => e.id === this.np.offerId) : undefined;
+    const plan = this.npPlan();
+    const summary = planProject(def, plan, state.ownedMachines);
+    const crew = [...this.np.crew]
+      .map((id) => state.runtime.members.find((m) => m.id === id))
+      .filter((m): m is MemberSnapshot => !!m);
+
+    // What the crew's craft is likely to be, from the skill the design stage leans on.
+    const skill = stageSkill(def.category, 'cad');
+    const craft = crew.length && skill
+      ? crew.reduce((sum, m) => sum + (MEMBER_DATA[m.id]?.skills[skill] ?? 2), 0) / crew.length / 5
+      : 0.5;
+    const team = teamFit(Math.max(1, crew.length || plan.seats), def.teamSize);
+    const quality = Math.max(0.05, Math.min(1, craft + summary.designQuality + team.quality));
+    const demand = state.market[def.category] ?? 1;
+    const built = state.shipped.filter((r) => r.defId === def.id).length;
+    const novelty = Math.max(REPEAT.floor, REPEAT.falloff ** built);
+    const payout = Math.round(def.payout * novelty * demand * summary.appeal * qualityPay(quality));
+    const hype = Math.round(def.hype * (entry?.hypeMultiplier ?? 1) * novelty * Math.sqrt(summary.appeal) * qualityHype(quality));
+    const cost = summary.bomCost + summary.tooling;
+    const handWork = STAGE_ORDER.reduce((sum, key) => sum + summary.work[key], 0);
+    const machineHours = summary.parts.reduce((sum, part) => sum + part.hours, 0);
+
+    const table = state.runtime.tables
+      .filter((t) => t.seats >= plan.seats)
+      .sort((a, b) => Number(!!a.projectId) - Number(!!b.projectId) || a.seats - b.seats)[0];
+    const tableLine = esc(
+      table
+        ? t(table.projectId ? 'build.review.tableBusy' : 'build.review.tableFree', { table: table.label })
+        : t('build.review.noTable'),
+    );
+
+    const stat = (label: string, value: string, hint = '') =>
+      `<div class="review-stat" title="${esc(hint)}"><span class="ui-label">${label}</span><span class="review-stat__value">${value}</span></div>`;
+
+    const designLines = CATEGORY_AXES[def.category]
+      .map((axisId) => {
+        const option = optionOf(axisId, plan.design);
+        return `<div class="breakdown-row"><span>${esc(AXES[axisId].label)}</span>
+          <span class="row" style="gap:6px"><span class="mono">${esc(option.label)}</span>${starRow(option.stars)}</span></div>`;
+      })
+      .join('');
+
+    const blocked = summary.missing.length > 0 || plan.seats > this.maxSeats(state);
+    return `${this.npHeader(def)}
+      <div class="review-grid">
+        ${stat(t('build.review.quality'), `${starRow(qualityStars(quality))}<span class="mono">${pct(quality)}</span>`, t('build.review.qualityHint'))}
+        ${stat(t('build.review.market'), demandBadge(demand), t('build.review.marketHint'))}
+        ${stat(t('build.review.pays'), `<span class="mono">~${money(payout)}</span>`, t('build.review.paysHint'))}
+        ${stat(t('build.review.reputation'), `<span class="mono">~${num(hype)}</span>`, t('build.review.reputationHint'))}
+      </div>
+      ${entry ? this.offerMeta(entry, state) : ''}
+      <div class="breakdown" style="margin-top:12px">
+        <div>
+          <div class="ui-label" style="margin-bottom:6px">${t('build.review.design')}</div>
+          ${designLines}
+          <div class="breakdown-row"><span>${t('build.review.crew')}</span><span class="mono">${num(plan.seats)} · ${esc(fitLabel(Math.max(1, crew.length || plan.seats), def.teamSize))}</span></div>
+          <div class="breakdown-row"><span>${t('build.review.kickoff')}</span><span class="mono">${tableLine}</span></div>
+        </div>
+        <div>
+          <div class="ui-label" style="margin-bottom:6px">${t('build.review.commitment')}</div>
+          <div class="breakdown-row"><span>${t('build.review.handWork')}</span><span class="mono">${num(handWork)}</span></div>
+          <div class="breakdown-row"><span>${t('build.review.machineTime')}</span><span class="mono">${machineHours ? hours(machineHours) : t('build.np.none')}</span></div>
+          <div class="breakdown-row"><span>${t('build.review.parts')}</span><span class="mono">${summary.bomCost ? `${money(summary.bomCost)} · ${t('build.days', { days: summary.leadDays })}` : t('build.np.none')}</span></div>
+          <div class="breakdown-row"><span>${t('build.review.licences')}</span><span class="mono">${summary.tooling ? money(summary.tooling) : t('build.np.none')}</span></div>
+          <div class="breakdown-row"><span>${t('build.review.testRisk')}</span><span class="mono">×${num(Number(summary.testRisk.toFixed(2)))}${summary.skipSim ? ` · ${t('build.review.noSim')}` : ''}</span></div>
+        </div>
+      </div>
+      <p class="ui-desc" style="margin:10px 0 0">
+        ${esc(crew.length ? t('build.review.asking', { names: crew.map((m) => m.name).join(', ') }) : t('build.review.nobodyAsked'))}
+        ${this.npProposer(state) ? esc(t('build.review.proposerSigns')) : ''}
+      </p>
+      <button class="ui-btn ui-btn--primary ui-btn--lg pitch-cta" data-action="np-start" ${blocked ? 'disabled' : ''}>
+        ${esc(t('build.review.start', { project: def.name }))}${cost ? ` · ${money(cost)}` : ''}
       </button>
       ${
-        def.bomCost > 0 && def.bomCost <= state.cash
+        cost > 0
           ? `<p class="ui-desc" style="margin:7px 0 0;text-align:center;font-size:10.5px">
-               Leaves you ${money(state.cash - def.bomCost)}
+               ${t('build.review.leaves', { cash: state.cash - cost })}${this.affordable(state, cost) ? '' : ` — ${t('build.review.pastOverdraft')}`}
              </p>`
           : ''
-      }
-    `;
+      }`;
   }
 
-  /** Projects the space could start right now: era-visible, buildable, not already running. */
+  /** Projects the space could start right now: era-visible and not already running. */
   private availableDefs(state: GameState): ProjectDef[] {
     // Kit you do not own no longer hides a project — the card says what it needs instead.
-    // A catalogue that silently shrinks when you sell a printer is a catalogue that looks
-    // broken, and "go and buy one" is a perfectly good thing for a job board to tell you.
     const active = new Set(state.runtime.projects.map((p) => p.defId));
     return catalogForEra(state.era).filter((def) => !active.has(def.id));
   }
@@ -2946,63 +3299,18 @@ export class UI {
     const proposer = entry.proposerId ? MEMBER_DATA[entry.proposerId]?.name : null;
     const daysLeft = entry.expiresOnDay ? entry.expiresOnDay - state.day : null;
     const bits = [
-      proposer ? `<span class="ui-badge">${icon('users')}${proposer} will take a stage</span>` : '',
+      proposer ? `<span class="ui-badge">${icon('users')}${esc(t('build.offer.proposer', { member: proposer }))}</span>` : '',
       entry.sponsorCash
-        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('coins')}${money(entry.sponsorCash)} up front</span>`
+        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('coins')}${t('build.offer.upFront', { cash: entry.sponsorCash })}</span>`
         : '',
       entry.hypeMultiplier
-        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('flame')}×${entry.hypeMultiplier} hype</span>`
+        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('flame')}${t('build.offer.hype', { multiplier: entry.hypeMultiplier })}</span>`
         : '',
       daysLeft !== null
-        ? `<span class="ui-badge ${daysLeft <= 3 ? 'ui-badge--tone' : ''}" ${daysLeft <= 3 ? 'style="--tone:var(--destructive)"' : ''}>${icon('clock')}${daysLeft}d left</span>`
+        ? `<span class="ui-badge ${daysLeft <= 3 ? 'ui-badge--tone' : ''}" ${daysLeft <= 3 ? 'style="--tone:var(--destructive)"' : ''}>${icon('clock')}${t('build.offer.daysLeft', { days: daysLeft })}</span>`
         : '',
     ].filter(Boolean);
     return bits.length ? `<span class="ui-row__meta">${bits.join('')}</span>` : '';
-  }
-
-  private jobCard(
-    def: ProjectDef,
-    state: GameState,
-    entry?: BacklogEntry,
-    /** Who among the idle would take it, when the list is ranked by fit. */
-    fit?: { fit: number; names: string[] },
-  ): string {
-    const badge = entry ? SOURCE_BADGE[entry.source] : null;
-    const missing = missingMachines(def, state.ownedMachines);
-    const profile = profileOf(def.category);
-    return `<button class="ui-row" data-action="jobs-project"
-      data-id="${def.id}" data-id2="${entry?.id ?? ''}" ${missing.length ? 'disabled' : ''}>
-      <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[def.category], 'ui-icon ui-icon--lg')}</span>
-      <span class="ui-row__main">
-        <span class="row between" style="gap:8px">
-          <span class="ui-title">${esc(def.name)}</span>
-          ${badge?.label ? `<span class="ui-badge ui-badge--accent">${t(badge.label)}</span>` : ''}
-          ${
-            fit
-              ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)"
-                   title="${esc(fit.names.join(', '))} would take it">
-                   ${icon('users')}${pct(fit.fit)} fit
-                 </span>`
-              : ''
-          }
-        </span>
-        <p class="ui-desc ui-clamp-2" style="margin:4px 0 0">${esc(def.blurb)}</p>
-        <span class="ui-row__meta">
-          ${tierBadge(def.tier)}
-          ${this.statBadges(def)}
-        </span>
-        ${entry ? this.offerMeta(entry, state) : ''}
-        ${
-          missing.length
-            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning);margin-top:6px"
-                 title="Buy or build one and this opens up">
-                 ${icon('printer')}needs ${missing.map((t) => MACHINE_LABEL[t]).join(' + ')} — buy one first
-               </span>`
-            : ''
-        }
-      </span>
-      <span class="ui-row__chevron">${icon('chevronRight')}</span>
-    </button>`;
   }
 
   // --- active projects ---  // --- active projects ------------------------------------------------------
@@ -3021,7 +3329,7 @@ export class UI {
     if (!projects.length) {
       this.setHTML(this.left, 'left', `
         <p class="empty">${t('ui.bench.empty')}</p>
-        <p class="blurb">${t('ui.bench.emptyHint', { jobs: `<b>${t('ui.bar.jobs')}</b>` })}</p>
+        <p class="blurb">${t('ui.bench.emptyHint', { jobs: `<b>${t('build.bar.new')}</b>` })}</p>
       `);
       return;
     }
@@ -3037,6 +3345,28 @@ export class UI {
       'left',
       projects.map((p) => this.projectCard(p, state, p.id === open)).join(''),
     );
+  }
+
+  /**
+   * Why a kickoff is not happening, if it is not (§4d). Worst first: a crew that can never
+   * meet, then somebody not in, then no table free. Null when it is under way — or done.
+   */
+  private kickoffStatus(project: ProjectData, state: GameState): { text: string; tone: 'bad' | 'warn' | '' } | null {
+    if (project.kickedOff || project.required.concept <= 0) return null;
+    const crew = project.team
+      .map((id) => state.runtime.members.find((m) => m.id === id))
+      .filter((m): m is MemberSnapshot => !!m);
+    const playerOn = state.runtime.player?.project === project.id;
+    if (!crew.length && !playerOn) return null; // "nobody on it" says this already
+    const clash = shiftClash(crew);
+    if (clash) return { text: t('build.kick.neverOverlap'), tone: 'bad' };
+    const away = crew.filter((m) => !m.present);
+    if (away.length) {
+      return { text: t('build.kick.notIn', { names: away.map((m) => m.name).join(', ') }), tone: 'warn' };
+    }
+    if (!project.tableId) return { text: t('build.kick.noTable'), tone: 'warn' };
+    const table = state.runtime.tables.find((x) => x.id === project.tableId);
+    return { text: t('build.kick.at', { table: table?.label ?? t('build.kick.theTable') }), tone: '' };
   }
 
   private projectCard(project: ProjectData, state: GameState, expanded = true): string {
@@ -3194,9 +3524,12 @@ export class UI {
     // What is actually holding this one up, in a few words. It is the only thing a folded
     // card needs to say beyond its name and its bar.
     const shelving = project.idleDays >= SHELVE.warnAfterIdleDays;
+    const kickoff = this.kickoffStatus(project, state);
     const stop = shelving
       ? { text: t('ui.stop.shelvedIn', { days: SHELVE.afterIdleDays - project.idleDays }), tone: 'bad' }
-      : blockedAssembly
+      : kickoff?.tone
+        ? kickoff
+        : blockedAssembly
         ? {
             text: project.partsOrdered ? t('ui.stop.partsIn', { days: waiting / 24 }) : t('ui.stop.notOrdered'),
             tone: 'warn',
@@ -3241,8 +3574,23 @@ export class UI {
       <div class="row wrap" style="gap:5px;margin:2px 0 8px">
         ${categoryChip(project.category)}
         <span class="ui-badge" title="${esc(t('ui.bench.qualityHint'))}">
-          ${icon('effort')}${t('ui.bench.quality', { quality: pct(project.quality) })}
+          ${starRow(qualityStars(project.quality))}${pct(project.quality)}
         </span>
+        ${
+          project.design && Object.keys(project.design).length
+            ? `<span class="ui-badge" title="${esc(
+                CATEGORY_AXES[project.category]
+                  .map((axis) => `${AXES[axis].label}: ${optionOf(axis, project.design).label}`)
+                  .join(' · '),
+              )}">${t('build.bench.design')} ${starRow(
+                Math.round(
+                  (CATEGORY_AXES[project.category].reduce((sum, axis) => sum + optionOf(axis, project.design).stars, 0) /
+                    3) *
+                    2,
+                ) / 2,
+              )}</span>`
+            : ''
+        }
         ${
           project.hypeMultiplier > 1
             ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('flame')}×${project.hypeMultiplier}</span>`
@@ -3255,6 +3603,14 @@ export class UI {
         }
       </div>
       <div class="pipe">${strip}</div>
+      ${
+        kickoff
+          ? `<div class="kickoff-line ${kickoff.tone}">${icon('table')}<span>${esc(kickoff.text)}</span>
+               <span class="kickoff-line__hint">${
+                 kickoff.tone === 'bad' ? t('build.kick.hintBounty') : t('build.kick.hintEveryone')
+               }</span></div>`
+          : ''
+      }
 
       ${sourcing}
       ${teamBlock}
@@ -3272,90 +3628,6 @@ export class UI {
       </div>
       ${parts}
     </div>`;
-  }
-
-  // --- backlog --------------------------------------------------------------
-
-  /** Everybody free, best match for this kind of work first. The picker's order, and the suggestion's. */
-  private rankedFree(def: ProjectDef, state: GameState) {
-    return state.runtime.members
-      .filter((m) => !m.team)
-      .map((m) => ({ m, match: categoryAffinity(MEMBER_DATA[m.id]?.passions ?? {}, def.category) }))
-      .sort((a, b) => b.match - a.match);
-  }
-
-  /**
-   * Arrive at the crew step with the obvious answer already ticked — the best matches for
-   * this genre, up to the team size. Anyone who has since been taken is dropped first, and a
-   * draft the player has edited by hand is left exactly as they left it.
-   */
-  private suggestCrew(def: ProjectDef, state: GameState) {
-    const free = new Set(state.runtime.members.filter((m) => !m.team).map((m) => m.id));
-    const draft = new Set([...(this.draftTeams.get(def.id) ?? [])].filter((id) => free.has(id)));
-    if (!this.draftTouched.has(def.id)) {
-      for (const { m } of this.rankedFree(def, state)) {
-        if (draft.size >= def.teamSize) break;
-        draft.add(m.id);
-      }
-    }
-    this.draftTeams.set(def.id, draft);
-  }
-
-  /** Pick the crew before you commit — they are asked the moment you pitch (§3b). */
-  private draftPicker(def: ProjectDef, state: GameState): string {
-    const picked = this.draftTeams.get(def.id) ?? new Set<string>();
-    const free = this.rankedFree(def, state);
-
-    if (!free.length) {
-      return `<div class="ui-card" style="padding:11px">
-        <p class="ui-desc" style="margin:0">Everybody is already on something. You can still pitch it
-        and crew it later from the project card.</p>
-      </div>`;
-    }
-    return `<div class="ui-card" style="padding:11px">
-      <div class="row between" style="margin-bottom:8px">
-        <span class="ui-label">Crew ${picked.size}/${def.teamSize}</span>
-        <span class="ui-desc" style="font-size:10.5px">they can still say no</span>
-      </div>
-      <div class="row wrap" style="gap:5px">
-        ${free
-          .slice(0, 8)
-          .map(({ m, match }) => {
-            const on = picked.has(m.id);
-            const full = !on && picked.size >= def.teamSize;
-            return `<button class="ui-toggle" aria-pressed="${on}" ${full ? 'disabled' : ''}
-              data-action="draft" data-id="${def.id}" data-id2="${m.id}"
-              title="${profileOf(def.category).label} match ${pct(match)}${m.present ? '' : ' · not in today'}">
-              ${icon(on ? 'check' : 'plus')}${m.name}<span class="ui-toggle__pct">${pct(match)}</span>
-            </button>`;
-          })
-          .join('')}
-      </div>
-    </div>`;
-  }
-
-  /** The numbers that decide whether a job is worth it, as a row of badges. */
-  private statBadges(def: ProjectDef): string {
-    const printHours = def.parts.reduce((sum, part) => sum + part.hours, 0);
-    const workUnits = STAGE_ORDER.reduce((sum, key) => sum + (def.work[key] ?? STAGE_MAP[key].work), 0);
-    return `
-      <span class="ui-badge ui-badge--tone" style="--tone:var(--primary)" title="team size">
-        ${icon('users')}${def.teamSize} ${def.teamSize === 1 ? 'person' : 'people'}
-      </span>
-      <span class="ui-badge" title="hand work">${icon('effort')}${workUnits}</span>
-      <span class="ui-badge" title="machine time">${icon('printer')}${printHours ? `${printHours}h` : 'none'}</span>
-      <span class="ui-badge" title="bill of materials and lead time">
-        ${icon('package')}${def.bomCost ? `${money(def.bomCost)} · ${def.leadDays}d` : 'none'}
-      </span>
-      ${
-        def.payout
-          ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)" title="payout">${icon('coins')}${money(def.payout)}</span>`
-          : `<span class="ui-badge" title="you keep it">${icon('coins')}you keep it</span>`
-      }`;
-  }
-
-  private defStats(def: ProjectDef): string {
-    return `<div class="ui-row__meta" style="margin:0 0 10px">${tierBadge(def.tier)}${this.statBadges(def)}</div>`;
   }
 
   // --- you ---  // --- you ------------------------------------------------------------------
@@ -3387,126 +3659,173 @@ export class UI {
     </div>`;
   }
 
-  // --- members --------------------------------------------------------------
-
-  private renderMembers(state: GameState) {
-    // Whoever is actually in the building matters most; unallocated people next, since
-    // they are the ones you can put on a team right now.
-    const ordered = [...state.runtime.members].sort((a, b) => {
-      if (a.present !== b.present) return a.present ? -1 : 1;
-      if (!!a.team !== !!b.team) return a.team ? 1 : -1;
-      return a.name.localeCompare(b.name, 'tr');
-    });
-    this.setHTML(this.members, 'members', ordered
-      .map((m) => {
-        const data = MEMBER_DATA[m.id];
-        const color = MEMBER_COLORS[m.id] ?? personColor(m.id);
-        const interestTone = m.interest < 0.4 ? 'bad' : m.interest < 0.7 ? 'warn' : '';
-        const energyTone = m.energy < 25 ? 'bad' : m.energy < 50 ? 'warn' : 'good';
-        // Mood used to be a stat nothing wrote to. The Shop writes to it, so it is now worth
-        // a row: it is the number that says whether the comforts were worth buying.
-        const moodTone = m.mood < 45 ? 'bad' : m.mood < 65 ? 'warn' : 'good';
-        return `<div class="member ${m.present ? '' : 'away'}">
-          <div class="head">
-            <i class="swatch" style="background:${color}"></i>
-            <span class="mname">${m.name}</span>
-            <span class="state">${t(ACTIVITY_LABEL[m.activity])}</span>
-          </div>
-          <div class="note">${
-            m.team
-              ? `<b class="on-team">${esc(state.runtime.projects.find((p) => p.id === m.team)?.name ?? '—')}</b> · ${esc(m.note || '')}`
-              : esc(m.note || t('ui.members.unallocated'))
-          }</div>
-          <div class="meters">
-            <div class="meter"><label>${t('ui.members.interest')}</label>${bar(m.interest, 1.2, interestTone)}</div>
-            <div class="meter"><label>${t('ui.members.energy')}</label>${bar(m.energy, 100, energyTone)}</div>
-            <div class="meter" title="${esc(t('ui.members.moodHint'))}"><label>${t('ui.members.mood')}</label>${bar(m.mood, 100, moodTone)}</div>
-            <div class="meter"><label>${t('ui.members.commit')}</label><span class="mono">${t('ui.members.perWeek', { hours: data?.commitment ?? '?' })}</span></div>
-          </div>
-          <div class="traits">
-            ${topCategories(data?.passions ?? {})
-              .map(({ category, score }) => {
-                const profile = profileOf(category);
-                return `<span class="ui-badge ui-badge--tone" style="--tone:${profile.accent}"
-                  title="${esc(t('ui.members.passion', { category: profile.label, match: pct(score) }))}">
-                  ${icon(CATEGORY_ICON[category])}${pct(score)}</span>`;
-              })
-              .join('')}
-            ${(data?.traits ?? []).map((trait) => `<span class="trait" title="${TRAIT_BLURB[trait]}">${TRAIT_LABEL[trait]}</span>`).join('')}
-          </div>
-        </div>`;
-      })
-      .join(''));
-  }
-
   // --- machines -------------------------------------------------------------
 
   /** The shop floor: every machine, what it is chewing on, and what is behind it. */
-  // --- the Shop: what you buy for the people (§7b) --------------------------
+  // --- Build: the room itself (§4d, §7b) -----------------------------------
 
   /**
-   * Comforts, grouped by the lease that unlocks them. **The grouping is the point**: it is
-   * the one screen in the game that says out loud what signing the next lease actually gets
-   * you, and an arcade cabinet you cannot buy yet is worth seeing for the same reason the
-   * printer shop lists the H2S.
+   * Everything that stands in the room, on three shelves. **Workspace** is where work
+   * happens — project tables and workstations, one person to a seat, so it is also where a
+   * queue gets fixed. **Comforts** is the Shop as it was: kit for the people. **Decor** is
+   * the small stuff that makes it somewhere you would want to be.
    *
-   * Each card states its effect in full, including the ones that cost you something — the
-   * table tennis table really does mean less work gets done, and hiding that would make the
-   * purchase a formality rather than a decision.
+   * Every card carries a picture of the thing, rendered from the same model that stands in
+   * the room — a list of names is a spreadsheet, and this is a shop.
    */
-  private shopBody(state: GameState): { head: string; content: string; foot: string } {
+  private buildBody(state: GameState): { head: string; content: string; foot: string } {
+    const waiting = Object.values(state.runtime.waitingFor).reduce((n, v) => n + (v ?? 0), 0);
+    const tabs = [
+      { key: 'workspace' as const, label: t('build.panel.workspace'), count: FURNITURE.length },
+      { key: 'comfort' as const, label: t('build.panel.comfort'), count: AMENITIES.filter((a) => a.group !== 'decor').length },
+      { key: 'decor' as const, label: t('build.panel.decor'), count: AMENITIES.filter((a) => a.group === 'decor').length },
+    ];
+    const chips = `<div class="ui-segmented" style="margin-bottom:12px">
+      ${tabs
+        .map(
+          (t) => `<button data-action="build-tab" data-value="${t.key}" aria-pressed="${t.key === this.buildTab}">
+            ${t.label}<span class="seg-count">${t.count}</span>
+          </button>`,
+        )
+        .join('')}
+    </div>`;
+
+    const content =
+      this.buildTab === 'workspace'
+        ? this.workspaceShelf(state)
+        : this.buildTab === 'comfort'
+          ? this.comfortShelf(state)
+          : this.decorShelf(state);
+
+    return {
+      head: `<div class="modal-head">${icon('hammer', 'ui-icon ui-icon--lg')}<b>${t('build.panel.title')}</b>
+        ${
+          waiting
+            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${t('build.panel.queue', { count: waiting })}</span>`
+            : ''
+        }
+      </div>`,
+      content: chips + content,
+      foot: `<span class="ui-desc" style="font-size:10.5px">${t('build.panel.foot')}</span>`,
+    };
+  }
+
+  private workspaceShelf(state: GameState): string {
+    const seats = state.runtime.seats;
+    const wait = state.runtime.waitingFor;
+    const line = (type: MachineType, label: MessageKey) => {
+      const queue = wait[type] ?? 0;
+      return `<span class="ui-badge ${queue ? 'ui-badge--tone' : ''}" ${queue ? 'style="--tone:var(--warning)"' : ''}
+        title="${esc(queue ? t('build.seats.waitingHint', { count: queue }) : t('build.seats.hint'))}">
+        ${t(label as 'build.seats.software', { count: seats[type] ?? 0 })}${queue ? ` · ${t('build.seats.waiting', { count: queue })}` : ''}
+      </span>`;
+    };
+    const tables = state.runtime.tables;
+    const summary = `<div class="ui-row" style="margin-bottom:12px;cursor:default">
+      <span class="icon-chip" style="--tone:var(--primary)">${icon('users', 'ui-icon ui-icon--lg')}</span>
+      <div class="ui-row__main">
+        <b class="ui-title">${t('build.seats.title')}</b>
+        <span class="ui-row__meta" style="margin-top:4px">
+          ${line('cad-desk', 'build.seats.software')}
+          ${line('bench', 'build.seats.hardware')}
+          ${line('assembly', 'build.seats.assembly')}
+          <span class="ui-badge" title="${esc(t('build.seats.tablesHint'))}">
+            ${icon('table')}${t('build.seats.tables', { count: tables.length, used: tables.filter((x) => x.projectId).length })}
+          </span>
+        </span>
+      </div>
+    </div>`;
+    const cards = FURNITURE.map((def) => this.furnitureCard(def, state)).join('');
+    return `${summary}<div class="ui-grid ui-grid--3">${cards}</div>`;
+  }
+
+  private furnitureCard(def: FurnitureDef, state: GameState): string {
+    const owned = ownedFurniture(state, def);
+    const locked = def.era > state.era;
+    const afford = this.affordable(state, def.price);
+    const room = this.handlers.furnitureFits(def.type, def.span);
+    const queue = state.runtime.waitingFor[def.type] ?? 0;
+    const buyable = !locked && afford && room;
+    return `<button class="ui-option build-card" data-action="buy-furniture" data-value="${def.id}"
+      ${buyable ? '' : 'disabled'}
+      title="${esc(locked ? t('build.card.comesWith', { era: eraDef(def.era).name }) : !room ? t('build.card.noRoomHint') : !afford ? t('build.card.notEnough') : t('build.card.price', { price: def.price }))}">
+      ${this.thumb(`furniture:${def.id}`, def.icon)}
+      <div class="ui-option__head">
+        <span class="ui-title">${esc(def.name)}</span>
+        ${owned ? `<span class="ui-badge ui-badge--accent">×${owned}</span>` : ''}
+      </div>
+      <span class="ui-option__desc ui-clamp-2">${esc(def.blurb)}</span>
+      <span class="ui-row__meta" style="margin:0">
+        <span class="ui-badge">${icon('users')}${t('build.card.seats', { count: furnitureSeats(def) })}</span>
+        <span class="ui-badge">${esc(def.use)}</span>
+        ${queue ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${t('build.seats.waiting', { count: queue })}</span>` : ''}
+      </span>
+      <span class="ui-row__meta" style="margin:0">
+        <span class="ui-badge ui-badge--tone" style="--tone:var(--${afford ? 'success' : 'destructive'})">
+          ${icon('coins')}${money(def.price)}
+        </span>
+        ${!room && !locked ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${t('build.card.noRoom')}</span>` : ''}
+      </span>
+    </button>`;
+  }
+
+  /**
+   * The comforts, grouped by the lease that unlocks them. **The grouping is the point**: it
+   * is the one screen that says out loud what signing the next lease gets you (§7b).
+   */
+  private comfortShelf(state: GameState): string {
     const owned = state.amenities;
     const comforts = comfortsOf(owned);
-    const pct = (value: number) => `${value > 1 ? '+' : '−'}${Math.round(Math.abs(value - 1) * 100)}%`;
-
-    // What the room is currently doing for everybody in it. Nothing until something is
-    // bought — an all-zero readout on an empty shop teaches nothing.
+    const pctOf = (value: number) => `${value > 1 ? '+' : '−'}${Math.round(Math.abs(value - 1) * 100)}%`;
     const summary = owned.length
-      ? `<div class="ui-row" style="margin-bottom:12px">
+      ? `<div class="ui-row" style="margin-bottom:12px;cursor:default">
           <span class="icon-chip" style="--tone:var(--success)">${icon('users', 'ui-icon ui-icon--lg')}</span>
           <div class="ui-row__main">
-            <b class="ui-title">What the place is like to be in</b>
+            <b class="ui-title">${t('build.comfort.title')}</b>
             <span class="ui-row__meta" style="margin-top:4px">
-              <span class="ui-badge ui-badge--accent" title="everybody turns up more, and works better">
-                ${icon('effort')}mood +${comforts.mood.toFixed(1)}
+              <span class="ui-badge ui-badge--accent" title="${esc(t('build.comfort.moodHint'))}">
+                ${icon('effort')}${t('build.effect.mood', { value: num(Number(comforts.mood.toFixed(1))) })}
               </span>
-              ${comforts.focus !== 1 ? `<span class="ui-badge">work rate ${pct(comforts.focus)}</span>` : ''}
-              ${comforts.rest !== 1 ? `<span class="ui-badge">rest ${pct(comforts.rest)}</span>` : ''}
-              ${comforts.fatigue !== 1 ? `<span class="ui-badge">tiring ${pct(comforts.fatigue)}</span>` : ''}
-              ${comforts.drift !== 1 ? `<span class="ui-badge">drift ${pct(comforts.drift)}</span>` : ''}
-              ${comforts.draw !== 1 ? `<span class="ui-badge">word of mouth ${pct(comforts.draw)}</span>` : ''}
+              ${comforts.focus !== 1 ? `<span class="ui-badge">${t('build.effect.focus', { value: pctOf(comforts.focus) })}</span>` : ''}
+              ${comforts.rest !== 1 ? `<span class="ui-badge">${t('build.effect.rest', { value: pctOf(comforts.rest) })}</span>` : ''}
+              ${comforts.fatigue !== 1 ? `<span class="ui-badge">${t('build.effect.fatigue', { value: pctOf(comforts.fatigue) })}</span>` : ''}
+              ${comforts.drift !== 1 ? `<span class="ui-badge">${t('build.effect.drift', { value: pctOf(comforts.drift) })}</span>` : ''}
+              ${comforts.draw !== 1 ? `<span class="ui-badge">${t('build.effect.draw', { value: pctOf(comforts.draw) })}</span>` : ''}
             </span>
           </div>
-          <span class="ui-badge ui-badge--tone" style="--tone:var(--warning)" title="on every monthly statement">
-            ${icon('coins')}${money(comforts.upkeep)}/mo
+          <span class="ui-badge ui-badge--tone" style="--tone:var(--warning)" title="${esc(t('build.card.perMonthHint'))}">
+            ${icon('coins')}${t('build.card.perMonth', { upkeep: comforts.upkeep })}
           </span>
         </div>`
       : '';
-
     const groups = [1, 2, 3]
       .map((era) => {
-        const items = AMENITIES.filter((a) => a.era === era);
+        const items = AMENITIES.filter((a) => a.era === era && a.group !== 'decor');
         if (!items.length) return '';
         const locked = era > state.era;
         return `<div class="ui-label" style="margin:${era === 1 ? 0 : 16}px 0 9px">
             ${esc(eraDef(era).name)}
-            ${locked ? `<span class="ui-badge" style="margin-left:7px">${icon('clock')}not yours yet</span>` : ''}
+            ${locked ? `<span class="ui-badge" style="margin-left:7px">${icon('clock')}${t('build.card.notYours')}</span>` : ''}
           </div>
           <div class="ui-grid ui-grid--3">${items.map((a) => this.amenityCard(a, state)).join('')}</div>`;
       })
       .join('');
+    return summary + groups;
+  }
 
-    return {
-      head: `<div class="modal-head">${icon('coins', 'ui-icon ui-icon--lg')}<b>The Shop</b>
-        <span class="ui-badge${owned.length ? ' ui-badge--accent' : ''}">${owned.length} of ${AMENITIES.length}</span>
-      </div>`,
-      content: summary + groups,
-      foot: `<span class="ui-desc" style="font-size:10.5px">
-        None of this makes a part. It makes people turn up, stay longer and work better —
-        which §13 says is the only constraint that ever really binds. Everything here can be
-        <b>clicked in the room</b> to move or turn it. Printers and tools are in <b>Machines</b>.
-      </span>`,
-    };
+  /** The small stuff. Cheap, mostly free to run, and all of it through the same mood curve. */
+  private decorShelf(state: GameState): string {
+    const items = AMENITIES.filter((a) => a.group === 'decor');
+    return `<p class="ui-desc" style="margin:0 0 11px">${t('build.decor.intro')}</p>
+      <div class="ui-grid ui-grid--3">${items.map((a) => this.amenityCard(a, state)).join('')}</div>`;
+  }
+
+  /** A picture of the thing, or its icon while there is no renderer to draw one. */
+  private thumb(key: string, fallback: IconName): string {
+    const src = this.handlers.thumbnail(key);
+    return `<span class="build-thumb">${
+      src ? `<img src="${src}" alt="" draggable="false" />` : icon(fallback, 'ui-icon build-thumb__icon')
+    }</span>`;
   }
 
   private amenityCard(def: AmenityDef, state: GameState): string {
@@ -3514,23 +3833,25 @@ export class UI {
     const locked = def.era > state.era;
     const afford = this.affordable(state, def.price);
     const buyable = !owned && !locked && afford;
-    return `<button class="ui-option ${owned ? 'ui-option--on' : ''}" data-action="buy-amenity"
+    return `<button class="ui-option build-card ${owned ? 'ui-option--on' : ''}" data-action="buy-amenity"
       data-value="${def.id}" ${buyable ? '' : 'disabled'} style="--tone:${def.tone}"
-      title="${
+      title="${esc(
         owned
-          ? 'Already in the space'
+          ? t('build.card.alreadyIn')
           : locked
-            ? `Comes with ${esc(eraDef(def.era).name)}`
+            ? t('build.card.comesWith', { era: eraDef(def.era).name })
             : afford
-              ? `${money(def.price)} now${def.upkeep ? `, ${money(def.upkeep)} a month` : ''}`
-              : 'Not enough left'
-      }">
+              ? def.upkeep
+                ? t('build.card.priceUpkeep', { price: def.price, upkeep: def.upkeep })
+                : t('build.card.price', { price: def.price })
+              : t('build.card.notEnough'),
+      )}">
+      ${this.thumb(`amenity:${def.id}`, def.icon)}
       <div class="ui-option__head">
-        <span class="icon-chip">${icon(def.icon, 'ui-icon ui-icon--lg')}</span>
         <span class="ui-title">${esc(def.name)}</span>
-        ${owned ? `<span class="ui-badge ui-badge--accent">${icon('check')}in</span>` : ''}
+        ${owned ? `<span class="ui-badge ui-badge--accent">${icon('check')}${t('build.card.in')}</span>` : ''}
       </div>
-      <span class="ui-option__desc ui-clamp-3">${esc(def.blurb)}</span>
+      <span class="ui-option__desc ui-clamp-2">${esc(def.blurb)}</span>
       <span class="ui-row__meta" style="margin:0">
         ${effectLines(def.effect)
           .map(
@@ -3548,13 +3869,13 @@ export class UI {
         </span>
         ${
           locked
-            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('clock')}era ${def.era}</span>`
+            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('clock')}${t('build.card.era', { era: def.era })}</span>`
             : ''
         }
         ${
           def.upkeep
-            ? `<span class="ui-badge" title="charged on every monthly statement">${money(def.upkeep)}/mo</span>`
-            : `<span class="ui-badge">no upkeep</span>`
+            ? `<span class="ui-badge" title="${esc(t('build.card.perMonthHint'))}">${t('build.card.perMonth', { upkeep: def.upkeep })}</span>`
+            : ''
         }
       </span>
     </button>`;
@@ -3759,6 +4080,8 @@ export class UI {
         const left = SHELVE.afterIdleDays - project.idleDays;
         return { text: t('ui.stop.shelvedIn', { days: left }), tone: 'bad' as const };
       }
+      const kickoff = this.kickoffStatus(project, state);
+      if (kickoff?.tone) return { text: kickoff.text, tone: kickoff.tone };
       if (project.stage === 'assembly' && partsPending(project, nowHours)) {
         // The bought bill of materials is what gates assembly (§4), not the printed parts.
         if (!project.partsOrdered) {
@@ -3875,7 +4198,7 @@ export class UI {
               </tr></thead>
               <tbody>${rows.join('')}</tbody>
             </table>`
-          : `<p class="ui-desc">${t('ui.projects.empty', { jobs: `<b>${t('ui.bar.jobs')}</b>` })}</p>`),
+          : `<p class="ui-desc">${t('ui.projects.empty', { jobs: `<b>${t('build.bar.new')}</b>` })}</p>`),
       foot: `<span class="ui-desc" style="font-size:10.5px">
           ${
             blocked

@@ -19,6 +19,7 @@
   /* A trophy you won, lit. Brighter than --warning, which is a state rather than a prize. */
   --gold: #f4c95d;
   --success: #7ac74f;
+  --gold: #f0c040;
   --ring: #5ecfc0;
   --radius: 8px;
   --radius-sm: 6px;
@@ -141,7 +142,7 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 
 /* clears the clock panel above it */
 #left { top: 66px; left: 12px; width: 330px; max-height: calc(100vh - 300px); display: flex; flex-direction: column; }
-#left .body { overflow-y: auto; }
+#left .body { overflow-y: auto; overflow-x: hidden; }
 .pipeline { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
 .stage {
   display: flex;
@@ -160,10 +161,12 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 .stage .name { flex: 1; }
 .stage .val { font-family: var(--font); font-size: 11px; }
 .blurb { font-size: 11.5px; color: var(--muted-foreground); line-height: 1.45; margin: 0 0 10px; font-style: italic; }
-.verbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.verbs > * { width: 100%; justify-content: center; }
+.verbs { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Buttons share the row and wrap when their labels do not fit — a fixed three-column grid
+   pushed "Bounty ₺2,296" past the panel's edge and gave the bench a sideways scrollbar. */
+.verbs > * { flex: 1 1 auto; min-width: 0; justify-content: center; white-space: nowrap; }
 /* A fourth verb (skip sim) only turns up at one stage; let it take its own row. */
-.verbs > *:nth-child(4) { grid-column: 1 / -1; }
+.verbs > *:nth-child(4) { flex-basis: 100%; }
 
 .parts { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 9px; }
 .part { display: flex; align-items: center; gap: 7px; padding: 2.5px 0; font-size: 11.5px; }
@@ -176,7 +179,6 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 
 /* --- members ------------------------------------------------------------ */
 
-#members .body { overflow-y: auto; }
 .member { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .member:last-child { border-bottom: none; padding-bottom: 0; }
 .member .head { display: flex; align-items: center; gap: 7px; }
@@ -277,8 +279,6 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
   max-height: calc(100vh - 92px); /* clear of the build menu */
 }
 #right .panel { position: relative; top: auto; right: auto; width: 100%; min-height: 0; }
-#members { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-#members .body { overflow-y: auto; }
 
 /* Two panels share one column, so either can be folded to give the other the room. The
    log starts folded: two lines is enough to notice something happened, and the roster is
@@ -299,8 +299,6 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 #log { flex: 0 1 auto; }
 #log.folded .body { max-height: 58px; overflow: hidden; }
 #log:not(.folded) { flex: 1 1 auto; max-height: none; }
-#members.folded { flex: 0 0 auto; }
-#members.folded .body { display: none; }
 
 /*
  * Your day, as one line under the clock. Three pixels is the whole panel it replaced.
@@ -1213,6 +1211,21 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .start-name__shuffle { height: 28px; padding: 0 8px; font-size: 11.5px; }
 
 .start-intro { margin: 14px 0 0; }
+.start-player { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.start-player .ui-label { flex: none; }
+.start-player__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-strong);
+  padding: 4px 2px;
+  color: var(--foreground);
+  font: 500 14px var(--sans);
+  outline: none;
+}
+.start-player__input:focus { border-color: var(--ring); }
+.start-player__input::placeholder { color: var(--subtle-foreground); }
 /* One rhythm for every block, rather than a margin invented per call site. */
 .start-section { margin-top: 20px; }
 .start-section > .ui-label { display: block; margin-bottom: 8px; }
@@ -2232,3 +2245,154 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   from { opacity: 0; transform: translateY(6px) scale(0.96); }
   to { opacity: 1; transform: none; }
 }
+
+/* =========================================================================
+   The New Project wizard, the Build panel and the kickoff (§4d)
+   ========================================================================= */
+
+/* The wizard is still a fixed box (§4c), just a larger one: three option cards a row with
+   their effects spelled out do not fit in 680 without every card wrapping to five lines. */
+.modal--wizard { width: min(780px, calc(100vw - 48px)); height: min(700px, calc(100vh - 80px)); }
+
+/* The bar's call to action reads as a button, not as one more tab. */
+.bar-item--cta {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 38%, transparent);
+}
+.bar-item--cta .bar-icon { color: var(--primary); stroke-width: 2.25; }
+.bar-item--cta .bar-label { color: var(--primary); }
+.bar-item--cta:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 24%, transparent); }
+
+/* Stars: a filled line icon, a half one, and the empty ones drawn too. */
+.stars { display: inline-flex; gap: 1px; align-items: center; }
+.star { display: inline-flex; line-height: 0; }
+.star .ui-icon { width: 11px; height: 11px; stroke-width: 1.6; }
+.star--on { color: var(--gold); }
+.star--on .ui-icon { fill: currentColor; }
+.star--half { color: var(--gold); }
+.star--half .ui-icon { fill: color-mix(in srgb, currentColor 45%, transparent); }
+.star--off { color: var(--border-strong); }
+.ui-badge .stars { margin-right: 2px; }
+.ui-badge .star .ui-icon { width: 10px; height: 10px; opacity: 1; }
+
+/* Design step: three decisions, three options each. */
+.design-axis + .design-axis { margin-top: 14px; }
+.design-axis__head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 7px; }
+.design-option { gap: 6px; }
+.design-option .ui-option__desc { min-height: 47px; }
+.design-option .ui-row__meta { gap: 4px; }
+.design-option[aria-pressed='true'] { box-shadow: inset 0 0 0 1px var(--primary); border-color: var(--primary); }
+
+/* Crew step. */
+.seat-picker button { min-width: 42px; justify-content: center; }
+.seat-picker .ui-icon { width: 12px; height: 12px; opacity: 0.7; }
+.fit-card { padding: 11px; }
+.fit-meter { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 9px; }
+.fit-cell {
+  font-style: normal;
+  font-family: var(--font);
+  font-size: 10px;
+  text-align: center;
+  padding: 3px 0;
+  border-radius: 4px;
+  color: var(--subtle-foreground);
+  background: var(--muted);
+  border: 1px solid transparent;
+}
+.fit-cell--good { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
+.fit-cell--bad { background: color-mix(in srgb, var(--destructive) 12%, transparent); color: var(--destructive); }
+.fit-cell--on { border-color: var(--foreground); color: var(--foreground); font-weight: 600; }
+
+/* Review step: the four numbers the plan comes down to. */
+.review-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.review-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.review-stat__value { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--foreground); }
+.review-stat .star .ui-icon { width: 13px; height: 13px; }
+
+/* Build: every card carries a picture of the thing it sells. */
+.build-card { gap: 6px; }
+.build-thumb {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 104px;
+  border-radius: var(--radius-sm);
+  background:
+    radial-gradient(ellipse at 50% 70%, color-mix(in srgb, var(--tone, var(--primary)) 14%, transparent), transparent 70%),
+    var(--muted);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.build-thumb img { width: 104px; height: 104px; object-fit: contain; image-rendering: auto; pointer-events: none; }
+.build-thumb__icon { width: 34px; height: 34px; color: var(--subtle-foreground); }
+.build-card .ui-option__desc { min-height: 31px; }
+
+/* The bench says why a kickoff is not happening. */
+.kickoff-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 2px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.kickoff-line .ui-icon { width: 13px; height: 13px; }
+.kickoff-line.warn { color: var(--warning); }
+.kickoff-line.bad { color: var(--destructive); }
+.kickoff-line__hint { margin-left: auto; font-size: 10px; color: var(--subtle-foreground); }
+
+/* Each person's share of the stage, over their head. */
+.label .share { display: block; height: 3px; margin: 3px auto 0; width: 34px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.label .share i { display: block; height: 100%; background: var(--primary); }
+.label .share.meeting i { background: var(--gold); }
+
+/* Scrollbars. Left to the platform they draw a pale track on every panel — on macOS with
+   "always show scrollbars" a white gutter down the side of a dark UI. Thin, dark, and
+   only as visible as the content they scroll. */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background-color: var(--subtle-foreground); }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+/* --- the top bar, as four groups rather than eight boxes ------------------ */
+#topbar { gap: 0; padding: 7px 8px; }
+#topbar .tb-group {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px 16px;
+  border-left: 1px solid var(--border);
+  min-width: 0;
+}
+#topbar .tb-group:first-child { border-left: none; padding-left: 6px; }
+#topbar .tb-identity { gap: 10px; }
+#topbar .tb-icon { display: grid; place-items: center; color: var(--subtle-foreground); }
+#topbar .tb-icon .ui-icon { width: 16px; height: 16px; }
+#topbar .tb-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#topbar .tb-name { font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--foreground); }
+#topbar .tb-value { font-family: var(--font); font-size: 14px; font-weight: 500; white-space: nowrap; color: var(--foreground); }
+#topbar .tb-value small { font-size: 10.5px; color: var(--subtle-foreground); margin-left: 1px; }
+#topbar .tb-sub { font-size: 10.5px; color: var(--muted-foreground); white-space: nowrap; }
+#topbar .tb-sub em { font-style: normal; font-family: var(--font); }
+#topbar .tb-meter { display: block; width: 88px; height: 4px; border-radius: 3px; background: var(--muted); overflow: hidden; }
+#topbar .tb-meter > i { display: block; height: 100%; background: var(--warning); border-radius: 3px; }
+#topbar .season { margin-left: 8px; }
+#topbar .lang-toggle { margin-left: 6px; }

@@ -147,7 +147,7 @@ async function openPanel(action) {
   }
   await click(`[data-action="${action}"]`);
 }
-const openWizard = () => openPanel('jobs-open');
+const openWizard = () => openPanel('new-open');
 
 /**
  * Make sure there is something in flight and an hour to spend on it. Earlier checks run
@@ -193,23 +193,26 @@ await check('start screen opens the game', async () => {
   return hasStart && started === true && named === 'Test Alanı';
 });
 
-// Walk the Jobs wizard the way a player does: open it, pick a genre, a project, then pitch.
-await click('[data-action="jobs-open"]');
-await click('#modal [data-action="jobs-category"]:not([disabled])');
-await click('#modal [data-action="jobs-project"]:not([disabled])');
-await click('#modal [data-action="pitch"]:not([disabled])');
+// Walk the New Project wizard the way a player does: genre, brief, design, crew, review.
+async function walkWizard({ start = true } = {}) {
+  await click('#modal [data-action="np-genre"]:not([disabled])');
+  await click('#modal [data-action="np-brief"]:not([disabled])');
+  await click('#modal [data-action="np-next"]');
+  await click('#modal [data-action="np-next"]');
+  if (start) await click('#modal [data-action="np-start"]:not([disabled])');
+}
+await click('[data-action="new-open"]');
+await walkWizard();
 await evaluate(`window.__store.getState().setSpeed(4)`);
 await sleep(500);
 
-await check('the wizard pitched a project', async () => (await evaluate(`__game.sim.projects.length`)) > 0);
-await check('Jobs opens while a project runs', async () => {
+await check('the wizard started a project', async () => (await evaluate(`__game.sim.projects.length`)) > 0);
+await check('New Project opens while a project runs', async () => {
   await openWizard();
   return (await evaluate(`document.querySelectorAll('#modal .modal').length`)) === 1;
 });
 await check('a second project can be started with one already running', async () => {
-  await click('#modal [data-action="jobs-category"]:not([disabled])');
-  await click('#modal [data-action="jobs-project"]:not([disabled])');
-  await click('#modal [data-action="pitch"]:not([disabled])');
+  await walkWizard();
   return (await evaluate(`__game.sim.projects.length`)) >= 2;
 });
 await check('the wizard keeps one size across every step', async () => {
@@ -220,26 +223,45 @@ await check('the wizard keeps one size across every step', async () => {
       return Math.round(r.width) + 'x' + Math.round(r.height) + '@' + Math.round(r.y); })()`);
   await openWizard();
   const sizes = [await box()];
-  await click('#modal [data-action="jobs-category"]:not([disabled])');
+  await click('#modal [data-action="np-genre"]:not([disabled])');
   sizes.push(await box());
-  await click('#modal [data-action="jobs-size"][data-value="solo"]:not([disabled])');
+  await click('#modal [data-action="np-brief"]:not([disabled])');
   sizes.push(await box());
-  await click('#modal [data-action="jobs-project"]:not([disabled])');
+  await click('#modal [data-action="np-next"]');
+  sizes.push(await box());
+  await click('#modal [data-action="np-next"]');
   sizes.push(await box());
   const unique = [...new Set(sizes)];
   if (unique.length !== 1) console.log(`      sizes seen: ${unique.join(' | ')}`);
   return unique.length === 1 && unique[0] !== 'none';
 });
 
+await check('a design choice is a press, and it sticks', async () => {
+  await openWizard();
+  await click('#modal [data-action="np-genre"]:not([disabled])');
+  await click('#modal [data-action="np-brief"]:not([disabled])');
+  const target = `#modal [data-action="np-option"][data-id="2"]:not([disabled])`;
+  const axis = await evaluate(`document.querySelector('${target}')?.dataset.value`);
+  await click(target);
+  const pressed = await evaluate(
+    `document.querySelector('#modal [data-action="np-option"][data-value="${axis}"][data-id="2"]')?.getAttribute('aria-pressed')`,
+  );
+  const others = await evaluate(
+    `document.querySelectorAll('#modal [data-action="np-option"][data-value="${axis}"][aria-pressed="true"]').length`,
+  );
+  if (pressed !== 'true' || others !== 1) console.log(`      axis ${axis}: pressed ${pressed}, on ${others}`);
+  return pressed === 'true' && others === 1;
+});
+
 await check('the crew step arrives with the best people already picked', async () => {
   await openWizard();
-  await click('#modal [data-action="jobs-category"]:not([disabled])');
-  await click('#modal [data-action="jobs-project"]:not([disabled])');
+  await click('#modal [data-action="np-genre"]:not([disabled])');
+  await click('#modal [data-action="np-brief"]:not([disabled])');
+  await click('#modal [data-action="np-next"]');
   // The header states the count, and the toggles carry it — check both agree, so a
-  // suggestion that ticks buttons without reaching the pitch would still fail here.
-  const label = await evaluate(
-    `document.querySelector('#modal .ui-label')?.textContent.trim().match(/Crew (\\d+)\\/(\\d+)/)?.slice(1).join('/')`,
-  );
+  // suggestion that ticks buttons without reaching the start would still fail here.
+  // Read from a data attribute, not the words: the suite runs in Turkish too.
+  const label = await evaluate(`document.querySelector('#modal [data-crew]')?.dataset.crew`);
   const pressed = await evaluate(
     `document.querySelectorAll('#modal .ui-toggle[aria-pressed="true"]').length`,
   );
@@ -247,27 +269,26 @@ await check('the crew step arrives with the best people already picked', async (
   const [picked, size] = (label ?? '0/0').split('/').map(Number);
   const want = Math.min(size, free);
   if (!(pressed === want && picked === want && want > 0)) {
-    console.log(`      picked ${picked}, pressed ${pressed}, wanted ${want} (team ${size}, free ${free})`);
+    console.log(`      picked ${picked}, pressed ${pressed}, wanted ${want} (seats ${size}, free ${free})`);
   }
   return pressed === want && picked === want && want > 0;
 });
 
 await check('breadcrumb jumps back to a completed step', async () => {
   await openWizard();
-  await click('#modal [data-action="jobs-category"]:not([disabled])');
-  await click('#modal [data-action="jobs-project"]:not([disabled])');
-  const onCrew = await evaluate(`document.querySelector('#modal .step.now')?.textContent.trim()`);
-  // Jump straight past the project step back to the first one.
-  await click('#modal button.step[data-value="category"]');
-  const afterJump = await evaluate(`document.querySelector('#modal .step.now')?.textContent.trim()`);
+  await click('#modal [data-action="np-genre"]:not([disabled])');
+  await click('#modal [data-action="np-brief"]:not([disabled])');
+  await click('#modal [data-action="np-next"]');
+  const onCrew = await evaluate(`document.querySelector('#modal .step.now')?.dataset.step`);
+  // Jump straight past the design and brief steps back to the first one.
+  await click('#modal button.step[data-value="genre"]');
+  const afterJump = await evaluate(`document.querySelector('#modal .step.now')?.dataset.step`);
   // Steps that are not yet reached must not be clickable.
-  const aheadClickable = await evaluate(
-    `document.querySelectorAll('#modal button.step').length`,
-  );
-  if (!onCrew?.includes('Crew') || !afterJump?.includes('Kind of work')) {
+  const aheadClickable = await evaluate(`document.querySelectorAll('#modal button.step').length`);
+  if (onCrew !== 'crew' || afterJump !== 'genre') {
     console.log(`      crew step read "${onCrew}", after jump "${afterJump}"`);
   }
-  return Boolean(onCrew?.includes('Crew')) && Boolean(afterJump?.includes('Kind of work')) && aheadClickable === 0;
+  return onCrew === 'crew' && afterJump === 'genre' && aheadClickable === 0;
 });
 
 await check('closing the wizard', async () => {
@@ -403,30 +424,17 @@ await check('People: passing on a candidate removes them, and the roster fits wi
   return ok;
 });
 
-await check('Jobs: best-fit ranks the catalogue for whoever is free', async () => {
-  // Free somebody up first, or there is nothing for the view to rank.
-  await evaluate(`
-    (() => { const sim = window.__game.sim;
-      const m = sim.members.find((x) => x.team);
-      if (m) { const p = sim.projects.find((x) => x.id === m.team);
-               if (p) p.team = p.team.filter((i) => i !== m.id);
-               m.team = null; }
-      sim.publish(); })()
-  `);
-  await openPanel('jobs-open');
-  const hasTile = await evaluate(
-    `!!document.querySelector('#modal [data-action="jobs-category"][data-value="bestfit"]')`,
-  );
-  await click('#modal [data-action="jobs-category"][data-value="bestfit"]');
-  const fits = JSON.parse(
-    await evaluate(`JSON.stringify([...document.querySelectorAll('#modal .ui-row .ui-badge')]
-      .map((el) => el.textContent.trim()).filter((t) => t.endsWith('fit'))
-      .map((t) => parseInt(t, 10)))`),
-  );
-  // Ranked means ranked: a list that is not sorted is not a recommendation.
-  const sorted = fits.every((v, i) => i === 0 || fits[i - 1] >= v);
-  const ok = hasTile && fits.length > 1 && sorted;
-  if (!ok) console.log(`      tile ${hasTile}, fits ${JSON.stringify(fits)}`);
+await check('Build: a workstation bought is standing in the room, with a picture on its card', async () => {
+  await evaluate(`__store.getState().earn(20000)`);
+  const before = await evaluate(`__store.getState().runtime.seats['cad-desk'] ?? 0`);
+  await openPanel('build-open');
+  const pictures = await evaluate(`document.querySelectorAll('#modal .build-thumb img').length`);
+  await click('#modal [data-action="buy-furniture"][data-value="software-station"]:not([disabled])');
+  await sleep(300);
+  const after = await evaluate(`__store.getState().runtime.seats['cad-desk'] ?? 0`);
+  await click('#modal header [data-action="jobs-close"]');
+  const ok = after === before + 1 && pictures >= 5;
+  if (!ok) console.log(`      seats ${before} → ${after}, pictures ${pictures}`);
   return ok;
 });
 

@@ -1,10 +1,12 @@
 import { SceneManager } from '@/render/SceneManager';
 import { t } from '@/i18n';
 import { SpaceView } from '@/render/SpaceView';
+import { Thumbnails } from '@/render/Thumbnails';
+import { furnitureFits } from '@/machines/layout';
 import { Simulation } from '@/systems/Simulation';
 import { UI } from '@/ui/ui';
 import { store } from './store';
-import { STATION_MAP, amenityPlacement, yawOf } from '@/machines/layout';
+import { STATIONS, STATION_MAP, amenityPlacement, yawOf } from '@/machines/layout';
 import { pct } from '@/utils/format';
 import type { MachineType } from './types';
 import { amenityDef } from '@/utils/amenities';
@@ -17,6 +19,8 @@ const STATION_ROLE: Partial<Record<MachineType, string>> = {
   bench: 'soldering and electronics',
   assembly: 'putting it together',
   lounge: 'rest and arguing',
+  'table-small': 'kickoffs for up to four',
+  'table-large': 'kickoffs for up to ten',
   drybox: 'keeps the filament dry',
   reflow: 'SMD assembly',
 };
@@ -33,6 +37,7 @@ export class Game {
   private readonly view: SpaceView;
   private readonly ui: UI;
   private readonly labels: HTMLElement;
+  private readonly thumbs: Thumbnails;
   private last = performance.now();
   /** Station under the cursor, for the hover label. */
   private hovered: string | null = null;
@@ -44,6 +49,7 @@ export class Game {
     this.scene = new SceneManager(canvas);
     this.view = new SpaceView(this.scene.scene);
     this.labels = labels;
+    this.thumbs = new Thumbnails((key) => this.view.previewModel(key));
 
     const sim = this.sim;
     // Every action publishes a fresh snapshot: the game is often paused while you decide,
@@ -59,7 +65,10 @@ export class Game {
         if (speed === 0) store.getState().setPaused(true);
         else store.getState().setSpeed(speed);
       },
-      pitch: (defId, offerId, team) => act(() => sim.pitch(defId, offerId, team)),
+      pitch: (defId, offerId, team, plan) => act(() => sim.pitch(defId, offerId, team, plan)),
+      buyFurniture: (id) => act(() => sim.buyFurniture(id)),
+      furnitureFits: (type, span) => this.fits(type, span),
+      thumbnail: (key) => this.thumbs.get(key),
       workOn: (projectId) => act(() => sim.workOn(projectId)),
       stopWork: () => act(() => sim.stopWork()),
       calibrate: () => act(() => sim.calibratePrinter()),
@@ -97,9 +106,11 @@ export class Game {
       setRole: (memberId, role) => act(() => sim.setRole(memberId, role)),
       hireCost: (memberId, employment) => sim.hireCost(memberId, employment),
       canHireFullTime: (memberId) => sim.canHireFullTime(memberId),
-      begin: (name, logo, difficulty) => {
+      begin: (name, logo, difficulty, player) => {
         const badge = LOGOS[logo] ?? LOGOS[0];
-        store.getState().begin({ name, icon: badge.icon, colour: badge.colour }, difficulty);
+        store
+          .getState()
+          .begin({ name, icon: badge.icon, colour: badge.colour, player: player || undefined }, difficulty);
         // The difficulty is only known now, and it decides the size of the crew — so the
         // roster is built here rather than in the constructor.
         sim.seedRoster();
@@ -149,6 +160,25 @@ export class Game {
 
     this.bindKeys();
     requestAnimationFrame(this.loop);
+  }
+
+  /**
+   * Would a piece of furniture fit? Asked by every Build card on every render, and the
+   * answer only changes when the room does — so it is kept until something is bought,
+   * moved or the lease changes.
+   */
+  private fitsCache = new Map<string, boolean>();
+  private fitsKey = '';
+  private fits(type: MachineType, span: number): boolean {
+    const state = store.getState();
+    const roomKey = `${STATIONS.length}|${state.amenityRev}|${state.era}|${state.amenities.length}`;
+    if (roomKey !== this.fitsKey) {
+      this.fitsKey = roomKey;
+      this.fitsCache.clear();
+    }
+    const k = `${type}|${span}`;
+    if (!this.fitsCache.has(k)) this.fitsCache.set(k, furnitureFits(type, span));
+    return this.fitsCache.get(k)!;
   }
 
   /** Write the run to localStorage. Cheap enough to do once a day. */
@@ -209,16 +239,25 @@ export class Game {
         this.turnHeld();
         return;
       }
+      // **Another piece of furniture takes over the selection.** Rearranging five things
+      // used to mean pick up, drop, press Done, and start again for each one; now a click
+      // on the next item simply picks that one up, and Done is only for when you finish.
+      if (hit && this.movable(hit)) {
+        store.getState().setMoving(hit);
+        return;
+      }
       const tile = this.scene.pickTile(clientX, clientY);
       if (tile && this.moveHeld(tile.x, tile.y, 0)) this.sim.publish();
       return;
     }
 
-    if (!hit) return;
-    if (STATION_MAP[hit]) store.getState().setMoving(hit);
-    else if (amenityDef(hit)?.mount === 'floor' && state.amenities.includes(hit)) {
-      store.getState().setMoving(hit);
-    }
+    if (hit && this.movable(hit)) store.getState().setMoving(hit);
+  }
+
+  /** Anything on the floor can be picked up: a station, or a floor-standing comfort you own. */
+  private movable(id: string): boolean {
+    if (STATION_MAP[id]) return true;
+    return amenityDef(id)?.mount === 'floor' && store.getState().amenities.includes(id);
   }
 
   /** Put whatever is being carried on a tile, keeping the way it faces. */
@@ -316,17 +355,30 @@ export class Game {
     const runtime = store.getState().runtime;
     const parts: string[] = [];
 
-    const personLabel = (id: string, name: string) => {
+    // A name, and under it their own share of the stage they are on (§4d): the stage is
+    // pooled work, so the bar is what they have put in against an even split. Gold at a
+    // kickoff, where everybody's share is the meeting itself.
+    const personLabel = (id: string, name: string, share: number | null, meeting: boolean) => {
       const world = this.view.personWorld(id);
       if (!world) return;
       const p = this.scene.project(world);
-      parts.push(`<div class="label" style="left:${p.x}px;top:${p.y}px">${name}</div>`);
+      const bar =
+        share === null
+          ? ''
+          : `<span class="share ${meeting ? 'meeting' : ''}"><i style="width:${Math.round(share * 100)}%"></i></span>`;
+      parts.push(`<div class="label" style="left:${p.x}px;top:${p.y}px">${name}${bar}</div>`);
     };
 
+    const atKickoff = (projectId: string | null) =>
+      !!projectId && runtime.projects.some((x) => x.id === projectId && !x.kickedOff);
     for (const member of runtime.members) {
-      if (member.present) personLabel(member.id, member.name);
+      if (member.present) personLabel(member.id, member.name, member.share, atKickoff(member.team));
     }
-    if (runtime.player?.present) personLabel('player', t('ui.you'));
+    if (runtime.player?.present) {
+      // Your own name if you gave one — the one person in the room the player picked.
+      const you = store.getState().identity?.player || t('ui.you');
+      personLabel('player', you.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!), runtime.player.share, atKickoff(runtime.player.project));
+    }
 
     // Machines that are doing something say so; everything else only speaks when pointed at.
     for (const machine of runtime.machines) {

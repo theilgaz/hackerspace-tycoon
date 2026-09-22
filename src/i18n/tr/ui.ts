@@ -12,27 +12,10 @@ export const ui: typeof en = {
   'ui.tier.small': 'küçük',
   'ui.tier.medium': 'orta',
   'ui.tier.large': 'büyük',
-  'ui.activity.away': 'yok',
   'ui.activity.idle': 'boşta',
-  'ui.activity.walking': 'yürüyor',
-  'ui.activity.working': 'çalışıyor',
-  'ui.activity.resting': 'dinleniyor',
-  'ui.activity.babysitting': 'yazıcı başında',
   'ui.source.member': 'öneri',
   'ui.source.sponsor': 'sponsor',
   'ui.source.trending': 'gündemde',
-  'ui.size.any': 'Tüm boyutlar',
-  'ui.size.any.short': 'Tümü',
-  'ui.size.any.hint': 'mevcut her şey',
-  'ui.size.solo': '1-2 kişi',
-  'ui.size.solo.short': '1-2',
-  'ui.size.solo.hint': 'uzun bir projenin yanında yürür',
-  'ui.size.small': '3-4 kişi',
-  'ui.size.small.short': '3-4',
-  'ui.size.small.hint': 'mekânın çoğu',
-  'ui.size.big': '5+ kişi',
-  'ui.size.big.short': '5+',
-  'ui.size.big.hint': 'herkes',
   'ui.stat.day': 'gün',
   'ui.stat.shipped': 'teslim',
   'ui.stat.reputation': 'itibar',
@@ -43,7 +26,6 @@ export const ui: typeof en = {
   // --- Frame -------------------------------------------------------------------
   'ui.bench.title': 'Tezgâhta',
   'ui.log.title': 'Günlük',
-  'ui.members.title': 'Ekip',
   'ui.moving.title': (p) => `${p.name} taşınıyor`,
   'ui.moving.howStation': 'Bırakmak için yanan bir kareye tıkla. Döndürmek, insanların durduğu yeri de taşır.',
   'ui.moving.howComfort': 'Bırakmak için yanan bir kareye tıkla. Döndürmek için yeniden tıkla.',
@@ -58,6 +40,7 @@ export const ui: typeof en = {
 
   // --- Start screen ------------------------------------------------------------
   'ui.start.nameLabel': 'Hackerspace’ine bir isim ver',
+  'ui.start.playerLabel': 'Peki senin adın',
   'ui.start.namePlaceholder': 'Bir isim yaz',
   'ui.start.shuffle': 'Karıştır',
   'ui.start.shuffleHint': 'Başka bir isim öner',
@@ -96,10 +79,10 @@ export const ui: typeof en = {
   'ui.top.allocated': 'görevde',
   'ui.top.allocatedHint': 'herkes aynı anda tek bir projede olabilir',
   'ui.top.reputationHint': 'teslim ettiğin her şeyden biriken ilgi',
-  'ui.top.seasonHint': (p) => `${p.year} · Ekim’deki ödüllere ${p.days} gün`,
+  'ui.top.seasonHint': (p) => `${p.year} · Aralık’taki ödüllere ${p.days} gün`,
 
   // --- Awards night --------------------------------------------------------------
-  'ui.ceremony.title': (p) => `Ödül gecesi · Ekim ${p.year}`,
+  'ui.ceremony.title': (p) => `Ödül gecesi · Aralık ${p.year}`,
   'ui.ceremony.won': (p) => `${p.total} ödülden ${p.won} tanesi bizim.`,
   'ui.ceremony.wonRep': (p) => `${p.total} ödülden ${p.won} tanesi bizim, yanında da ${p.reputation} itibar.`,
   'ui.ceremony.none': 'Bu yıl bize bir şey çıkmadı. Başkasının yılı daha iyiydi.',
@@ -129,7 +112,7 @@ export const ui: typeof en = {
   'ui.rank.foot.table':
     'Tüm zamanların itibarına göre sıralı. Ödüller ise geçen yıla göre verilir, bu başka bir soru — burada öndeyken bile sessiz bir yıl sana kaybettirir.',
   'ui.trophy.none':
-    'Henüz ödül gecesi olmadı — ilki bu Ekim’de. Her kategori geçen yıla göre değerlendirilir, yani her zaman oynanacak bir ödül vardır.',
+    'Henüz ödül gecesi olmadı — ilki bu Aralık’ta. Her kategori geçen yıla göre değerlendirilir, yani her zaman oynanacak bir ödül vardır.',
   'ui.trophy.scoped': (p) => `${p.nights} gecenin ${p.won} tanesi`,
   'ui.trophy.summary': (p) => `${p.nights} gecede ${p.won} kupa`,
   'ui.trophy.summaryRep': (p) => `${p.nights} gecede ${p.won} kupa, değeri ${num(p.reputation)} itibar`,
@@ -141,10 +124,10 @@ export const ui: typeof en = {
   'ui.trophy.notGiven': 'verilmedi',
   'ui.trophy.category': 'Kategori',
   'ui.trophy.yours': 'Senin',
-  'ui.trophy.winnerOctober': (p) => `Kazanan, Ekim ${p.year}`,
-  'ui.trophy.yearHint': (p) => `Ekim ${p.year} — ${p.total} ödülden ${p.won} tanesi senin`,
+  'ui.trophy.winnerDecember': (p) => `Kazanan, Aralık ${p.year}`,
+  'ui.trophy.yearHint': (p) => `Aralık ${p.year} — ${p.total} ödülden ${p.won} tanesi senin`,
   'ui.trophy.yearHintRep': (p) =>
-    `Ekim ${p.year} — ${p.total} ödülden ${p.won} tanesi senin, değeri ${p.reputation} itibar`,
+    `Aralık ${p.year} — ${p.total} ödülden ${p.won} tanesi senin, değeri ${p.reputation} itibar`,
   'ui.trophy.yearBefore': 'Önceki yıl',
   'ui.trophy.yearAfter': 'Sonraki yıl',
   'ui.trophy.hackerspace': 'Hackerspace',
@@ -177,9 +160,9 @@ export const ui: typeof en = {
   'ui.chart.today': 'bugün',
   'ui.chart.inDays': (p) => `${p.days} gün sonra`,
   'ui.chart.noTable': (p) =>
-    `Bundan önceki geceler sıralamayı kaydetmedi, bu yüzden çizgi bu Ekim’deki ödüllerle başlıyor — ${p.when}.`,
+    `Bundan önceki geceler sıralamayı kaydetmedi, bu yüzden çizgi bu Aralık’taki ödüllerle başlıyor — ${p.when}.`,
   'ui.chart.empty': (p) =>
-    `Henüz çizilecek bir şey yok. İlk ödül gecesi bu Ekim’de, ${p.when}; sonraki her gece bir nokta ekler.`,
+    `Henüz çizilecek bir şey yok. İlk ödül gecesi bu Aralık’ta, ${p.when}; sonraki her gece bir nokta ekler.`,
   'ui.chart.point': (p) => `${p.year} — ${p.field} mekân içinde ${p.place}, ${p.reputation} itibar`,
   'ui.chart.aria': (p) => `Yıllara göre bitiriş sırası. En iyisi: ${p.year} yılında ${p.place}.`,
   'ui.space.allTime': 'tüm zamanlar',
@@ -268,11 +251,10 @@ export const ui: typeof en = {
   'ui.fit.goodEye': 'gözü iyi',
 
   // --- Bottom bar (labels shared with other panels) --------------------------------
-  'ui.bar.jobs': 'İşler',
 
   // --- On the bench -------------------------------------------------------------------
   'ui.bench.empty': 'Tezgâh boş.',
-  'ui.bench.emptyHint': (p) => `Ekranın altındaki ${p.jobs} menüsünü aç ve bir şey öner.`,
+  'ui.bench.emptyHint': (p) => `Ekranın altındaki ${p.jobs} menüsünü aç ve bir şey tasarla.`,
   'ui.bench.partsMade': (p) => `${p.made}/${p.total} parça`,
   'ui.bench.waitingOnParts': 'parça bekliyor',
   'ui.bench.resolving': 'sonuçlanıyor',
@@ -314,15 +296,6 @@ export const ui: typeof en = {
   // --- Day bar, the People column -------------------------------------------------
   'ui.daybar.left': (p) => `gününden ${p.hours} kaldı`,
   'ui.daybar.on': (p) => `${p.project} üzerinde`,
-  'ui.members.unallocated': 'görevsiz',
-  'ui.members.interest': 'ilgi',
-  'ui.members.energy': 'enerji',
-  'ui.members.mood': 'keyif',
-  'ui.members.moodHint':
-    'Mekânda bulunmanın nasıl bir his olduğu. Gelip gelmeme ihtimallerini ve ne hızla çalıştıklarını etkiler. Dükkân bunu yükseltir.',
-  'ui.members.commit': 'bağlılık',
-  'ui.members.perWeek': (p) => `${p.hours} sa/hf`,
-  'ui.members.passion': (p) => `${p.category}: ilgi uyumu ${p.match}`,
 
   // --- Machines -------------------------------------------------------------------------
   'ui.machines.title': 'Atölye',
@@ -369,7 +342,7 @@ export const ui: typeof en = {
   'ui.projects.col.needs': 'Eksik',
   'ui.projects.col.crew': 'Ekip',
   'ui.projects.col.net': 'Net',
-  'ui.projects.empty': (p) => `Burada henüz bir şey yok. ${p.jobs} menüsünü aç ve bir şey öner.`,
+  'ui.projects.empty': (p) => `Burada henüz bir şey yok. ${p.jobs} menüsünü aç ve bir şey tasarla.`,
   'ui.projects.foot.blocked': (p) => `bunlardan ${p.n} tanesi senden bir şey bekliyor`,
   'ui.projects.foot.clear': 'Tıkanan bir şey yok',
   'ui.projects.foot.shipped': (p) => `${p.count} teslim, toplam ${money(p.earned)}`,

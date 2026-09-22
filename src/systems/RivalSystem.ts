@@ -33,12 +33,20 @@ export interface RivalPressure {
 }
 
 /** Advance every rival by a day. */
+/** Reputation past which a rival's pace stops compounding (see `tickRivals`). */
+export const RIVAL_GROWTH_KNEE = 14000;
+
 export function tickRivals(rivals: RivalState[], pressure: RivalPressure = { pace: 1, reputation: 1 }) {
   for (const rival of rivals) {
     const def = RIVALS.find((d) => d.id === rival.id)!;
 
-    // They speed up as they get known, the same way the player does.
-    const pace = def.shipPace * (1 + rival.reputation / def.paceGrowth) * pressure.pace;
+    // They speed up as they get known, the same way the player does — **up to a point**.
+    // The compounding was tuned over a 220-day horizon; once a year became 365 days it ran on
+    // unchecked and the field overtook the player by day 400, whose own growth flattens when
+    // the roster is full. Past `RIVAL_GROWTH_KNEE` reputation a space keeps its pace but
+    // stops accelerating, which leaves everything before the knee exactly as it was.
+    const known = Math.min(rival.reputation, RIVAL_GROWTH_KNEE);
+    const pace = def.shipPace * (1 + known / def.paceGrowth) * pressure.pace;
     rival.progress += pace * rng.range(0.55, 1.45);
     while (rival.progress >= 1) {
       rival.progress -= 1;

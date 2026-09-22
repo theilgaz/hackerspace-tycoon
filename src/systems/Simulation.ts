@@ -1,5 +1,5 @@
 import { store } from '@/game/store';
-import { caseLocale, msg, t, type Message } from '@/i18n';
+import { caseLocale, msg, t, type Message, type MessageKey } from '@/i18n';
 import type {
   BacklogEntry,
   Employment,
@@ -15,6 +15,9 @@ import type {
   Tag,
   ClaimKey,
   Post,
+  ProjectPlan,
+  Seat,
+  TableSnapshot,
 } from '@/game/types';
 import { MemberEntity } from '@/entities/MemberEntity';
 import { PlayerEntity } from '@/entities/PlayerEntity';
@@ -39,7 +42,18 @@ import {
   type StationDef,
   resetStations,
   stationOfType,
+  stationsOfType,
+  seatPosition,
+  seatsOf,
+  isTable,
+  installFurniture,
+  furnitureFits,
+  amenityRoom,
 } from '@/machines/layout';
+import { defaultPlan, planProject, qualityHype, qualityPay, teamFit } from '@/utils/design';
+import { coolMarket, driftMarket, warmMarket } from '@/utils/market';
+import { FURNITURE_MAP } from '@/utils/furniture';
+import { manhattan } from '@/utils/grid';
 import {
   BACKLOG,
   BOUNTY,
@@ -52,6 +66,7 @@ import {
   MEMBER,
   PERFECTIONIST_QUALITY_GATE,
   APPLICANTS,
+  shuffleLadder,
   PLAYER,
   HYPE,
   RECRUIT,
@@ -61,7 +76,9 @@ import {
   TEAM,
   SOURCING,
   STAGE_MAP,
+  TEST,
   TIME,
+  KICKOFF,
   VERB_HOURS,
   WORKDAY,
   ERAS,
@@ -98,6 +115,7 @@ import {
   generateParts,
   partsOutstanding,
   partsPending,
+  refreshQuality,
   remainingWork,
   resolveTest,
   stageComplete,
@@ -152,6 +170,21 @@ export class Simulation {
 
   /** The last thing you shipped, while it is still what people are talking about. */
   private recentShip: { tags: Tag[]; name: string; day: number } | null = null;
+
+  /**
+   * Who is sitting where (§4d). One person to a workstation seat, so a desk is something
+   * people queue for. Rebuilt as people come and go rather than saved: a claim only means
+   * anything while somebody is in the building.
+   */
+  private claims = new Map<string, { stationId: string; seat: number }>();
+  /** People this tick who wanted a seat of a kind and found every one taken. */
+  private wanting = new Map<string, MachineType>();
+  /**
+   * Today's kickoffs: the most of each crew that was ever in the building at once, and
+   * whether any planning actually happened. Read at the end of the day to decide who the
+   * crew is going ahead without. Reset every morning, never saved.
+   */
+  private kickoffWatch = new Map<string, { best: string[]; progressed: boolean }>();
 
   constructor() {
     resetStations();
@@ -238,6 +271,7 @@ export class Simulation {
       this.runBilling();
       this.checkAwards();
       store.getState().setHype(decayHype(store.getState().hype));
+      store.getState().setMarket(driftMarket(store.getState().market));
       this.checkSolvency();
       this.tickRecruiting();
       this.planDay();
@@ -333,6 +367,13 @@ export class Simulation {
       this.log(msg('log.amenity.needsEra', { item: def.name, era: eraDef(def.era).name }), 'warn');
       return false;
     }
+    // Sync the floor first, then check there is somewhere to stand it: a comfort paid for
+    // that never appears in the room is the worst thing this shop could do.
+    void this.comforts;
+    if (def.mount === 'floor' && !amenityRoom()) {
+      this.log(msg('build.log.noFloor', { item: def.name }), 'warn');
+      return false;
+    }
     if (!state.spend(def.price)) {
       this.log(msg('log.amenity.cantAfford', { item: def.name }), 'bad');
       return false;
@@ -347,7 +388,51 @@ export class Simulation {
     return true;
   }
 
+  /**
+   * Buy a table or a workstation (§4d). It goes on the floor wherever there is room —
+   * against a wall for a desk, out in the open for a table — and can be picked up and moved
+   * like anything else. **No room is an answer**, not an error: the garage holds so much,
+   * and the next lease is what gives you more.
+   */
+  buyFurniture(id: string): boolean {
+    const def = FURNITURE_MAP[id];
+    const state = store.getState();
+    if (!def) return false;
+    if (def.era > state.era) {
+      this.log(msg('log.amenity.needsEra', { item: def.name, era: eraDef(def.era).name }), 'warn');
+      return false;
+    }
+    // Sync the floor first: a comfort bought a moment ago has to count as in the way.
+    void this.comforts;
+    if (!furnitureFits(def.type, def.span)) {
+      this.log(msg('build.log.noRoom', { item: def.name }), 'warn');
+      return false;
+    }
+    if (!state.spend(def.price)) {
+      this.log(msg('log.amenity.cantAfford', { item: def.name }), 'bad');
+      return false;
+    }
+    const station = installFurniture(def.type, `${def.id}-${uid()}`, def.name, def.span);
+    if (!station) {
+      state.earn(def.price);
+      this.log(msg('build.log.noRoom', { item: def.name }), 'warn');
+      return false;
+    }
+    state.ownMachine(def.type);
+    // Where it landed is recorded as though the player had put it there, so a reload puts
+    // it back on the same tile rather than wherever the room would choose today.
+    state.placeStation(station.id, { x: station.tile.x, y: station.tile.y, yaw: yawOf(station) });
+    this.log(msg('build.log.installed', { item: def.name }), 'good');
+    this.publish();
+    return true;
+  }
+
   private endOfDay() {
+    // A team list names people whose own record says they are on it, and nobody else.
+    for (const project of this.projects) {
+      project.team = project.team.filter((id) => this.member(id)?.team === project.id);
+    }
+    this.goAheadWithout();
     this.shelveAbandoned();
     const comfort = this.comforts.mood;
     for (const m of this.members) {
@@ -395,6 +480,7 @@ export class Simulation {
    * is whether somebody actually turns up, which is where mood and the Ghost still live.
    */
   private planDay() {
+    this.kickoffWatch.clear();
     const working = isWorkingDay(this.day);
     const bountied = this.projects.filter(
       (p) => p.bounties.includes(p.stage) && p.required[p.stage] > 0,
@@ -494,6 +580,7 @@ export class Simulation {
         hypeMultiplier: Number(rng.range(mlo, mhi).toFixed(2)),
         expiresOnDay: this.day + rng.int(dlo, dhi),
       });
+      store.getState().setMarket(warmMarket(store.getState().market, def.category));
       this.log(msg('log.offer.trending', { item: def.name }), 'info');
     }
   }
@@ -525,11 +612,13 @@ export class Simulation {
   }
 
   private tickMembers(dt: number) {
+    this.wanting.clear();
     for (const m of this.members) {
       const plan = this.plans.get(m.id)!;
       m.tickCooldowns(dt);
 
       if (!m.present) {
+        this.releaseSeat(m.id);
         if (plan.attending && this.time >= plan.arriveAt && this.time < plan.leaveAt) {
           m.arrive(DOOR);
           m.note = t('note.justArrived');
@@ -538,6 +627,7 @@ export class Simulation {
       }
 
       if (this.time >= plan.leaveAt) {
+        this.releaseSeat(m.id);
         if (m.tile.x === DOOR.x && m.tile.y === DOOR.y && !m.walking) {
           m.leave();
           continue;
@@ -593,11 +683,17 @@ export class Simulation {
         const rate = m.workRate(skill, project.tags) * factor * this.comforts.focus;
         total += rate * dt;
         rateSum += rate;
+        // Each person's own share of the stage, for the bar over their head.
+        project.contrib[m.id] = (project.contrib[m.id] ?? 0) + rate * dt;
         const level = skill ? m.data.skills[skill] : 2;
         craftSum += (level / 5) * rate;
       });
       const craft = rateSum > 0 ? craftSum / rateSum : 0.5;
       addWork(project, total, Math.min(1, Math.max(0.1, craft)));
+      if (project.stage === 'concept' && total > 0) {
+        const watch = this.kickoffWatch.get(project.id);
+        if (watch) watch.progressed = true;
+      }
     }
   }
 
@@ -605,6 +701,7 @@ export class Simulation {
   private decideActivity(m: MemberEntity, _dt: number) {
     // Twelve to one, nobody works. The lounge exists for exactly this.
     if (isLunch(this.time)) {
+      this.releaseSeat(m.id);
       m.note = t('note.lunch');
       if (this.atStation(m, 'lounge')) {
         m.activity = 'resting';
@@ -615,6 +712,7 @@ export class Simulation {
     }
 
     if (m.activity === 'resting') {
+      this.releaseSeat(m.id);
       if (m.data.energy >= 65) {
         m.activity = 'idle';
         m.note = t('note.backOnIt');
@@ -624,6 +722,7 @@ export class Simulation {
       }
     }
     if (m.data.energy < MEMBER.tiredThreshold) {
+      this.releaseSeat(m.id);
       m.activity = 'resting';
       m.note = t('note.needsSitDown');
       m.walkTo(stationOfType('lounge')!.stand);
@@ -646,6 +745,8 @@ export class Simulation {
       let best: { project: ProjectData; appetite: number } | null = null;
       for (const project of this.joinableProjects()) {
         if (m.isCoolingOff(project.id)) continue;
+        // Nobody volunteers for a kickoff they could never sit in on.
+        if (!this.canMeet(project, m)) continue;
         const stage = STAGE_MAP[project.stage];
         const match = m.passionMatch(project.tags);
         const bounty = project.bounties.includes(project.stage);
@@ -659,23 +760,19 @@ export class Simulation {
       }
     }
 
-    // On a team: work the current stage if there is hand work to be done.
+    // On a team: the kickoff first, round the table, and then whatever the stage needs.
     if (m.team) {
       const project = this.project(m.team)!;
-      if (this.hasOpenWork(project)) {
-        const station = stationOfType(stageStation(project.category, project.stage)!);
-        if (station) {
-          if (this.atStation(m, station.type)) {
-            m.activity = 'working';
-            m.note = this.workingNote(project);
-          } else if (!m.walking) {
-            m.walkTo(station.stand);
-          }
-          return;
-        }
+      if (!project.kickedOff && project.required.concept > 0) {
+        if (this.attendKickoff(m, project)) return;
+      } else if (this.hasOpenWork(project)) {
+        if (this.goToWork(m, project)) return;
       } else {
+        this.releaseSeat(m.id);
         m.note = t('note.waiting', { project: project.name });
       }
+    } else {
+      this.releaseSeat(m.id);
     }
 
     // Nothing to build by hand? Somebody may fuss over the printer instead.
@@ -699,6 +796,277 @@ export class Simulation {
     }
   }
 
+  /**
+   * Sit down at the project's table for the kickoff (§4d). **Nothing is planned until the
+   * whole crew is sitting there at once**, so a kickoff is where attendance bites first: a
+   * morning part-timer and an afternoon part-timer never overlap at all, and a crew of ten
+   * all turning up on the same day is its own small miracle. Returns false when there is no
+   * table yet, so the caller lets them do something useful instead of standing about.
+   */
+  private attendKickoff(who: MemberEntity, project: ProjectData): boolean {
+    this.releaseSeat(who.id);
+    const table = project.tableId ? STATION_MAP[project.tableId] : null;
+    if (!table) {
+      const away = project.team
+        .map((id) => this.member(id))
+        .filter((m): m is MemberEntity => !!m && !m.present)
+        .map((m) => m.name);
+      who.note = away.length
+        ? t('build.note.kickoffOnceIn', { project: project.name, names: away.join(', '), count: away.length })
+        : t('build.note.waitingTable', { project: project.name });
+      return false;
+    }
+    if (!this.atStand(who, table)) {
+      if (!who.walking) who.walkTo(table.stand);
+      who.note = t('build.note.toKickoff', { project: project.name });
+      return true;
+    }
+    if (this.kickoffReady(project)) {
+      who.activity = 'working';
+      who.note = t('build.note.kickoff', { project: project.name });
+    } else {
+      who.activity = 'waiting';
+      const missing = this.kickoffMissing(project);
+      who.note = missing.length
+        ? t('build.note.waitingFor', { project: project.name, names: missing.join(', ') })
+        : t('note.waiting', { project: project.name });
+    }
+    return true;
+  }
+
+  /** Crew who are not at the table yet — the names the waiting ones are waiting for. */
+  private kickoffMissing(project: ProjectData): string[] {
+    const table = project.tableId ? STATION_MAP[project.tableId] : null;
+    if (!table) return [];
+    return project.team
+      .map((id) => this.member(id))
+      .filter((m): m is MemberEntity => !!m)
+      .filter((m) => !m.present || !this.atStand(m, table) || m.activity === 'resting')
+      .map((m) => m.name);
+  }
+
+  /**
+   * Is everybody sitting down? The whole crew, every one of them — and if nobody has been
+   * allocated, you on your own will do. You are never *required*: your hours are yours, and
+   * a kickoff that stalled because you went to buy filament would be the game punishing the
+   * one person it can command.
+   */
+  private kickoffReady(project: ProjectData): boolean {
+    const table = project.tableId ? STATION_MAP[project.tableId] : null;
+    if (!table) return false;
+    if (!project.team.length) {
+      return this.player.project === project.id && this.player.present && this.atStand(this.player, table);
+    }
+    return this.kickoffMissing(project).length === 0;
+  }
+
+  /** Find a seat for this stage's work and go and sit in it. False if every seat is taken. */
+  private goToWork(who: MemberEntity, project: ProjectData): boolean {
+    const type = stageStation(project.category, project.stage)!;
+    const claim = this.claimSeat(who, type);
+    if (!claim) {
+      this.wanting.set(who.id, type);
+      who.note = t('build.note.noFree', { project: project.name, station: MACHINE_LABEL[type] });
+      return false;
+    }
+    const station = STATION_MAP[claim.stationId];
+    if (this.atStand(who, station)) {
+      who.activity = 'working';
+      who.note = this.workingNote(project);
+    } else if (!who.walking) {
+      who.walkTo(station.stand);
+    }
+    return true;
+  }
+
+  /**
+   * Take a seat at the nearest station of a type that has one free, or keep the one you
+   * already have. **One person to a workstation** is the rule that makes furniture matter
+   * (§4d): a desk is something people queue for, and the queue is visible in the Build panel.
+   */
+  private claimSeat(who: MemberEntity, type: MachineType): { stationId: string; seat: number } | null {
+    const held = this.claims.get(who.id);
+    if (held) {
+      const def = STATION_MAP[held.stationId];
+      if (def && def.type === type) return held;
+      this.claims.delete(who.id);
+    }
+    const taken = new Map<string, Set<number>>();
+    for (const claim of this.claims.values()) {
+      if (!taken.has(claim.stationId)) taken.set(claim.stationId, new Set());
+      taken.get(claim.stationId)!.add(claim.seat);
+    }
+    let best: { stationId: string; seat: number; distance: number } | null = null;
+    for (const def of stationsOfType(type)) {
+      const capacity = seatsOf(def) ?? Number.POSITIVE_INFINITY;
+      const used = taken.get(def.id) ?? new Set<number>();
+      if (used.size >= capacity) continue;
+      let seat = 0;
+      while (used.has(seat)) seat += 1;
+      const distance = manhattan(who.tile, def.stand);
+      if (!best || distance < best.distance) best = { stationId: def.id, seat, distance };
+    }
+    if (!best) return null;
+    const claim = { stationId: best.stationId, seat: best.seat };
+    this.claims.set(who.id, claim);
+    return claim;
+  }
+
+  private releaseSeat(id: string) {
+    this.claims.delete(id);
+  }
+
+  private atStand(who: MemberEntity, def: StationDef): boolean {
+    return !who.walking && who.tile.x === def.stand.x && who.tile.y === def.stand.y;
+  }
+
+  /** The largest project table the space owns — what a crew size is capped at. */
+  maxTableSeats(): number {
+    return Math.max(0, ...STATIONS.filter((s) => isTable(s.type)).map((s) => seatsOf(s) ?? 0));
+  }
+
+  /**
+   * Book tables for kickoffs (§4d). **A table goes only to a crew that is all in the
+   * building**, and the booking lapses the moment one of them leaves. The first version
+   * held a table from the pitch until the kickoff was over, and one crew that could never
+   * meet — a morning part-timer and an afternoon one — kept the garage's only table for the
+   * rest of the run while every project behind it waited. Progress is pooled on the
+   * project, so giving the table up costs nothing but the seat.
+   */
+  private assignTables() {
+    for (const project of this.projects) {
+      if (!project.tableId) continue;
+      if (project.kickedOff || !this.crewInBuilding(project)) project.tableId = null;
+    }
+    const busy = new Set(this.projects.map((p) => p.tableId).filter(Boolean));
+    for (const project of this.projects) {
+      if (project.kickedOff || project.tableId) continue;
+      if (!this.crewInBuilding(project)) continue;
+      // The smallest table that seats them, so a pair does not tie up the big one.
+      const table = STATIONS.filter(
+        (s) => isTable(s.type) && !busy.has(s.id) && (seatsOf(s) ?? 0) >= this.crewSize(project),
+      ).sort((a, b) => (seatsOf(a) ?? 0) - (seatsOf(b) ?? 0))[0];
+      if (!table) continue;
+      project.tableId = table.id;
+      busy.add(table.id);
+    }
+  }
+
+  /**
+   * What the floor is short of right now: seats people queued for this tick, and tables
+   * for crews who are all here with nowhere to sit down. The Build panel and the harness
+   * autoplayer both read this rather than guessing.
+   */
+  workspaceNeeds(): Partial<Record<MachineType, number>> {
+    const out: Partial<Record<MachineType, number>> = {};
+    for (const type of this.wanting.values()) out[type] = (out[type] ?? 0) + 1;
+    for (const project of this.projects) {
+      if (project.kickedOff || project.tableId || !this.crewInBuilding(project)) continue;
+      const type: MachineType = this.crewSize(project) > 4 ? 'table-large' : 'table-small';
+      out[type] = (out[type] ?? 0) + 1;
+    }
+    return out;
+  }
+
+  /** Note the most of each waiting crew that has been in the building at once today. */
+  private watchKickoffs() {
+    for (const project of this.projects) {
+      if (project.kickedOff || !project.team.length) continue;
+      const here = project.team.filter((id) => this.member(id)?.present);
+      const watch = this.kickoffWatch.get(project.id) ?? { best: [], progressed: false };
+      if (here.length > watch.best.length) watch.best = here;
+      this.kickoffWatch.set(project.id, watch);
+    }
+  }
+
+  /**
+   * **A crew does not wait for ever.** On a working day when a kickoff went nowhere, anybody
+   * who was not in while most of the crew was gets a mark against them; two and the crew
+   * goes ahead without them. One rule covers the Ghost who never comes in and the morning
+   * part-timer who never overlaps an afternoon crew — both used to stop a project dead, and
+   * a stall the player cannot see the cause of reads as a bug (§13).
+   */
+  private goAheadWithout() {
+    if (!isWorkingDay(this.day)) return;
+    for (const project of this.projects) {
+      const watch = this.kickoffWatch.get(project.id);
+      if (project.kickedOff || !watch || watch.progressed || !watch.best.length) continue;
+      const misses = (project.kickoffMisses ??= {});
+      for (const id of project.team) {
+        if (watch.best.includes(id)) {
+          misses[id] = 0;
+          continue;
+        }
+        misses[id] = (misses[id] ?? 0) + 1;
+        if (misses[id] < KICKOFF.missLimit) continue;
+        const member = this.member(id);
+        if (!member) continue;
+        delete misses[id];
+        this.dropFromTeam(project, member, DRIFT.cooldownHours * 3);
+        member.note = t('build.note.wentAhead', { project: project.name });
+        this.log(msg('build.log.wentAhead', { project: project.name, member: member.name }), 'warn');
+      }
+    }
+  }
+
+  /**
+   * Could this person ever be at the table with the rest of this crew? A morning part-timer
+   * and an afternoon one are never in the building together, so on a project that has not
+   * kicked off yet one of them is a guaranteed stall. Always true once the planning is done.
+   */
+  canMeet(project: ProjectData, member: MemberEntity): boolean {
+    if (project.kickedOff) return true;
+    const overlap = (a: MemberEntity, b: MemberEntity) =>
+      a.employment === 'full-time' || b.employment === 'full-time' || a.shift === b.shift;
+    return project.team.every((id) => {
+      const other = this.member(id);
+      return !other || other.id === member.id || overlap(other, member);
+    });
+  }
+
+  /** Crew who need a chair at the kickoff: the team, plus you if you are on it. */
+  private crewSize(project: ProjectData): number {
+    return Math.max(1, project.team.length + (this.player.project === project.id ? 1 : 0));
+  }
+
+  /** Is everybody on it actually here today? You on your own count if nobody else is on it. */
+  private crewInBuilding(project: ProjectData): boolean {
+    if (!project.team.length) return this.player.project === project.id && this.player.present;
+    return project.team.every((id) => this.member(id)?.present);
+  }
+
+  /** Where somebody is sitting right now, for the renderer. Null when they are not seated. */
+  private seatFor(who: MemberEntity): Seat | null {
+    if (who.walking || !who.present) return null;
+    if (who.activity !== 'working' && who.activity !== 'waiting') return null;
+    const projectId = who === this.player ? this.player.project : who.team;
+    const project = projectId ? this.project(projectId) : null;
+    if (project && !project.kickedOff && project.tableId) {
+      const table = STATION_MAP[project.tableId];
+      if (table && this.atStand(who, table)) {
+        const order = [...project.team, 'player'];
+        return seatPosition(table, Math.max(0, order.indexOf(who.id)));
+      }
+    }
+    const claim = this.claims.get(who.id);
+    const station = claim ? STATION_MAP[claim.stationId] : null;
+    if (claim && station && this.atStand(who, station)) return seatPosition(station, claim.seat);
+    return null;
+  }
+
+  /** Their share of the stage so far against an even split — the bar over their head. */
+  private shareFor(who: MemberEntity): number | null {
+    if (who.activity !== 'working' && who.activity !== 'waiting') return null;
+    const projectId = who === this.player ? this.player.project : who.team;
+    const project = projectId ? this.project(projectId) : null;
+    if (!project) return null;
+    const need = project.required[project.stage];
+    if (need <= 0) return null;
+    const crew = project.team.length + (this.player.project === project.id ? 1 : 0);
+    const fair = need / Math.max(1, crew);
+    return Math.max(0, Math.min(1, (project.contrib[who.id] ?? 0) / fair));
+  }
+
   private performActivity(m: MemberEntity, dt: number) {
     // Air conditioning, a decent chair and a fish tank all land here.
     const comfort = this.comforts;
@@ -713,8 +1081,10 @@ export class Simulation {
       case 'resting':
         m.data.energy = Math.min(100, m.data.energy + MEMBER.energyRestore * comfort.rest * dt);
         break;
-      case 'idle': {
-        // Hanging about waiting for a machine erodes enthusiasm, just more slowly.
+      case 'idle':
+      case 'waiting': {
+        // Hanging about waiting for a machine — or for the rest of the crew to sit down —
+        // erodes enthusiasm, just more slowly.
         if (m.team) m.interest -= DRIFT.decayPerHour * 0.35 * comfort.drift * dt;
         break;
       }
@@ -756,6 +1126,7 @@ export class Simulation {
         return;
       }
       p.calibrating = false;
+      this.releaseSeat(p.id);
       p.note = t('note.outOfHours');
       if (!p.walking) p.walkTo(DOOR);
       p.advance(dt);
@@ -797,28 +1168,37 @@ export class Simulation {
 
     if (p.project) {
       const project = this.project(p.project)!;
-      if (this.hasOpenWork(project)) {
-        const station = stationOfType(stageStation(project.category, project.stage)!);
-        if (station) {
-          if (this.atStation(p, station.type)) {
-            p.activity = 'working';
-            p.note = this.workingNote(project);
-            this.spendPlayerTime(dt);
-          } else if (!p.walking) {
-            p.walkTo(station.stand);
-          }
+      // True when a kickoff or a seat has already said why you are standing about; the
+      // generic "nothing to do by hand" line must not paper over it.
+      let explained = false;
+      if (!project.kickedOff && project.required.concept > 0) {
+        // You sit in on your own project's kickoff like anybody else — and only the time
+        // actually spent planning comes off your day, not the time spent waiting for Ada.
+        if (this.attendKickoff(p, project)) {
+          if (p.activity === 'working') this.spendPlayerTime(dt);
           p.advance(dt);
           return;
         }
+        explained = true;
+      } else if (this.hasOpenWork(project)) {
+        if (this.goToWork(p, project)) {
+          if (p.activity === 'working') this.spendPlayerTime(dt);
+          p.advance(dt);
+          return;
+        }
+        explained = true;
+      } else {
+        this.releaseSeat(p.id);
       }
       // Nothing to do by hand right now — stay on the project and wait it out.
       if (!p.walking) {
         p.activity = 'idle';
-        p.note = t('note.nothingByHand', { project: project.name });
+        if (!explained) p.note = t('note.nothingByHand', { project: project.name });
       }
       p.advance(dt);
       return;
     }
+    this.releaseSeat(p.id);
 
     if (!p.walking && p.activity !== 'idle') {
       p.activity = 'idle';
@@ -934,6 +1314,8 @@ export class Simulation {
   // -------------------------------------------------------------------------
 
   private advanceProjects() {
+    this.watchKickoffs();
+    this.assignTables();
     for (const project of [...this.projects]) {
       this.advanceProject(project);
     }
@@ -997,16 +1379,19 @@ export class Simulation {
 
     switch (stage) {
       case 'concept':
-        this.setStage(project, 'cad', msg('log.stage.conceptLocked', { project: project.name }));
+        this.finishKickoff(project);
         break;
-      case 'cad':
+      case 'cad': {
         generateParts(project);
+        // Eyeballing it was decided at the pitch; there is no simulation stage to sit in.
+        const next = project.simulationSkipped ? 'fabrication' : 'simulation';
         this.setStage(
           project,
-          'simulation',
+          next,
           msg('log.stage.cadDone', { project: project.name, quality: project.quality, parts: project.parts.length }),
         );
         break;
+      }
       case 'simulation':
         this.setStage(project, 'fabrication', msg('log.stage.simClean', { project: project.name }));
         break;
@@ -1041,6 +1426,32 @@ export class Simulation {
     return t('note.working', { project: project.name, stage });
   }
 
+  /**
+   * The crew has planned it together. **This is where the crew size lands on quality** —
+   * from whoever actually sat down, not from the seats the pitch asked for — and where the
+   * table goes back for the next project.
+   */
+  private finishKickoff(project: ProjectData) {
+    const def = CATALOG_MAP[project.defId];
+    const crew = project.team.length + (this.player.project === project.id ? 1 : 0);
+    const fit = teamFit(crew, def.teamSize);
+    project.bonus += fit.quality;
+    refreshQuality(project);
+    project.kickedOff = true;
+    project.tableId = null;
+    this.setStage(
+      project,
+      'cad',
+      msg('build.log.kickoffDone', {
+        project: project.name,
+        crew,
+        fit: msg(`build.fit.${fit.key}` as MessageKey),
+        quality: project.quality,
+      }),
+      fit.quality < -0.05 ? 'warn' : 'info',
+    );
+  }
+
   private setStage(
     project: ProjectData,
     next: StageKey,
@@ -1048,6 +1459,8 @@ export class Simulation {
     kind: 'info' | 'good' | 'bad' | 'warn' = 'info',
   ) {
     project.stage = next;
+    // Whose bar is full is a question about *this* stage; the last one's work is banked.
+    project.contrib = {};
     if (next === 'fabrication') this.seeded.delete(project.id);
     // The team carries across stages — that is what allocating one means. Drift, not the
     // stage change, is what costs you people now.
@@ -1063,13 +1476,18 @@ export class Simulation {
     for (const m of this.members) {
       if (m.team === project.id) {
         m.team = null;
+        this.releaseSeat(m.id);
         m.note = t('note.projectDone', { project: project.name });
       }
     }
 
     const built = store.getState().shipped.filter((r) => r.defId === project.defId).length;
     const novelty = Math.max(REPEAT.floor, REPEAT.falloff ** built);
-    const payout = Math.round(def.payout * novelty);
+    // What it is worth now (§4d): the brief's price, what the market wants this week, how
+    // well it was designed for that market, and how good it actually turned out.
+    const demand = store.getState().market[project.category] ?? 1;
+    const appeal = project.appeal ?? 1;
+    const payout = Math.round(def.payout * novelty * demand * appeal * qualityPay(project.quality));
     if (payout > 0) {
       store.getState().earn(payout);
       this.incomeThisMonth += payout;
@@ -1087,7 +1505,11 @@ export class Simulation {
     this.recruit(project);
 
     const before = store.getState().era;
-    const hype = Math.round(def.hype * project.hypeMultiplier * novelty);
+    const hype = Math.round(
+      def.hype * project.hypeMultiplier * novelty * Math.sqrt(appeal) * qualityHype(project.quality),
+    );
+    // The market has one fewer thing to want.
+    store.getState().setMarket(coolMarket(store.getState().market, project.category));
     store.getState().recordShipped(hype, {
       id: project.id,
       defId: project.defId,
@@ -1392,11 +1814,18 @@ export class Simulation {
     resetStations();
     applyEraLayout(store.getState().era);
     for (const station of data.installedStations) {
-      const def = installStation(station.type, station.id, station.model, station.label);
+      // Bought furniture has no slot; it goes wherever there is room and the saved
+      // arrangement below puts it back on its own tile.
+      const def = station.furniture
+        ? installFurniture(station.type, station.id, station.label ?? MACHINE_LABEL[station.type], station.span ?? 1)
+        : installStation(station.type, station.id, station.model, station.label);
       if (def && FAB_MACHINES.includes(station.type)) this.machines.push(this.makeMachine(def));
     }
+    setStationLayout(store.getState().stationPlacements);
     this.applyPerks();
 
+    // Put the run's own applicant order back before anybody's reputation bar is read.
+    shuffleLadder(store.getState().ladder ?? []);
     const everyone = [...ROSTER, ...APPLICANTS];
     this.members = [];
     for (const saved of data.members) {
@@ -1415,6 +1844,7 @@ export class Simulation {
       if (saved.present) member.arrive(saved.tile);
     }
 
+    this.claims.clear();
     this.recruitClock = data.recruitClock;
     this.recentShip = data.recentShip ? { ...data.recentShip, tags: [...data.recentShip.tags] } : null;
 
@@ -1447,6 +1877,16 @@ export class Simulation {
 
   private addToTeam(project: ProjectData, member: MemberEntity, interest?: number) {
     if (project.team.includes(member.id)) return;
+    // One project per person (§3b). A proposer used to be signed straight onto their idea
+    // while still listed on whatever they were already doing, and the old team kept a ghost
+    // in its list — harmless while it only inflated a count, and a deadlock once a kickoff
+    // needed everybody on the list to sit down: the table waited for somebody who was busy
+    // at another desk.
+    if (member.team && member.team !== project.id) {
+      const old = this.project(member.team);
+      if (old) old.team = old.team.filter((id) => id !== member.id);
+      this.releaseSeat(member.id);
+    }
     project.team.push(member.id);
     member.team = project.id;
     member.interest = interest ?? TEAM.joinInterest * (0.5 + member.passionMatch(project.tags));
@@ -1454,6 +1894,7 @@ export class Simulation {
 
   private dropFromTeam(project: ProjectData, member: MemberEntity, cooldownHours: number) {
     project.team = project.team.filter((id) => id !== member.id);
+    this.releaseSeat(member.id);
     member.team = null;
     member.interest = 0;
     if (cooldownHours > 0) member.setCooldown(project.id, cooldownHours);
@@ -1522,6 +1963,8 @@ export class Simulation {
    * see the default difficulty — picking Hard and starting with four people was exactly that.
    */
   seedRoster() {
+    // Who turns up in what order is dealt fresh for every run (and kept for the save).
+    store.setState({ ladder: shuffleLadder(undefined, () => rng.range(0, 1)) });
     const wanted = DIFFICULTY_MAP[store.getState().difficulty].startMembers;
     const extra = [...APPLICANTS]
       .sort((a, b) => (a.repRequired ?? 0) - (b.repRequired ?? 0))
@@ -2058,12 +2501,19 @@ export class Simulation {
                 (d) => canBuild(d, state.ownedMachines) && !this.projects.some((p) => p.defId === d.id),
               );
           if (!def || state.cash - def.bomCost < -ECONOMY.overdraftLimit) break;
-          const crew = this.members
-            .filter((m) => !m.team)
-            .sort((a, b) => b.passionMatch(def.tags) - a.passionMatch(def.tags))
-            .slice(0, def.teamSize)
-            .map((m) => m.id);
-          if (this.pitch(def.id, offer?.id, crew)) {
+          // Best matches first, but never a crew whose shifts cannot all be in the room at
+          // once — the manager plans a kickoff that can actually happen (§4d).
+          const crew: MemberEntity[] = [];
+          for (const m of this.members
+            .filter((x) => !x.team)
+            .sort((a, b) => b.passionMatch(def.tags) - a.passionMatch(def.tags))) {
+            if (crew.length >= Math.min(def.teamSize, this.maxTableSeats())) break;
+            const clash = crew.some(
+              (c) => c.employment === 'part-time' && m.employment === 'part-time' && c.shift !== m.shift,
+            );
+            if (!clash) crew.push(m);
+          }
+          if (this.pitch(def.id, offer?.id, crew.map((m) => m.id))) {
             this.log(msg('log.role.started', { member: member.name, item: def.name }), 'good');
           }
           break;
@@ -2082,6 +2532,7 @@ export class Simulation {
     }
     this.members = this.members.filter((m) => m.id !== id);
     this.plans.delete(id);
+    this.releaseSeat(id);
     this.log(msg('log.member.offBooks', { member: member.name }), 'warn');
   }
 
@@ -2155,18 +2606,45 @@ export class Simulation {
    * `draftTeam` is the crew picked on the pitch screen — each of them is *asked*, so some
    * may still say no (§3b).
    */
-  pitch(defId: string, offerId?: string, draftTeam: string[] = []): boolean {
+  pitch(defId: string, offerId?: string, draftTeam: string[] = [], plan?: ProjectPlan): boolean {
     const state = store.getState();
     const def = CATALOG_MAP[defId];
     if (!def || !canBuild(def, state.ownedMachines)) {
       this.log(msg('log.pitch.cantBuild'), 'bad');
       return false;
     }
+    // Every project is planned round a table (§4d), so the crew it is planned for has to
+    // fit at one the space owns. The wizard never offers a size that does not; the
+    // Project Manager and the harnesses take the brief's size, capped to what there is.
+    const maxSeats = this.maxTableSeats();
+    if (maxSeats <= 0) {
+      this.log(msg('build.log.noTable'), 'bad');
+      return false;
+    }
+    const chosen = plan ?? defaultPlan(def, maxSeats);
+    if (chosen.seats > maxSeats) {
+      this.log(msg('build.log.crewTooBig', { count: chosen.seats }), 'warn');
+      return false;
+    }
+    const summary = planProject(def, chosen, state.ownedMachines);
+    if (summary.missing.length) {
+      this.log(
+        msg('build.log.designNeeds', { machines: summary.missing.map((type) => MACHINE_LABEL[type]).join(' + ') }),
+        'warn',
+      );
+      return false;
+    }
     if (!this.chargeHours('pitch')) return false;
+    // Licences and tools are paid there and then, like the parts.
+    if (summary.tooling > 0 && !state.spend(summary.tooling)) {
+      this.log(msg('build.log.licencesOut', { item: def.name }), 'bad');
+      return false;
+    }
 
     const offer = offerId ? state.backlog.find((e) => e.id === offerId) : undefined;
     const entry: BacklogEntry = offer ?? { id: uid('offer'), defId, source: 'catalog' };
-    const project = startProject(entry, this.day);
+    const project = startProject(entry, this.day, chosen, state.ownedMachines);
+    project.spent += summary.tooling;
 
     // Owning a reflow oven takes the misery out of electronics assembly.
     if (state.ownedMachines.includes('reflow') && def.category === 'electronics') {
@@ -2237,6 +2715,7 @@ export class Simulation {
     for (const m of this.members) {
       if (m.team || !m.present || project.team.length >= project.teamSize) continue;
       if (m.isCoolingOff(projectId)) continue;
+      if (!this.canMeet(project, m)) continue;
       const match = m.passionMatch(project.tags) + DRIFT.repitchBonus;
       if (match * (0.45 + stage.appeal * 0.55) >= DRIFT.signupThreshold && rng.chance(0.6)) {
         this.addToTeam(project, m);
@@ -2337,6 +2816,8 @@ export class Simulation {
     const project = this.project(projectId);
     if (!project || project.stage !== 'simulation') return;
     project.simulationSkipped = true;
+    // The risk lives in one multiplier (see `resolveTest`), so skipping multiplies it in.
+    project.testRisk = (project.testRisk ?? 1) * TEST.skippedSimPenalty;
     this.setStage(project, 'fabrication', msg('log.stage.simSkipped', { project: project.name }), 'warn');
   }
 
@@ -2423,8 +2904,27 @@ export class Simulation {
       members: this.members.map((m) => {
         const snap = m.snapshot();
         for (const project of this.projects) snap.affinity[project.id] = m.passionMatch(project.tags);
+        snap.seat = this.seatFor(m);
+        snap.share = this.shareFor(m);
         return snap;
       }),
+      tables: STATIONS.filter((s) => isTable(s.type)).map(
+        (s): TableSnapshot => ({
+          id: s.id,
+          type: s.type,
+          label: s.label,
+          seats: seatsOf(s) ?? 0,
+          projectId: this.projects.find((p) => p.tableId === s.id)?.id ?? null,
+        }),
+      ),
+      waitingFor: [...this.wanting.values()].reduce<Partial<Record<MachineType, number>>>(
+        (out, type) => ({ ...out, [type]: (out[type] ?? 0) + 1 }),
+        {},
+      ),
+      seats: STATIONS.reduce<Partial<Record<MachineType, number>>>(
+        (out, s) => ({ ...out, [s.type]: (out[s.type] ?? 0) + (seatsOf(s) ?? 0) }),
+        {},
+      ),
       machines,
       projects: this.projects.map((p) => structuredClone(p)),
       rivals: this.rivals.map((r) => ({ ...r })),
@@ -2437,6 +2937,8 @@ export class Simulation {
         const snap = this.player.playerSnapshot();
         const project = this.player.project ? this.project(this.player.project) : null;
         snap.stage = project ? project.stage : null;
+        snap.seat = this.seatFor(this.player);
+        snap.share = this.shareFor(this.player);
         return snap;
       })(),
     });

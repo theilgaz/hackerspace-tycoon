@@ -74,6 +74,8 @@ export class PlayerEntity extends MemberEntity {
       stage: null,
       tile: this.tile,
       pos: { ...this.pos },
+      seat: null,
+      share: null,
       note: this.note,
       skills: { ...this.data.skills },
     };

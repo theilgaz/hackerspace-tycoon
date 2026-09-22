@@ -99,8 +99,10 @@ export const RIVALS: RivalDef[] = [
     startMembers: 6,
     maxMembers: 14,
     startCash: 9000,
-    shipPace: 0.4,
-    repPerProject: 68,
+    // Trimmed a touch (0.4 → 0.38, 68 → 65): about 9% less reputation over a run. Still the
+    // busiest space in the field and still the usual second place — just not a wall.
+    shipPace: 0.38,
+    repPerProject: 65,
     cashPerProject: 350,
     cashPerDay: 130,
     repPerMember: 250,
@@ -207,9 +209,11 @@ export const RIVALS: RivalDef[] = [
     icon: 'building',
     colour: '#d99a5c',
     startMembers: 11,
-    // Fifteen is the ceiling anything gets: a complete roster is you plus fourteen, so
-    // Biggest Crew stays winnable — but only by hiring everybody.
-    maxMembers: 15,
+    // Set against what a player actually has on 1 December, not against the full cast: at
+    // fifteen the player took Biggest Crew every night (23 by December on normal), at
+    // twenty-six Dallas did. Twenty-two makes it a contest — a committed hirer edges it,
+    // a hard start does not.
+    maxMembers: 22,
     startCash: 9000,
     shipPace: 0.203,
     repPerProject: 108,

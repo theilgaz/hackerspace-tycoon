@@ -1,15 +1,17 @@
 import * as THREE from 'three';
 import { caseLocale } from '@/i18n';
-import type { MachineType, RuntimeSnapshot } from '@/game/types';
+import type { MachineType, RuntimeSnapshot, Seat } from '@/game/types';
 import {
   GRID,
   STATIONS,
   STATION_MAP,
   amenityPlacement,
   amenityTileFree,
-  stationTileFree,
+  footprint,
+  stationFits,
   type StationDef,
 } from '@/machines/layout';
+import { FURNITURE_MAP } from '@/utils/furniture';
 import { amenityDef, type AmenityDef } from '@/utils/amenities';
 import { MACHINE } from '@/utils/constants';
 import { iconDataUrl, type IconName } from '@/ui/icons';
@@ -50,6 +52,8 @@ const STATION_TONE: Record<string, string> = {
   bench: '#f0b429',
   assembly: '#b07d4a',
   lounge: '#a2564c',
+  'table-small': '#c9a26b',
+  'table-large': '#c9a26b',
 };
 
 /** Stable colour for recruits, matching the dot the UI shows. */
@@ -362,10 +366,15 @@ export class SpaceView {
       // station may only ever face along an axis, whatever its stand tile happens to be.
       const quarter = Math.PI / 2;
       const yaw = dx || dy ? Math.round(Math.atan2(dx, dy) / quarter) * quarter : 0;
+      // A two-tile table sits across both of its tiles, and its bay runs the same way.
+      const tiles = footprint(def);
+      const cx = tiles.reduce((sum, t) => sum + t.x, 0) / tiles.length;
+      const cy = tiles.reduce((sum, t) => sum + t.y, 0) / tiles.length;
       zone.rotation.y = yaw;
-      zone.position.copy(toWorld(def.tile.x + dx * 0.5, def.tile.y + dy * 0.5, 0.012));
+      zone.scale.x = tiles.length;
+      zone.position.copy(toWorld(cx + dx * 0.5, cy + dy * 0.5, 0.012));
       node.rotation.y = yaw;
-      node.position.copy(toWorld(def.tile.x, def.tile.y));
+      node.position.copy(toWorld(cx, cy));
       node.position.y = def.id === this.placing ? 0.16 : 0;
     }
   }
@@ -391,6 +400,29 @@ export class SpaceView {
   amenityWorld(id: string): THREE.Vector3 | null {
     const node = this.amenityNodes.get(id);
     return node ? node.position.clone().setY(node.position.y + 0.95) : null;
+  }
+
+  /**
+   * A fresh copy of a buyable thing's model, for the Build panel's thumbnails. `furniture:`
+   * keys are stations, `amenity:` keys are comforts and decor — the same builders the room
+   * uses, so the picture on the card is the thing that turns up.
+   */
+  previewModel(key: string): THREE.Object3D | null {
+    const [kind, id] = key.split(':');
+    if (kind === 'furniture') {
+      const def = FURNITURE_MAP[id];
+      if (!def) return null;
+      return this.buildStation({
+        id: `preview-${id}`,
+        type: def.type,
+        label: def.name,
+        tile: { x: 0, y: 0 },
+        stand: { x: 0, y: 1 },
+        span: def.span,
+      });
+    }
+    const def = amenityDef(id);
+    return def ? this.buildProp(def) : null;
   }
 
   /** Objects the camera can pick against for hover and for picking something up. */
@@ -426,9 +458,13 @@ export class SpaceView {
       case 'assembly':
         return this.buildTable('#b07d4a');
       case 'bench':
-        return this.buildTable('#8a6f52', true);
+        return this.buildHardware();
       case 'lounge':
         return this.buildLounge();
+      case 'table-small':
+        return this.buildProjectTable(1);
+      case 'table-large':
+        return this.buildProjectTable(2);
       default:
         return this.buildTable('#7d8390');
     }
@@ -531,6 +567,10 @@ export class SpaceView {
     return g;
   }
 
+  /**
+   * The Software Station: two screens, a keyboard and a chair on the user's side. It has to
+   * read as *a place one person sits* at iso scale, because one person is all it seats (§4d).
+   */
   private buildDesk(screenColor: string): THREE.Group {
     const g = new THREE.Group();
     const top = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.08, 0.6), mat('#9c7048'));
@@ -542,13 +582,106 @@ export class SpaceView {
       leg.position.set(sx, 0.31, sz);
       g.add(leg);
     }
-    const screen = new THREE.Mesh(
-      new THREE.BoxGeometry(0.56, 0.36, 0.04),
-      new THREE.MeshStandardMaterial({ color: screenColor, emissive: '#12384d', flatShading: true }),
+    for (const [sx, turn] of [[-0.2, 0.2], [0.22, -0.2]] as [number, number][]) {
+      const screen = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.26, 0.035),
+        new THREE.MeshStandardMaterial({ color: screenColor, emissive: '#12384d', flatShading: true }),
+      );
+      screen.position.set(sx, 0.86, -0.17);
+      screen.rotation.set(-0.1, turn, 0);
+      g.add(screen);
+      const stand = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), mat('#2b313b'));
+      stand.position.set(sx, 0.72, -0.19);
+      g.add(stand);
+    }
+    const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.025, 0.11), mat('#2b313b'));
+    keyboard.position.set(0, 0.675, 0.1);
+    g.add(keyboard);
+    g.add(this.chair(0, 0.52));
+    return g;
+  }
+
+  /** A task chair, placed on the user's side (+z) of whatever it belongs to. */
+  private chair(x: number, z: number, turn = 0, tone = '#343b47'): THREE.Group {
+    const c = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.3), mat(tone));
+    seat.position.y = 0.36;
+    seat.castShadow = true;
+    c.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.05), mat(tone));
+    back.position.set(0, 0.54, 0.14);
+    c.add(back);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.33, 0.05), mat('#1f242c'));
+    post.position.y = 0.17;
+    c.add(post);
+    c.position.set(x, 0, z);
+    c.rotation.y = turn;
+    return c;
+  }
+
+  /**
+   * The Hardware Station: an iron, a scope, a bench supply and the fume extractor nobody
+   * switches on. Electronics assembly happens here now, one pair of hands at a time.
+   */
+  private buildHardware(): THREE.Group {
+    const g = this.buildTable('#8a6f52', true);
+    const scope = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.18), mat('#d6d9de'));
+    scope.position.set(-0.24, 0.74, -0.2);
+    g.add(scope);
+    const trace = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.1, 0.01),
+      new THREE.MeshStandardMaterial({ color: '#7ac74f', emissive: '#2f6b1f', flatShading: true }),
     );
-    screen.position.set(0, 0.86, -0.18);
-    screen.rotation.x = -0.12;
-    g.add(screen);
+    trace.position.set(-0.27, 0.75, -0.105);
+    g.add(trace);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.36, 6), mat('#8d98a8'));
+    arm.position.set(0.36, 0.84, -0.22);
+    arm.rotation.z = 0.35;
+    g.add(arm);
+    const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.08, 8), mat('#f0b429'));
+    hood.position.set(0.3, 1.0, -0.18);
+    g.add(hood);
+    g.add(this.chair(0, 0.52, 0, '#3a3f4a'));
+    return g;
+  }
+
+  /**
+   * A project table (§4d): a square top with four chairs, or a long one with ten. Nothing
+   * is built here — this is where a crew sits down together and agrees what they are
+   * building, and the chairs are what make that legible from the iso camera.
+   */
+  private buildProjectTable(span: number): THREE.Group {
+    const g = new THREE.Group();
+    const length = span === 1 ? 0.8 : 1.84;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(length, 0.07, 0.8), mat('#c9a26b'));
+    top.position.y = 0.58;
+    top.castShadow = true;
+    top.receiveShadow = true;
+    g.add(top);
+    const legX = length / 2 - 0.08;
+    for (const [sx, sz] of [[-legX, -0.32], [legX, -0.32], [-legX, 0.32], [legX, 0.32]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.58, 0.07), mat('#4c5360'));
+      leg.position.set(sx, 0.29, sz);
+      g.add(leg);
+    }
+    // Paper on the table: a plan being argued over.
+    const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.01, 0.24), mat('#e8ecf2'));
+    sheet.position.set(-0.08, 0.62, 0.02);
+    sheet.rotation.y = 0.2;
+    g.add(sheet);
+    const laptop = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.02, 0.18), mat('#2b313b'));
+    laptop.position.set(0.18 * span, 0.625, -0.08);
+    g.add(laptop);
+    // Chairs pulled up on every side, pointing in.
+    const chairs = span === 1
+      ? [[0, 0.62, 0], [0, -0.62, Math.PI], [0.62, 0, Math.PI / 2], [-0.62, 0, -Math.PI / 2]]
+      : [
+          ...[-0.68, -0.23, 0.23, 0.68].map((x) => [x, 0.62, 0]),
+          ...[-0.68, -0.23, 0.23, 0.68].map((x) => [x, -0.62, Math.PI]),
+          [1.16, 0, Math.PI / 2],
+          [-1.16, 0, -Math.PI / 2],
+        ];
+    for (const [x, z, turn] of chairs) g.add(this.chair(x, z, turn, '#5a4a3c'));
     return g;
   }
 
@@ -621,17 +754,31 @@ export class SpaceView {
     present: boolean,
     pos: { x: number; y: number },
     activity: string,
+    seat: Seat | null = null,
   ) {
     let node = this.people.get(id);
     if (!node) {
       node = this.buildPerson(id, isPlayer);
       this.people.set(id, node);
     }
+    const arriving = !node.visible;
     node.visible = present;
     if (!present) return;
     const world = toWorld(pos.x, pos.y);
-    node.position.x = world.x;
-    node.position.z = world.z;
+    // Eased rather than snapped, so somebody sitting down slides into the chair instead of
+    // teleporting from the stand tile to their seat — except on the way in the door, where
+    // easing would slide them in from wherever they were standing yesterday.
+    const ease = arriving ? 1 : 0.25;
+    node.position.x += (world.x - node.position.x) * ease;
+    node.position.z += (world.z - node.position.z) * ease;
+    if (seat) {
+      // Sitting: lowered into the chair and turned to face the table or the screen.
+      const look = toWorld(seat.look.x, seat.look.y);
+      node.rotation.y = Math.atan2(look.x - world.x, look.z - world.z) +
+        (activity === 'working' ? Math.sin(this.elapsed * 2.5 + world.x) * 0.12 : 0);
+      node.position.y = -0.1;
+      return;
+    }
     node.position.y = activity === 'walking' ? Math.abs(Math.sin(this.elapsed * 9)) * 0.07 : 0;
     node.rotation.y = activity === 'working' ? Math.sin(this.elapsed * 2.5) * 0.18 : 0;
   }
@@ -697,7 +844,7 @@ export class SpaceView {
         // A station and a sofa have different rules about where they may stand — a bench
         // also needs a free tile in front of it — so the marker asks whichever applies.
         const legal = STATION_MAP[this.placing]
-          ? stationTileFree({ x, y }, this.placing)
+          ? stationFits(this.placing, { x, y })
           : amenityTileFree({ x, y }, this.placing);
         if (!legal) continue;
         const mark = new THREE.Mesh(
@@ -763,17 +910,33 @@ export class SpaceView {
     this.liftPlacing();
   }
 
-  /** Wall-mounted kit hangs off the back wall, which is the one the camera reads across. */
+  /**
+   * Wall-mounted kit hangs off the back wall, which is the one the camera reads across. The
+   * air conditioning has its corner and the acoustic panels the middle; everything else —
+   * the neon, the whiteboard, the print — takes the next spot along from the left, in the
+   * order it was bought, so two things never hang on the same nail.
+   */
   private placeOnWall(node: THREE.Object3D, def: AmenityDef) {
     const back = toWorld((GRID.width - 1) / 2, -0.6);
     node.position.z = back.z + 0.1;
     if (def.shape === 'ac') {
       node.position.x = toWorld(GRID.width - 1.4, 0).x;
       node.position.y = 1.34;
-    } else {
+      return;
+    }
+    if (def.shape === 'acoustics') {
       node.position.x = back.x;
       node.position.y = 1.16;
+      return;
     }
+    const hung = this.amenityIds.filter((id) => {
+      const other = amenityDef(id);
+      return other?.mount === 'wall' && other.shape !== 'ac' && other.shape !== 'acoustics';
+    });
+    const index = Math.max(0, hung.indexOf(def.id));
+    const spots = [0.6, 2.6, 4.6, 1.6, 3.6];
+    node.position.x = toWorld(Math.min(GRID.width - 2, spots[index % spots.length]), 0).x;
+    node.position.y = 1.42;
   }
 
   private buildProp(def: AmenityDef): THREE.Object3D {
@@ -794,6 +957,30 @@ export class SpaceView {
         return this.propAquarium(def.tone);
       case 'arcade':
         return this.propArcade(def.tone);
+      case 'plant':
+        return this.propPlant(def.tone);
+      case 'tree':
+        return this.propTree(def.tone);
+      case 'duck':
+        return this.propDuck(def.tone);
+      case 'tux':
+        return this.propTux();
+      case 'bookshelf':
+        return this.propBookshelf(def.tone);
+      case 'beanbag':
+        return this.propBeanbags(def.tone);
+      case 'rack':
+        return this.propRack(def.tone);
+      case 'neon':
+        return this.propNeon(def.tone);
+      case 'whiteboard':
+        return this.propWhiteboard();
+      case 'poster':
+        return this.propPoster(def.tone);
+      case 'terminal':
+        return this.propTerminal(def.tone);
+      case 'lava':
+        return this.propLava(def.tone);
       default:
         return this.propAcoustics(def.tone);
     }
@@ -1026,6 +1213,304 @@ export class SpaceView {
     return g;
   }
 
+  // --- Decor (§4d) ----------------------------------------------------------
+
+  private pot(radius: number, height: number, tone = '#b4653f'): THREE.Mesh {
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 0.78, height, 10), mat(tone));
+    pot.position.y = height / 2;
+    pot.castShadow = true;
+    return pot;
+  }
+
+  private propPlant(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    g.add(this.pot(0.17, 0.3));
+    // Big split leaves fanning out of the pot, each a flat tilted slab.
+    const leaf = mat(tone);
+    for (let i = 0; i < 7; i += 1) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.34), leaf);
+      const angle = (i / 7) * Math.PI * 2;
+      blade.position.set(Math.sin(angle) * 0.13, 0.52 + (i % 3) * 0.1, Math.cos(angle) * 0.13);
+      blade.rotation.set(-0.6 * Math.cos(angle), angle, 0.6 * Math.sin(angle) * 0.2);
+      blade.castShadow = true;
+      g.add(blade);
+    }
+    return g;
+  }
+
+  private propTree(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const tub = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.34, 0.44), mat('#6b4a33'));
+    tub.position.y = 0.17;
+    tub.castShadow = true;
+    g.add(tub);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.9, 6), mat('#6f5a44'));
+    trunk.position.y = 0.72;
+    g.add(trunk);
+    const leaves = mat(tone);
+    for (const [x, y, z, r] of [
+      [0, 1.28, 0, 0.3],
+      [0.18, 1.12, 0.08, 0.22],
+      [-0.16, 1.16, -0.06, 0.22],
+      [0.04, 1.02, -0.18, 0.18],
+    ]) {
+      const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), leaves);
+      crown.position.set(x, y, z);
+      crown.castShadow = true;
+      g.add(crown);
+    }
+    return g;
+  }
+
+  private propDuck(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), mat(tone));
+    body.scale.set(1.15, 0.8, 1);
+    body.position.y = 0.24;
+    body.castShadow = true;
+    g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), mat(tone));
+    head.position.set(0, 0.56, 0.12);
+    head.castShadow = true;
+    g.add(head);
+    const beak = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.14), mat('#e2725b'));
+    beak.position.set(0, 0.53, 0.3);
+    g.add(beak);
+    for (const sx of [-0.08, 0.08]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 5), mat('#1f242c'));
+      eye.position.set(sx, 0.61, 0.26);
+      g.add(eye);
+    }
+    return g;
+  }
+
+  private propTux(): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), mat('#1f2329'));
+    body.scale.set(1, 1.35, 0.9);
+    body.position.y = 0.34;
+    body.castShadow = true;
+    g.add(body);
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), mat('#eef1f5'));
+    belly.scale.set(0.85, 1.2, 0.5);
+    belly.position.set(0, 0.3, 0.12);
+    g.add(belly);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), mat('#1f2329'));
+    head.position.set(0, 0.72, 0.02);
+    head.castShadow = true;
+    g.add(head);
+    const beak = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.1), mat('#f0b429'));
+    beak.position.set(0, 0.69, 0.17);
+    g.add(beak);
+    for (const sx of [-0.09, 0.09]) {
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.12), mat('#f0b429'));
+      foot.position.set(sx, 0.015, 0.1);
+      g.add(foot);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 5), mat('#ffffff'));
+      eye.position.set(sx * 0.6, 0.76, 0.14);
+      g.add(eye);
+    }
+    return g;
+  }
+
+  private propBookshelf(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const frame = mat(tone);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.84, 1.3, 0.05), frame);
+    back.position.set(0, 0.65, -0.14);
+    back.castShadow = true;
+    g.add(back);
+    for (const sx of [-0.4, 0.4]) {
+      const side = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.3, 0.32), frame);
+      side.position.set(sx, 0.65, 0);
+      g.add(side);
+    }
+    const colours = ['#c0584a', '#3f7ea8', '#e0c36a', '#4f6f52', '#d6d9de', '#8a5a3c', '#c58ef0'];
+    [0.04, 0.44, 0.84, 1.24].forEach((y, row) => {
+      const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.03, 0.3), frame);
+      shelf.position.set(0, y, 0);
+      g.add(shelf);
+      if (row === 3) return;
+      let x = -0.34;
+      let i = row * 3;
+      while (x < 0.32) {
+        const w = 0.05 + ((i * 7) % 4) * 0.012;
+        const h = 0.24 + ((i * 5) % 3) * 0.04;
+        const book = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.22), mat(colours[i % colours.length]));
+        book.position.set(x + w / 2, y + 0.015 + h / 2, 0.02);
+        g.add(book);
+        x += w + 0.012;
+        i += 1;
+      }
+    });
+    return g;
+  }
+
+  private propBeanbags(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    for (const [x, z, colour] of [[-0.2, 0.04, tone], [0.24, -0.08, '#3f7ea8']] as [number, number, string][]) {
+      const bag = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), mat(colour));
+      bag.scale.set(1, 0.62, 1);
+      bag.position.set(x, 0.16, z);
+      bag.castShadow = true;
+      g.add(bag);
+      const dent = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), mat(colour));
+      dent.scale.set(1, 0.45, 1);
+      dent.position.set(x, 0.3, z - 0.1);
+      g.add(dent);
+    }
+    return g;
+  }
+
+  private propRack(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const cabinet = new THREE.Mesh(new THREE.BoxGeometry(0.58, 1.4, 0.56), mat('#23272f'));
+    cabinet.position.y = 0.7;
+    cabinet.castShadow = true;
+    g.add(cabinet);
+    for (let i = 0; i < 6; i += 1) {
+      const unit = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.02), mat('#343b47'));
+      unit.position.set(0, 0.26 + i * 0.18, 0.285);
+      g.add(unit);
+      // Blinkenlights: a couple of LEDs per unit, lit from inside.
+      for (const [lx, colour] of [[-0.18, tone], [-0.12, i % 2 ? '#7ac74f' : tone], [0.16, '#f0b429']] as [number, string][]) {
+        const led = new THREE.Mesh(
+          new THREE.BoxGeometry(0.025, 0.025, 0.02),
+          new THREE.MeshStandardMaterial({ color: colour, emissive: new THREE.Color(colour), emissiveIntensity: 0.9 }),
+        );
+        led.position.set(lx, 0.26 + i * 0.18, 0.3);
+        g.add(led);
+      }
+    }
+    return g;
+  }
+
+  /** `</>` in pink tubing: three bent strokes of emissive box, which is all a neon sign is. */
+  private propNeon(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const glow = new THREE.MeshStandardMaterial({
+      color: tone,
+      emissive: new THREE.Color(tone),
+      emissiveIntensity: 1.2,
+      flatShading: true,
+    });
+    const stroke = (x: number, y: number, length: number, angle: number) => {
+      const tube = new THREE.Mesh(new THREE.BoxGeometry(length, 0.045, 0.045), glow);
+      tube.position.set(x, y, 0.02);
+      tube.rotation.z = angle;
+      g.add(tube);
+    };
+    stroke(-0.42, 0.09, 0.26, 0.62);
+    stroke(-0.42, -0.09, 0.26, -0.62);
+    stroke(0.0, 0.0, 0.46, 1.2);
+    stroke(0.42, 0.09, 0.26, -0.62);
+    stroke(0.42, -0.09, 0.26, 0.62);
+    const board = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 0.02), mat('#1b1f26'));
+    board.position.z = -0.02;
+    g.add(board);
+    return g;
+  }
+
+  private propWhiteboard(): THREE.Group {
+    const g = new THREE.Group();
+    const board = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.62, 0.03), mat('#f2f4f7'));
+    g.add(board);
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.68, 0.02), mat('#9aa3af'));
+    frame.position.z = -0.02;
+    g.add(frame);
+    // Scribbles: boxes and arrows in marker colours.
+    for (const [x, y, w, h, colour] of [
+      [-0.38, 0.12, 0.28, 0.16, '#3f7ea8'],
+      [0.02, 0.12, 0.24, 0.16, '#3f7ea8'],
+      [0.36, -0.1, 0.26, 0.2, '#c0584a'],
+      [-0.2, -0.16, 0.5, 0.025, '#2f6b4f'],
+    ] as [number, number, number, number, string][]) {
+      const mark = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.005), mat(colour));
+      mark.position.set(x, y, 0.02);
+      if (h > 0.05) (mark.material as THREE.MeshStandardMaterial).opacity = 0.9;
+      g.add(mark);
+    }
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.03, 0.06), mat('#9aa3af'));
+    tray.position.set(0, -0.33, 0.04);
+    g.add(tray);
+    return g;
+  }
+
+  private propPoster(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.8, 0.03), mat('#1f242c'));
+    g.add(frame);
+    const paper = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.72, 0.01), mat('#0f3b36'));
+    paper.position.z = 0.02;
+    g.add(paper);
+    const trace = new THREE.MeshStandardMaterial({ color: tone, emissive: new THREE.Color(tone), emissiveIntensity: 0.4 });
+    for (const [x, y, w, h] of [
+      [-0.12, 0.2, 0.26, 0.02],
+      [0.0, 0.08, 0.02, 0.26],
+      [0.1, -0.06, 0.22, 0.02],
+      [-0.14, -0.2, 0.02, 0.2],
+      [0.14, 0.24, 0.02, 0.12],
+    ]) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.01), trace);
+      line.position.set(x, y, 0.03);
+      g.add(line);
+    }
+    for (const [x, y] of [[-0.12, 0.2], [0.1, -0.06], [-0.14, -0.3], [0.14, 0.3]]) {
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.01), mat('#e0c36a'));
+      pad.position.set(x, y, 0.035);
+      g.add(pad);
+    }
+    return g;
+  }
+
+  private propTerminal(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.62, 0.46), mat('#3b4250'));
+    plinth.position.y = 0.31;
+    plinth.castShadow = true;
+    g.add(plinth);
+    const crt = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.4, 0.42), mat(tone));
+    crt.position.y = 0.84;
+    crt.castShadow = true;
+    g.add(crt);
+    const screen = new THREE.Mesh(
+      new THREE.BoxGeometry(0.34, 0.26, 0.02),
+      new THREE.MeshStandardMaterial({ color: '#0e2a14', emissive: new THREE.Color('#2fbf5a'), emissiveIntensity: 0.55 }),
+    );
+    screen.position.set(0, 0.86, 0.215);
+    g.add(screen);
+    const keys = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.04, 0.16), mat(tone));
+    keys.position.set(0, 0.64, 0.3);
+    g.add(keys);
+    return g;
+  }
+
+  private propLava(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.42, 10), mat('#3b4250'));
+    stool.position.y = 0.21;
+    g.add(stool);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 0.1, 10), mat('#aab3c0'));
+    base.position.y = 0.47;
+    g.add(base);
+    const glass = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.08, 0.3, 10),
+      new THREE.MeshStandardMaterial({ color: tone, transparent: true, opacity: 0.7, emissive: new THREE.Color(tone), emissiveIntensity: 0.6 }),
+    );
+    glass.position.y = 0.67;
+    g.add(glass);
+    const blob = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 8, 6),
+      new THREE.MeshStandardMaterial({ color: '#ffd23d', emissive: new THREE.Color('#ffb020'), emissiveIntensity: 0.8 }),
+    );
+    blob.position.y = 0.72;
+    g.add(blob);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.06, 10), mat('#aab3c0'));
+    cap.position.y = 0.85;
+    g.add(cap);
+    return g;
+  }
+
   private propAcoustics(tone: string): THREE.Group {
     const g = new THREE.Group();
     // A run of panels across the back wall, staggered, the way they actually get put up.
@@ -1073,10 +1558,11 @@ export class SpaceView {
     this.syncStations();
 
     for (const m of runtime.members) {
-      this.placePerson(m.id, false, m.present, m.pos, m.activity);
+      this.placePerson(m.id, false, m.present, m.seat ?? m.pos, m.activity, m.seat);
     }
     if (runtime.player) {
-      this.placePerson('player', true, runtime.player.present, runtime.player.pos, runtime.player.activity);
+      const p = runtime.player;
+      this.placePerson('player', true, p.present, p.seat ?? p.pos, p.activity, p.seat);
     }
 
     for (const machine of runtime.machines) {

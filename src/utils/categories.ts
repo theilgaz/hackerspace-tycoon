@@ -24,7 +24,7 @@ export interface CategoryProfile {
 
 /** Stage renames shared by everything that is written rather than built. */
 const SOFTWARE_STAGES: Partial<Record<StageKey, string>> = {
-  concept: 'Spec',
+  concept: 'Kickoff',
   cad: 'Architecture',
   simulation: 'Prototype',
   fabrication: 'Build Pipeline',
@@ -41,6 +41,7 @@ export const CATEGORY_PROFILES: Record<ProjectCategory, CategoryProfile> = {
     accent: '#f0b429',
     blurb: 'Boards, power and solder.',
     tags: ['electronics', 'design'],
+    stageStations: { assembly: 'bench' },
   },
   software: {
     label: 'Software',
@@ -74,6 +75,7 @@ export const CATEGORY_PROFILES: Record<ProjectCategory, CategoryProfile> = {
     blurb: 'Small connected things that must never need rebooting.',
     tags: ['iot', 'electronics', 'software'],
     stageSkills: { simulation: 'software' },
+    stageStations: { assembly: 'bench' },
   },
   radio: {
     label: 'Radio',
@@ -82,6 +84,7 @@ export const CATEGORY_PROFILES: Record<ProjectCategory, CategoryProfile> = {
     blurb: 'Antennas, range tests, and arguing about SWR.',
     tags: ['radio', 'electronics'],
     stageLabels: { simulation: 'RF Sim', test: 'Range Test' },
+    stageStations: { assembly: 'bench' },
   },
   tooling: {
     label: 'Tooling',
@@ -99,6 +102,7 @@ export const CATEGORY_PROFILES: Record<ProjectCategory, CategoryProfile> = {
     tags: ['civic', 'iot'],
     stageLabels: { release: 'Publish' },
     stageSkills: { release: 'docs' },
+    stageStations: { assembly: 'bench' },
   },
   retro: {
     label: 'Retro',
@@ -106,6 +110,7 @@ export const CATEGORY_PROFILES: Record<ProjectCategory, CategoryProfile> = {
     accent: '#f08fa4',
     blurb: 'Old silicon, warm glow, unreasonable effort.',
     tags: ['retro', 'electronics', 'design'],
+    stageStations: { assembly: 'bench' },
   },
   home: {
     label: 'Home',
