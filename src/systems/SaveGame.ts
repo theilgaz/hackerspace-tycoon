@@ -144,10 +144,13 @@ function migrate(file: SaveFile): SaveFile {
   // from wherever it was saved on its own.
   if (!Array.isArray(store.amenities)) store.amenities = [];
 
-  // v7 — comforts can be moved and turned. A file from before that has everybody standing
-  // where the room put them, which is exactly what an empty map means.
+  // v7 — the room can be rearranged. A file from before that has everything standing where
+  // the room put it, which is exactly what an empty map means.
   if (!store.amenityPlacements || typeof store.amenityPlacements !== 'object') {
     store.amenityPlacements = {};
+  }
+  if (!store.stationPlacements || typeof store.stationPlacements !== 'object') {
+    store.stationPlacements = {};
   }
 
   file.version = SAVE_VERSION;

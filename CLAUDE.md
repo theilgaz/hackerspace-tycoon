@@ -318,28 +318,50 @@ grid (§11 primitives, uniform height, clamped blurb), each showing a three-bar 
 a tick when chosen so the selection is not carried by colour alone, and `₺x to start`. A
 footnote says the rest out loud: difficulty moves the other spaces and nothing else.
 
-**Five other hackerspaces are simulated** in `src/systems/RivalSystem.ts`, defined in
+**Seventeen other hackerspaces are simulated** in `src/systems/RivalSystem.ts`, defined in
 `src/utils/rivals.ts`. They are not running the real pipeline — they are a pace-setter — but
-their shapes differ on purpose, so the leaderboard is not one ladder:
+their shapes differ on purpose, so the leaderboard is not one ladder. They come in three tiers.
 
-The five are **real hackerspaces**, used as a nod rather than a portrait. The numbers are pure
+Fourteen are **real hackerspaces**, used as a nod rather than a portrait. The numbers are pure
 balance; the tone is affectionate on purpose. Blurbs should say what a space is actually known
 for — these are living communities, and the earlier invented rivals carried jokes at their
-expense that would not be fair aimed at a real one.
+expense that would not be fair aimed at a real one. **The three underdogs are invented**, and
+are the only spaces allowed to look bad for exactly that reason.
 
-| Space | Shape |
-|---|---|
-| c-base | Famous and slow. Enormous reputation per build. |
-| Noisebridge | Famous, radically open, permanently broke. |
-| NYC Resistor | Small, influential, electronics-meets-craft. |
-| Metalab | One of the originals. Steady and well regarded. |
-| London Hackspace | Big crew, strong dues income. |
-| Dallas Makerspace | The biggest crew of all, and the deepest pockets. |
-| Xinchejian | Hardware, fast iteration, close to the supply chain. |
-| HacDC | Radio, a ground station, and a class every week. |
-| Konya Hackerspace | The peer down the road. Steady on every axis. |
-| Tokyo HackerSpace | Community work. Good reputation, thin margins. |
-| Garaj | Ships constantly, each one small. |
+| Tier | Space | Shape |
+|---|---|---|
+| Top five | **Konya Hackerspace** | The peer down the road and **the most productive rival**: most ships, most reputation. Takes Rising Star most years. |
+| Top five | c-base | Famous and slow. Enormous reputation per build; the usual Best Project. |
+| Top five | London Hackspace | Big crew, strong dues income. |
+| Top five | Xinchejian | Hardware, fast iteration, close to the supply chain. |
+| Top five | Tokyo HackerSpace | Community work. Good reputation, thin margins. |
+| Pack | Noisebridge | Famous, radically open, permanently broke. Loud online. |
+| Pack | NYC Resistor | Small, influential, electronics-meets-craft. |
+| Pack | Metalab | One of the originals. Steady and well regarded. |
+| Pack | Dallas Makerspace | The biggest crew of all. |
+| Pack | HacDC | Radio, a ground station, and a class every week. |
+| Pack | Garaj | Ships constantly, each one small. The usual Deepest Pockets. |
+| Pack | İstanbul / Ankara Hackerspace, Makerspace İzmir | The rest of Turkey: mid-table, close enough to Konya that the rivalry reads. |
+| Underdog | Ctrl+Alt+Defeat | Barely ships, posts everything. A People's Choice outsider (`online: 4.5`). |
+| Underdog | Almost Works Labs | One moonshot a season, all-or-nothing (`standout` override). A Best Project outsider. |
+| Underdog | Perpetual Beta | Sponsor money, nothing shipped. A Deepest Pockets outsider. |
+
+**An underdog gets one award it can sneak, never a pace.** Each runs at about a third of
+anybody else's reputation a day with a crew capped at five or six, so it sits at the foot of
+the table in every seed (~2,000 reputation at day 220 against the pack's 7,000-10,000). What
+makes it an underdog rather than filler is a single lever pointed at one category: loudness,
+build variance, or a sponsor. Measured over eight seeds on normal / hard / easy, they take one
+or two of the fifty-six first-night awards on normal and hard, and a few more on easy, where
+Perpetual Beta takes Deepest Pockets five times in eight because the 0.95 rival pace slows
+Garaj's project income down. **The per-rival `standout` spreads impact without raising its
+average**, so it cannot leak into reputation.
+
+**Konya's pace carries its cash with it, so watch Deepest Pockets.** Raising Konya's ship rate
+by 3.4x at its old ₺1,700 a project made it the richest space as well as the busiest, and it
+took Deepest Pockets *and* Rising Star nearly every night. Per-project cash was cut to ₺350 to
+keep its money where it was. Final standings after the tier pass: the player is first in 8 of 8 seeds on
+every difficulty, at about 1.5x the top rival on normal and about 1.3x on hard, with Konya
+usually second.
 
 Their pace **compounds with their reputation**, as the player's does. Without that they grow
 linearly while the player's roster snowballs, and by day 200 the table is a formality.
@@ -944,10 +966,27 @@ Where they start is derived — the open edges, the bottom row and the odd rows 
 right-hand column, spaced a tile apart for the same reason the printer wall is — and a tile
 the player picks simply overrides it. They block their tile either way, so people walk round
 them. Air conditioning and the acoustic panels hang on the back wall, take no floor and do
-not move. **Stations are deliberately not movable**: they have stand tiles, painted bays and
-queues, and the thing that made this worth building is that a sofa is none of those.
+not move.
 
-Four things that were wrong first, or nearly were:
+**The stations move too, and a station carries its stand tile with it.** That is the one
+thing that makes a bench harder than a sofa: the tile in front of it is not decoration, it
+is the only place a person can stand to use it. So **turning a station means choosing which
+side they stand on** — the yaw is a request, the first legal quarter turn from it is what
+actually happens, and a tile with no legal side at all is not a place a bench can go. The
+painted bay and the model's facing both follow, because they are derived from the stand
+rather than stored. A lease wipes the arrangement: `applyEraLayout` has just carried every
+bench to a new wall in a bigger unit, and re-applying yesterday's tiles on top of that is
+the exact thing it exists to prevent.
+
+Five things that were wrong first, or nearly were:
+
+- **Nothing may be walled off from the door.** A bench dropped into a pinch can cut another
+  bench off entirely, and the symptom is not an error — it is a station that quietly stops
+  being used, because the path finder returns nothing and the member just stands there.
+  Every placement, comfort or station, tentatively applies itself and checks that a path
+  still exists from the door to every stand tile, then reverts if not. One BFS per click,
+  and it removes a whole class of bug that would only ever have been reported as "my space
+  broke".
 
 - **A comfort must not stand on a stand tile.** Blocking the tile somebody has to occupy to
   use the solder bench does not block the bench, it *strands* it: the path finder never
@@ -963,6 +1002,13 @@ Four things that were wrong first, or nearly were:
 - **The selection lives in the store, not in the renderer.** §11 says the UI reads the store
   and nothing else, and the strip naming what you are holding is UI. `moving` is a store
   field that is never saved.
+- **Lifting a node must add to its height, not set it.** Writing `position.y` outright
+  dropped the air conditioning off the wall and half into the floor: a wall-mounted node's
+  height *is* its mounting. It was invisible until a screenshot showed the unit lying in
+  the concrete.
+- **Moving a station repositions its node; it does not rebuild it.** Rebuilding to shift a
+  bench one tile would throw away the machine's readout handles — the status light and the
+  progress bar the sim writes to — and the hover state with them.
 
 Two more, from getting the props on screen at all:
 
@@ -1317,7 +1363,7 @@ is visible rather than rediscovered:
 ## 14. Development Priority
 
 **Phase 1.12 — The scene: identity, rivals and awards — BUILT.**
-A start screen that names and badges the space (§3c), five simulated rival hackerspaces whose
+A start screen that names and badges the space (§3c), simulated rival hackerspaces whose
 pace compounds like yours, a season timeline in the top bar, a Ranking panel, and a yearly awards
 night across four categories. `npm run era-pace` now reports the final standings too.
 
@@ -1413,6 +1459,26 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     anything in `src/ui/`.
   - Harness sources live in `tools/`, built via `vite.headless.config.ts` to `dist-headless/`.
 - Debugging in the browser: `window.__store.getState()` and `window.__game.sim`.
+- **The developer console** (`src/systems/DevConsole.ts`). Type `debug` anywhere in the
+  game, or press the backtick key, and a console opens along the bottom. `help` lists what
+  it can do: `cash +250000`, `rep 9000`, `hype`, `era 3`, `skip 20` (the clock really runs —
+  bills land and awards are held on the way), `stage`/`ship` to push a project through,
+  `shop all`, `printer x1c`, `people 5`, `unlock`.
+
+  It exists because **the interesting states are the late ones** and reaching them honestly
+  takes an hour of play. Testing a panel that only appears in Era 3 should not mean playing
+  to Era 3. Two rules keep it from becoming a liability:
+
+  - **It only calls public API** — `sim.dev.*` and the store's own actions — so it cannot
+    put the game into a state the game could not reach by itself, and it cannot rot
+    silently when the sim is refactored.
+  - **Every command that changes something writes to the player's own log, marked `dev:`.**
+    A run you doctored has to say so. Finding out later that a measurement came from a
+    cheated save is worse than not having the console at all.
+
+  One trap worth the line: the `g` that finished the magic word was being inserted into the
+  input the word had just focused, so the first command every time was `ghelp`. A shortcut
+  that opens a text field has to swallow its own last keystroke.
 - Layout:
   - `src/game/` — `Game.ts` (orchestrator), `types.ts`, `store.ts`
   - `src/entities/` — `MemberEntity.ts` (state machine: idle → walk → work → idle),

@@ -3,10 +3,11 @@ import { SpaceView } from '@/render/SpaceView';
 import { Simulation } from '@/systems/Simulation';
 import { UI } from '@/ui/ui';
 import { store } from './store';
-import { STATION_MAP, amenityPlacement } from '@/machines/layout';
+import { STATION_MAP, amenityPlacement, yawOf } from '@/machines/layout';
 import { pct } from '@/utils/format';
 import type { MachineType } from './types';
 import { amenityDef } from '@/utils/amenities';
+import { runDevCommand } from '@/systems/DevConsole';
 import type { IconName } from '@/ui/icons';
 
 /** What a station is for, shown when you point at one that has no queue of its own. */
@@ -79,6 +80,7 @@ export class Game {
       buyAmenity: (id) => act(() => sim.buyAmenity(id)),
       turnAmenity: () => this.turnHeld(),
       stopMoving: () => store.getState().setMoving(null),
+      devCommand: (line) => runDevCommand(sim, line).lines,
       sellPrinter: (machineId) => act(() => sim.sellPrinter(machineId)),
       signLease: () => act(() => sim.signLease()),
       nextLease: () => sim.nextLease(),
@@ -182,10 +184,14 @@ export class Game {
   }
 
   /**
-   * Rearranging the room (§7b). Everything bought from the Shop can be picked up, dropped on
-   * any legal tile and turned — so the space is yours rather than a list of slots. Stations
-   * are deliberately *not* movable: they have stand tiles, painted bays and queues, and the
-   * one thing that made this worth building is that a sofa is none of those things.
+   * Rearranging the room (§7b). Anything on the floor — a bench, a printer, the sofa you
+   * bought — can be picked up, dropped on a legal tile and turned. Click it to pick it up,
+   * click a lit tile to set it down, click it again to turn it.
+   *
+   * **A station carries its stand tile with it**, which is the one thing that makes moving
+   * a bench harder than moving an aquarium: the tile in front of it is not decoration, it
+   * is the only place a person can stand to use it. Turning a station is therefore choosing
+   * which side they stand on, and a tile with no legal side is not a place a bench can go.
    */
   private clickRoom(clientX: number, clientY: number) {
     const state = store.getState();
@@ -200,25 +206,35 @@ export class Game {
         return;
       }
       const tile = this.scene.pickTile(clientX, clientY);
-      const place = amenityPlacement(state.moving);
-      if (tile && place && this.sim.placeAmenity(state.moving, tile.x, tile.y, place.yaw)) {
-        this.sim.publish();
-      }
+      if (tile && this.moveHeld(tile.x, tile.y, 0)) this.sim.publish();
       return;
     }
 
-    if (hit && amenityDef(hit)?.mount === 'floor' && state.amenities.includes(hit)) {
+    if (!hit) return;
+    if (STATION_MAP[hit]) store.getState().setMoving(hit);
+    else if (amenityDef(hit)?.mount === 'floor' && state.amenities.includes(hit)) {
       store.getState().setMoving(hit);
     }
+  }
+
+  /** Put whatever is being carried on a tile, keeping the way it faces. */
+  private moveHeld(x: number, y: number, turn: number): boolean {
+    const id = store.getState().moving;
+    if (!id) return false;
+    const station = STATION_MAP[id];
+    if (station) return this.sim.placeStation(id, x, y, yawOf(station) + turn);
+    const place = amenityPlacement(id);
+    return place ? this.sim.placeAmenity(id, x, y, place.yaw + turn) : false;
   }
 
   /** A quarter turn, in place. */
   private turnHeld() {
     const id = store.getState().moving;
     if (!id) return;
-    const place = amenityPlacement(id);
-    if (!place) return;
-    this.sim.placeAmenity(id, place.x, place.y, place.yaw + 1);
+    const station = STATION_MAP[id];
+    const at = station ? station.tile : amenityPlacement(id);
+    if (!at) return;
+    this.moveHeld(at.x, at.y, 1);
     this.sim.publish();
   }
 
@@ -358,6 +374,7 @@ export class Game {
         parts.push(
           `<div class="label label--station" style="left:${p.x}px;top:${p.y}px">
             <b>${station.label}</b>${detail ? `<span>${detail}</span>` : ''}
+            <span>click to move · R turns it</span>
           </div>`,
         );
       }

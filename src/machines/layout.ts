@@ -1,5 +1,5 @@
 import type { MachineType, StageKey } from '@/game/types';
-import type { Tile } from '@/utils/grid';
+import { findPath, sameTile, type Tile } from '@/utils/grid';
 
 /**
  * The floor, which **grows with the lease** (§8). Mutated in place by `applyEraLayout` so
@@ -227,6 +227,140 @@ export const STATION_MAP: Record<string, StationDef> = Object.fromEntries(
 
 const BLOCKED = new Set(STATIONS.map((s) => `${s.tile.x},${s.tile.y}`));
 
+/**
+ * Where the player has dragged a station, if anywhere. **A station carries its stand tile
+ * with it**, which is the whole reason moving one is harder than moving a sofa: the tile in
+ * front of a bench is not decoration, it is the only place a person can stand to use it.
+ */
+export interface StationPlacement {
+  x: number;
+  y: number;
+  /** Quarter turns, 0-3. The stand is the neighbouring tile this points at. */
+  yaw: number;
+}
+
+let stationCustom: Record<string, StationPlacement> = {};
+
+/** yaw → where the user stands, in the same convention the renderer turns models by. */
+export const STAND_OFFSET = [
+  { x: 0, y: 1 },
+  { x: 1, y: 0 },
+  { x: 0, y: -1 },
+  { x: -1, y: 0 },
+];
+
+export const yawOf = (def: StationDef): number => {
+  const dx = def.stand.x - def.tile.x;
+  const dy = def.stand.y - def.tile.y;
+  const found = STAND_OFFSET.findIndex((o) => o.x === dx && o.y === dy);
+  return found < 0 ? 0 : found;
+};
+
+const inBounds = (tile: Tile) =>
+  tile.x >= 0 && tile.y >= 0 && tile.x < GRID.width && tile.y < GRID.height;
+
+/** Can this station's body go here? */
+export function stationTileFree(tile: Tile, ignoreId?: string): boolean {
+  if (!inBounds(tile)) return false;
+  if (DOOR.x === tile.x && DOOR.y === tile.y) return false;
+  if (PROPS.has(key(tile))) return false;
+  return !STATIONS.some(
+    (other) =>
+      other.id !== ignoreId &&
+      ((other.tile.x === tile.x && other.tile.y === tile.y) ||
+        (other.stand.x === tile.x && other.stand.y === tile.y)),
+  );
+}
+
+/** Can somebody stand here to use it? Walkable floor, and nobody else's spot. */
+function standFree(tile: Tile, ignoreId: string): boolean {
+  if (!inBounds(tile)) return false;
+  if (PROPS.has(key(tile))) return false;
+  return !STATIONS.some(
+    (other) =>
+      (other.tile.x === tile.x && other.tile.y === tile.y) ||
+      (other.id !== ignoreId && other.stand.x === tile.x && other.stand.y === tile.y),
+  );
+}
+
+/**
+ * Put a station at a tile facing a given way. **Turning is choosing which side somebody
+ * stands on**, so a yaw whose stand tile is against a wall or under a bench is not refused —
+ * the next legal quarter turn is taken instead, and a station with no legal side at all is
+ * what makes the move itself illegal.
+ */
+export function placeStation(id: string, tile: Tile, yaw: number): boolean {
+  const def = STATION_MAP[id];
+  if (!def || !stationTileFree(tile, id)) return false;
+  const was = { tile: def.tile, stand: def.stand };
+  def.tile = { x: tile.x, y: tile.y };
+  for (let step = 0; step < 4; step += 1) {
+    const offset = STAND_OFFSET[(((yaw + step) % 4) + 4) % 4];
+    const stand = { x: tile.x + offset.x, y: tile.y + offset.y };
+    if (!standFree(stand, id)) continue;
+    def.stand = stand;
+    rebuildBlocked();
+    // **Everything has to still be reachable from the door.** A bench dropped into a pinch
+    // can wall another bench off entirely, and the symptom is not an error — it is a
+    // station that quietly stops being used, because the path finder returns nothing and
+    // the member simply stands there. Cheap to check on a click; impossible to debug later.
+    if (everyStandReachable()) {
+      stationCustom[id] = { x: tile.x, y: tile.y, yaw: yawOf(def) };
+      return true;
+    }
+  }
+  def.tile = was.tile;
+  def.stand = was.stand;
+  rebuildBlocked();
+  return false;
+}
+
+/**
+ * Would putting this comfort here cut a bench off from the door? Same hazard as moving a
+ * station into a pinch, and the same silent symptom — a station nobody can reach does not
+ * complain, it just stops being used.
+ */
+export function amenityMoveSafe(id: string, tile: Tile): boolean {
+  const previous = amenityPlaces.get(id);
+  if (!previous) return true;
+  PROPS.delete(key(previous));
+  PROPS.add(key(tile));
+  const ok = everyStandReachable();
+  PROPS.delete(key(tile));
+  PROPS.add(key(previous));
+  return ok;
+}
+
+/** Can somebody walk from the front door to every station's spot? */
+function everyStandReachable(): boolean {
+  return STATIONS.every(
+    (station) =>
+      sameTile(DOOR, station.stand) ||
+      findPath(DOOR, station.stand, GRID.width, GRID.height, isBlocked).length > 0,
+  );
+}
+
+/** Everything the player has rearranged, for the save file. */
+export function stationPlacements(): Record<string, StationPlacement> {
+  return { ...stationCustom };
+}
+
+/** Put the saved arrangement back. Anything that no longer fits is quietly dropped. */
+export function setStationLayout(custom: Record<string, StationPlacement>) {
+  stationCustom = {};
+  for (const [id, place] of Object.entries(custom ?? {})) {
+    if (!STATION_MAP[id]) continue;
+    placeStation(id, { x: place.x, y: place.y }, place.yaw);
+  }
+  rebuildBlocked();
+}
+
+function rebuildBlocked() {
+  BLOCKED.clear();
+  for (const station of STATIONS) BLOCKED.add(key(station.tile));
+  rebuildProps();
+}
+
 /** How many more of this kind of machine the space has room for. */
 export function freeSlots(type: MachineType = 'fdm'): number {
   const used = new Set(STATIONS.map((s) => `${s.tile.x},${s.tile.y}`));
@@ -294,6 +428,7 @@ export function resetStations() {
   amenityFloorIds = [];
   amenityCustom = {};
   amenityPlaces.clear();
+  stationCustom = {};
   PROPS.clear();
 }
 
@@ -376,6 +511,11 @@ export function applyEraLayout(era: number) {
   // The comforts move too — their slots are derived from the new grid, so this re-runs
   // rather than clearing. You do not leave the aquarium behind in the garage.
   rebuildProps();
+  // **A lease resets the room, and that includes anything you rearranged.** Everything has
+  // just been carried to a new wall in a bigger unit; putting the old tiles back on top of
+  // that would drop a bench into the middle of the warehouse, which is the exact thing
+  // `applyEraLayout` exists to prevent.
+  stationCustom = {};
 }
 
 export function isBlocked(tile: Tile): boolean {

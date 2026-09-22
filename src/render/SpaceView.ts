@@ -3,8 +3,10 @@ import type { MachineType, RuntimeSnapshot } from '@/game/types';
 import {
   GRID,
   STATIONS,
+  STATION_MAP,
   amenityPlacement,
   amenityTileFree,
+  stationTileFree,
   type StationDef,
 } from '@/machines/layout';
 import { amenityDef, type AmenityDef } from '@/utils/amenities';
@@ -324,6 +326,29 @@ export class SpaceView {
       // Everything is modelled facing +y. Turn it toward whoever stands at it, and run the
       // bay the same way — it used to always point along -y, so a station against the left
       // wall faced away from its own user and its bay lay across its neighbour's.
+      this.group.add(zone);
+
+      const node = new THREE.Group();
+      node.add(this.buildStation(def));
+      node.userData.stationId = def.id;
+      node.userData.pickId = def.id;
+      this.group.add(node);
+      this.stationNodes.set(def.id, node);
+      this.stationZones.set(def.id, zone);
+    }
+    this.syncStationPlaces();
+  }
+
+  /**
+   * Put every station where the room says it is. Split out from building them because a
+   * station can now be **moved** as well as installed: rebuilding the model to shift it one
+   * tile would throw away the machine's readout handles and the hover state with it.
+   */
+  private syncStationPlaces() {
+    for (const def of STATIONS) {
+      const node = this.stationNodes.get(def.id);
+      const zone = this.stationZones.get(def.id);
+      if (!node || !zone) continue;
       const dx = def.stand.x - def.tile.x;
       const dy = def.stand.y - def.tile.y;
       // Grid +y is world +z and a positive rotation.y turns +z toward +x, so this is the
@@ -337,17 +362,9 @@ export class SpaceView {
       const yaw = dx || dy ? Math.round(Math.atan2(dx, dy) / quarter) * quarter : 0;
       zone.rotation.y = yaw;
       zone.position.copy(toWorld(def.tile.x + dx * 0.5, def.tile.y + dy * 0.5, 0.012));
-      this.group.add(zone);
-
-      const node = new THREE.Group();
-      node.position.copy(toWorld(def.tile.x, def.tile.y));
       node.rotation.y = yaw;
-      node.add(this.buildStation(def));
-      node.userData.stationId = def.id;
-      node.userData.pickId = def.id;
-      this.group.add(node);
-      this.stationNodes.set(def.id, node);
-      this.stationZones.set(def.id, zone);
+      node.position.copy(toWorld(def.tile.x, def.tile.y));
+      node.position.y = def.id === this.placing ? 0.16 : 0;
     }
   }
 
@@ -632,6 +649,7 @@ export class SpaceView {
     this.amenityKey = key;
     this.amenityIds = [...ids];
     this.buildAmenities();
+    this.syncStationPlaces();
     if (this.placing) this.markPlaceable();
   }
 
@@ -645,11 +663,18 @@ export class SpaceView {
     this.placing = id;
     this.markPlaceable();
     this.liftPlacing();
+    this.syncStationPlaces();
   }
 
+  /**
+   * Lift whatever is being carried. **It has to add to the height the item already had**,
+   * not set it: writing `position.y` outright dropped the air conditioning unit off the
+   * wall and half into the floor, because a wall-mounted node's height *is* its mounting.
+   */
   private liftPlacing() {
     for (const [id, node] of this.amenityNodes) {
-      node.position.y = id === this.placing ? 0.16 : 0;
+      const base = (node.userData.baseY as number) ?? 0;
+      node.position.y = base + (id === this.placing ? 0.16 : 0);
     }
   }
 
@@ -667,7 +692,12 @@ export class SpaceView {
     const geo = new THREE.BoxGeometry(TILE * 0.2, 0.02, TILE * 0.2);
     for (let y = 0; y < GRID.height; y += 1) {
       for (let x = 0; x < GRID.width; x += 1) {
-        if (!amenityTileFree({ x, y }, this.placing)) continue;
+        // A station and a sofa have different rules about where they may stand — a bench
+        // also needs a free tile in front of it — so the marker asks whichever applies.
+        const legal = STATION_MAP[this.placing]
+          ? stationTileFree({ x, y }, this.placing)
+          : amenityTileFree({ x, y }, this.placing);
+        if (!legal) continue;
         const mark = new THREE.Mesh(
           geo.clone(),
           new THREE.MeshStandardMaterial({
@@ -724,6 +754,7 @@ export class SpaceView {
         // is a matter of taste, which is exactly why the player turns them by hand.
         node.rotation.y = (place.yaw * Math.PI) / 2;
       }
+      node.userData.baseY = node.position.y;
       this.group.add(node);
       this.amenityNodes.set(id, node);
     }

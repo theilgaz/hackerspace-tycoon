@@ -28,8 +28,13 @@ import {
   installStation,
   installedStations,
   removeStation,
+  STATION_MAP,
+  amenityMoveSafe,
   amenityTileFree,
+  placeStation,
   setAmenityLayout,
+  setStationLayout,
+  yawOf,
   type StationDef,
   resetStations,
   stationOfType,
@@ -284,6 +289,7 @@ export class Simulation {
         owned.filter((id) => amenityDef(id)?.mount === 'floor'),
         state.amenityPlacements,
       );
+      setStationLayout(state.stationPlacements);
     }
     return this.comfortCache;
   }
@@ -293,11 +299,23 @@ export class Simulation {
    * tile rather than a slot index — and it checks legality here rather than trusting the
    * click, because a save from an older room could hand over a tile a bench now stands on.
    */
+  /**
+   * Move or turn a station. Turning one means choosing **which side somebody stands on**,
+   * so the yaw is a request rather than an instruction: the first legal quarter turn from
+   * it is taken, and a tile with no legal side at all is simply not a place a bench can go.
+   */
+  placeStation(id: string, x: number, y: number, yaw: number): boolean {
+    if (!STATION_MAP[id]) return false;
+    if (!placeStation(id, { x, y }, yaw)) return false;
+    store.getState().placeStation(id, { x, y, yaw: yawOf(STATION_MAP[id]) });
+    return true;
+  }
+
   placeAmenity(id: string, x: number, y: number, yaw: number): boolean {
     const def = amenityDef(id);
     const state = store.getState();
     if (!def || def.mount !== 'floor' || !state.amenities.includes(id)) return false;
-    if (!amenityTileFree({ x, y }, id)) return false;
+    if (!amenityTileFree({ x, y }, id) || !amenityMoveSafe(id, { x, y })) return false;
     state.placeAmenity(id, { x, y, yaw: ((yaw % 4) + 4) % 4 });
     return true;
   }
@@ -1127,7 +1145,9 @@ export class Simulation {
     // The floor grows with the lease, and everything goes back against a wall.
     applyEraLayout(next.era);
     // Stations moved, so an arrangement that was legal in the old room may not be in this
-    // one. Re-deriving drops anything that now sits under a bench back to a default slot.
+    // one. Re-deriving drops anything that now sits under a bench back to a default slot,
+    // and the station arrangement goes entirely — every bench is against a new wall.
+    store.getState().clearStationPlacements();
     this.amenityRev = -1;
     this.log(
       `You signed for ${next.def.name}. ${money(next.def.moveCost)} to move, and the rent goes up.`,
@@ -1136,6 +1156,59 @@ export class Simulation {
     this.publish();
     return true;
   }
+
+  /**
+   * **Cheats.** Everything the developer console can reach lives behind this one object, so
+   * that `sim.dev.*` at a call site is unmistakably not gameplay and the sim's own internals
+   * stay private. Nothing in `src/` outside the console may call it.
+   */
+  readonly dev = {
+    /** Run the clock forward, properly — every day rolls, bills land, awards are held. */
+    advance: (days: number) => {
+      const steps = Math.round(Math.max(0, Math.min(400, days)) * TIME.hoursPerDay * 2);
+      for (let i = 0; i < steps; i += 1) {
+        if (store.getState().gameOver) break;
+        this.tick(TIME.secondsPerHour * 0.5, 1);
+      }
+      this.publish();
+    },
+
+    /**
+     * Fill in whatever the current stage is waiting on, and let the normal pipeline pick it
+     * up. It fakes the *inputs* — work done, parts printed, the order landed — rather than
+     * setting the stage directly, so quality, test failures and the Perfectionist gate all
+     * still behave as they would have.
+     */
+    complete: (projectId: string, untilShipped = false) => {
+      const project = this.projects.find((p) => p.id === projectId);
+      if (!project) return false;
+      const fill = () => {
+        project.progress[project.stage] = project.required[project.stage];
+        project.partsOrdered = true;
+        project.partsArriveAt = 0;
+        for (const part of project.parts) part.status = 'done';
+      };
+      // A run through the whole pipeline is eight stages plus whatever testing sends back.
+      for (let guard = 0; guard < 60; guard += 1) {
+        fill();
+        this.advanceProjects();
+        if (!untilShipped || project.shipped) break;
+        if (!this.projects.includes(project)) break;
+      }
+      this.publish();
+      return true;
+    },
+
+    /** Move house without paying for it. The floor and the walls change as they would. */
+    setEra: (era: number) => {
+      // `ERAS` is one-based by `era`, not by index — `ERAS.length - 1` clamped era 3 to 2.
+      const next = Math.min(ERAS.length, Math.max(1, Math.round(era)));
+      store.setState({ era: next });
+      applyEraLayout(next);
+      this.amenityRev = -1;
+      this.publish();
+    },
+  };
 
   /** What this machine would fetch if you sold it. Zero for anything you cannot sell. */
   resaleFor(machineId: string): number {
@@ -1277,6 +1350,10 @@ export class Simulation {
       upvotes: rival.upvotes ?? 0,
       bestBuild: rival.bestBuild ?? null,
     }));
+    // A save from before a space joined the field: it starts from scratch, as if it just opened.
+    for (const fresh of createRivals()) {
+      if (!this.rivals.some((rival) => rival.id === fresh.id)) this.rivals.push(fresh);
+    }
     this.projects = data.projects;
 
     // The floor is the lease's size, and tool-built machines live in a module-level list —

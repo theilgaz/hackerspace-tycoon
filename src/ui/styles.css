@@ -556,6 +556,53 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 #moving .ui-row__main { min-width: 0; }
 #moving .ui-desc { font-size: 10.5px; }
 
+/*
+ * The developer console (§15). Deliberately unlike the rest of the UI — monospace, square
+ * corners, sat over everything. It should never be mistaken for part of the game.
+ */
+#devconsole {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: none;
+  flex-direction: column;
+  gap: 7px;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border-color: var(--border-strong);
+  font-family: var(--font);
+  z-index: 60;
+}
+#devconsole.on { display: flex; }
+.dev-head { display: flex; align-items: center; gap: 10px; }
+.dev-head b { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; }
+.dev-head .ui-desc { flex: 1; font-size: 10.5px; }
+.dev-head code { background: var(--muted); padding: 1px 4px; border-radius: 3px; }
+.dev-out {
+  margin: 0;
+  max-height: 34vh;
+  overflow-y: auto;
+  font-family: var(--font);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  color: var(--muted-foreground);
+}
+.dev-line { display: flex; align-items: center; gap: 8px; }
+.dev-line > span { color: var(--primary); }
+.dev-line input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--foreground);
+  font-family: var(--font);
+  font-size: 12.5px;
+}
+
 #bottombar {
   position: absolute;
   bottom: 14px;

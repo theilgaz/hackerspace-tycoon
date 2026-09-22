@@ -9,7 +9,7 @@ import type {
   ShippedRecord,
 } from './types';
 import type { Ceremony } from '@/systems/RivalSystem';
-import type { Placement } from '@/machines/layout';
+import type { Placement, StationPlacement } from '@/machines/layout';
 import type { Bill } from '@/utils/economy';
 import { START_CASH } from '@/utils/constants';
 import { ECONOMY } from '@/utils/economy';
@@ -72,6 +72,8 @@ export interface GameState {
   /** Where the player has dragged each one, and which way it faces. Anything missing here
    *  takes the next slot the room derives for it. */
   amenityPlacements: Record<string, Placement>;
+  /** Stations the player has dragged somewhere. Reset by a lease — see `applyEraLayout`. */
+  stationPlacements: Record<string, StationPlacement>;
   /**
    * Bumped whenever the arrangement changes. The sim re-derives the floor from it, which is
    * far cheaper than hashing the placement map inside a per-member inner loop. Deliberately
@@ -110,6 +112,8 @@ export interface GameState {
   ownMachine: (type: MachineType) => void;
   buyAmenity: (id: string) => void;
   placeAmenity: (id: string, placement: Placement) => void;
+  placeStation: (id: string, placement: StationPlacement) => void;
+  clearStationPlacements: () => void;
   setMoving: (id: string | null) => void;
   disownMachine: (type: MachineType) => void;
   recordShipped: (hype: number, record: ShippedRecord) => void;
@@ -152,6 +156,7 @@ export const store = createStore<GameState>((set, get) => ({
   ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
   amenities: [],
   amenityPlacements: {},
+  stationPlacements: {},
   amenityRev: 0,
   moving: null,
   backlog: [],
@@ -191,12 +196,14 @@ export const store = createStore<GameState>((set, get) => ({
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
+      stationPlacements,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
+      stationPlacements,
     };
   },
 
@@ -256,6 +263,14 @@ export const store = createStore<GameState>((set, get) => ({
       amenityPlacements: { ...s.amenityPlacements, [id]: placement },
       amenityRev: s.amenityRev + 1,
     })),
+  placeStation: (id, placement) =>
+    set((s) => ({
+      stationPlacements: { ...s.stationPlacements, [id]: placement },
+      amenityRev: s.amenityRev + 1,
+    })),
+  // A lease carries everything to a new wall, so what you had arranged is no longer a fact
+  // about the room. `applyEraLayout` drops it on its side; this drops it on ours.
+  clearStationPlacements: () => set((s) => ({ stationPlacements: {}, amenityRev: s.amenityRev + 1 })),
   setMoving: (id) => set({ moving: id }),
 
   recordPost: (post, reputationDelta) =>

@@ -51,7 +51,7 @@ import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import { DIFFICULTIES, type DifficultyKey } from '@/utils/difficulty';
 import { ECONOMY } from '@/utils/economy';
-import { MACHINE_LABEL } from '@/machines/layout';
+import { MACHINE_LABEL, STATION_MAP } from '@/machines/layout';
 import { partsEta, partsPending, projectProgress } from '@/systems/ProjectSystem';
 import { SHELVE } from '@/utils/constants';
 
@@ -79,6 +79,7 @@ export interface UIHandlers {
   buyPrinter(modelId: string): void;
   buyAmenity(id: string): void;
   turnAmenity(): void;
+  devCommand(line: string): string[];
   stopMoving(): void;
   sellPrinter(machineId: string): void;
   signLease(): void;
@@ -327,6 +328,19 @@ export class UI {
   private left!: HTMLElement;
   private members!: HTMLElement;
   private movingEl!: HTMLElement;
+  private devEl!: HTMLElement;
+  /**
+   * The developer console (§15). Not game state — it is a tool sitting on top of the game,
+   * so it lives here with the other view state rather than in the store.
+   */
+  private dev: { open: boolean; lines: string[]; history: string[]; at: number } = {
+    open: false,
+    lines: [],
+    history: [],
+    at: -1,
+  };
+  /** Rolling buffer of recent keystrokes, so typing the magic word opens the console. */
+  private typed = '';
   private log!: HTMLElement;
 
   constructor(root: HTMLElement, handlers: UIHandlers) {
@@ -353,6 +367,7 @@ export class UI {
       </div>
 
       <div class="panel" id="moving"></div>
+      <div class="panel" id="devconsole"></div>
       <div id="bottombar"></div>
       <div id="modal"></div>
       <div id="start"></div>
@@ -361,6 +376,7 @@ export class UI {
     this.clockPanel = this.root.querySelector('#clockpanel')!;
     this.bottombar = this.root.querySelector('#bottombar')!;
     this.movingEl = this.root.querySelector('#moving')!;
+    this.devEl = this.root.querySelector('#devconsole')!;
     this.modal = this.root.querySelector('#modal')!;
     this.startEl = this.root.querySelector('#start')!;
     this.left = this.root.querySelector('#left .body')!;
@@ -374,8 +390,59 @@ export class UI {
      * a ceremony sits over a panel sits over a picker inside it. Closing the whole stack on
      * one keypress loses the two screens you had not read yet.
      */
+    /**
+     * The console's own keys. It sits above the Escape stack below, and the backtick and
+     * the magic word are both guarded on the focused element — the same rule that stopped
+     * the speed shortcuts eating a hackerspace's name (§13).
+     */
+    window.addEventListener('keydown', (event) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName ?? '');
+
+      if (this.dev.open && target?.id === 'dev-input') {
+        const input = target as HTMLInputElement;
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          const line = input.value;
+          input.value = '';
+          if (line.trim()) this.devRun(line);
+        } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          // Walking the history, the way every console does.
+          event.preventDefault();
+          const step = event.key === 'ArrowUp' ? -1 : 1;
+          this.dev.at = Math.max(0, Math.min(this.dev.history.length, this.dev.at + step));
+          input.value = this.dev.history[this.dev.at] ?? '';
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          this.toggleDev(false);
+        }
+        return;
+      }
+
+      if (typing) return;
+      if (event.key === '`' || event.key === '~') {
+        event.preventDefault();
+        this.toggleDev(!this.dev.open);
+        return;
+      }
+      // Typing the word anywhere opens it. A rolling buffer rather than an index, so a
+      // mistyped letter does not lock you out until you stop and start again.
+      if (/^[a-z]$/.test(event.key)) {
+        this.typed = (this.typed + event.key).slice(-8);
+        if (this.typed.endsWith('debug')) {
+          // Swallow the last letter. Without this the `g` that opened the console was
+          // inserted into the input it had just focused, and the first command was `ghelp`.
+          event.preventDefault();
+          this.typed = '';
+          this.toggleDev(true);
+        }
+      }
+    });
+
     window.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
+      if (this.dev.open) return; // the console handles its own Escape, above
       const state = this.lastState;
       if (state?.bill) this.handlers.dismissBill();
       else if (state?.ceremony) this.handlers.dismissCeremony();
@@ -692,6 +759,9 @@ export class UI {
           if (value) h.buyPrinter(value);
           this.rerender();
           break;
+        case 'dev-close':
+          this.toggleDev(false);
+          break;
         case 'turn-amenity':
           h.turnAmenity();
           break;
@@ -748,6 +818,7 @@ export class UI {
     this.renderLog(state);
     this.renderBottomBar(state);
     this.renderMoving(state);
+    this.renderDev();
     this.renderModal(state);
   }
 
@@ -757,24 +828,95 @@ export class UI {
    * and a dialog over it would cover the tiles you are choosing between.
    */
   private renderMoving(state: GameState) {
-    const def = state.moving ? AMENITIES.find((a) => a.id === state.moving) : null;
-    if (!def) {
+    const id = state.moving;
+    const comfort = id ? AMENITIES.find((a) => a.id === id) : null;
+    const station = id ? STATION_MAP[id] : undefined;
+    if (!id || (!comfort && !station)) {
       this.setHTML(this.movingEl, 'moving', '');
       this.movingEl.classList.remove('on');
       return;
     }
+    const name = comfort?.name ?? station!.label;
+    const tone = comfort?.tone ?? 'var(--primary)';
+    const glyph = comfort?.icon ?? 'printer';
+    // Turning a station moves the tile somebody stands on, which is a different sentence
+    // from turning a sofa — and it is the only thing about it the player has to know.
+    const how = station
+      ? 'Click any lit tile to set it down. Turning it moves the spot people stand on.'
+      : 'Click any lit tile to set it down. Click it again to turn it.';
     this.movingEl.classList.add('on');
     this.setHTML(
       this.movingEl,
       'moving',
-      `<span class="icon-chip" style="--tone:${def.tone}">${icon(def.icon, 'ui-icon ui-icon--lg')}</span>
+      `<span class="icon-chip" style="--tone:${tone}">${icon(glyph as IconName, 'ui-icon ui-icon--lg')}</span>
        <div class="ui-row__main">
-         <b class="ui-title">Moving the ${esc(def.name)}</b>
-         <span class="ui-desc">Click any lit tile to set it down. Click it again to turn it.</span>
+         <b class="ui-title">Moving the ${esc(name)}</b>
+         <span class="ui-desc">${how}</span>
        </div>
        <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="turn-amenity">${icon('shuffle')}Turn</button>
        <button class="ui-btn ui-btn--primary ui-btn--sm" data-action="done-moving">${icon('check')}Done</button>`,
     );
+  }
+
+  /**
+   * The developer console (§15). Opened by typing `debug` anywhere, or with the backtick
+   * key, and by nothing else — it is a tool, not a feature, and a player who has not been
+   * told about it should never meet it.
+   *
+   * The output is written straight into the DOM rather than through `setHTML`, because the
+   * caching there is keyed on the markup and a command that prints the same lines twice
+   * would look like it had not run.
+   */
+  private renderDev() {
+    if (!this.dev.open) {
+      if (this.devEl.classList.contains('on')) {
+        this.devEl.classList.remove('on');
+        this.devEl.innerHTML = '';
+        this.htmlCache.delete('dev');
+      }
+      return;
+    }
+    if (this.devEl.classList.contains('on')) return; // it owns its own DOM while open
+    this.devEl.classList.add('on');
+    this.devEl.innerHTML = `
+      <div class="dev-head">
+        <b>developer console</b>
+        <span class="ui-desc">type <code>help</code> · ↑ for the last command · Esc to close</span>
+        <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="dev-close">${icon('x')}</button>
+      </div>
+      <pre class="dev-out"></pre>
+      <div class="dev-line"><span>&gt;</span><input id="dev-input" autocomplete="off" spellcheck="false" /></div>`;
+    this.paintDevOutput();
+    (this.devEl.querySelector('#dev-input') as HTMLInputElement | null)?.focus();
+  }
+
+  private paintDevOutput() {
+    const out = this.devEl.querySelector('.dev-out');
+    if (!out) return;
+    out.textContent = this.dev.lines.slice(-200).join('\n');
+    out.scrollTop = out.scrollHeight;
+  }
+
+  private devRun(line: string) {
+    this.dev.lines.push(`> ${line}`);
+    if (line.trim() === 'clear') {
+      this.dev.lines = [];
+    } else {
+      for (const out of this.handlers.devCommand(line)) this.dev.lines.push(out);
+    }
+    this.dev.history.push(line);
+    this.dev.at = this.dev.history.length;
+    this.paintDevOutput();
+    this.rerender();
+  }
+
+  private toggleDev(open: boolean) {
+    if (this.dev.open === open) return;
+    this.dev.open = open;
+    if (open && !this.dev.lines.length) {
+      this.dev.lines.push('Hackerspace Tycoon — developer console. "help" lists what it can do.');
+    }
+    this.renderDev();
   }
 
   private renderGameOver(state: GameState) {
