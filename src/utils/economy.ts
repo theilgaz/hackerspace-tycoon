@@ -15,7 +15,7 @@ export const ECONOMY = {
   billEvery: 30,
 
   /** Monthly rent by era. The lease you sign gets heavier as the space does. */
-  rent: [3000, 11000, 40000],
+  rent: [3000, 11000, 40000, 65000],
 
   /**
    * What each of the crew pays a month, flat — the same whether they are in five days a week
@@ -34,6 +34,8 @@ export const ECONOMY = {
    */
   reputationPerMember: 90,
   maxMembership: 80,
+  /** How many more of the public the Old Factory holds (§8). */
+  factoryMembership: 1.6,
   duesPerMember: 320,
 
   /**
@@ -54,8 +56,10 @@ export function rentFor(era: number): number {
 }
 
 /** How many of the wider public are paying to use the place. */
-export function membershipFor(reputation: number): number {
-  return Math.min(ECONOMY.maxMembership, Math.floor(reputation / ECONOMY.reputationPerMember));
+export function membershipFor(reputation: number, era = 1): number {
+  // The factory is the one lease with room for the public at scale: it is what pays its rent.
+  const cap = Math.round(ECONOMY.maxMembership * (era >= 4 ? ECONOMY.factoryMembership : 1));
+  return Math.min(cap, Math.floor(reputation / ECONOMY.reputationPerMember));
 }
 
 export interface BillLine {

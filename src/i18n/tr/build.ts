@@ -43,6 +43,50 @@ export const build: typeof en = {
   'build.people.hireAll': (p) => `${num(p.count)} kişinin hepsini al · ${money(p.cost)}`,
   'build.people.hireAllHint': 'Olabilen herkes tam zamanlı, günlük işi olanlar yarı zamanlı.',
 
+  'build.skill.cad': 'CAD',
+  'build.skill.electronics': 'elektronik',
+  'build.skill.machining': 'talaşlı imalat',
+  'build.skill.welding': 'kaynak',
+  'build.skill.software': 'yazılım',
+  'build.skill.docs': 'dokümantasyon',
+  'build.note.waitingToTrain': (p) => `öğrenme istasyonu bekliyor (${p.skill})`,
+  'build.note.training': (p) => `eğitimde: ${p.skill}`,
+  'build.log.onCourse': (p) => `${p.member} eğitimde; bitene kadar bir ekibe katılamaz.`,
+  'build.log.noLearning': 'Eğitim için bir Öğrenme İstasyonu yok. Önce bir tane al.',
+  'build.log.busyToTrain': (p) => `${p.member} bir ekipte. Eğitime göndermeden önce ekipten çıkar.`,
+  'build.log.trainStart': (p) => `${p.member} öğrenme istasyonuna gitti — sıradaki hedef: ${p.skill} ${num(p.level)}.`,
+  'build.log.trained': (p) => `${p.member} eğitimi bitirdi: ${p.skill} artık ${num(p.level)}.`,
+
+  'build.np.needsSkill': (p) => `ekipte ${p.skill} ${num(p.level)} gerekiyor — birini eğit`,
+  'build.np.crewBest': (p) => `ekip ${p.skill}: ${num(p.level)}`,
+  'build.np.crewBestHint': 'Seçtiğin ekipteki en iyi seviye. Üç yıldız için 2, beş yıldız için 4 gerekir.',
+
+  'build.people.train': 'Eğit',
+  'build.people.trainHint': 'Bir becerinin bir seviyesi için Öğrenme İstasyonuna gönder',
+  'build.people.onCourse': (p) => `eğitimde: ${p.skill} · ${p.pct}`,
+  'build.people.noStation': 'Önce bir Öğrenme İstasyonu al.',
+  'build.people.onCrew': 'Bir ekipte — önce ekipten çıkar.',
+  'build.people.alreadyOnCourse': 'Zaten eğitimde.',
+
+  'build.panel.printers': 'Yazıcılar',
+  'build.machines.buyInBuild': (p) => `Yeni yazıcılar ${ek(p.build, 'loc')}.`,
+  'build.printer.intro':
+    'İki ucuz yazıcı aynı anda iki şey basar; bir pahalı yazıcı tek şeyi hızlı basar. A1 dışındakilerin hepsi kabinli ve fiyatla birlikte büyüyor.',
+  'build.printer.fails': (p) => `arıza ${p.pct}`,
+  'build.card.ownedN': (p) => `mekânda ${num(p.count)}`,
+  'build.card.owned': 'Mekânda',
+
+  'build.sell.notOwned': 'Bu, mekânın satabileceği bir şey değil.',
+  'build.sell.fixture': 'Binanın parçası — yerinde kalıyor.',
+  'build.sell.inUse': 'Bu masada bir ekip plan yapıyor. Toplantı bitince satabilirsin.',
+  'build.sell.button': (p) => `Sat · ${money(p.value)}`,
+  'build.log.sold': (p) => `${p.item} ${money(p.value)} karşılığında satıldı.`,
+
+  'build.social.best': 'en iyi',
+  'build.social.post': 'Paylaş',
+
+  'build.rank.night': (p) => `${num(p.n)}. gece`,
+
   // --- The wizard ------------------------------------------------------------
   'build.np.step.genre': 'Tür',
   'build.np.step.brief': 'Brif',

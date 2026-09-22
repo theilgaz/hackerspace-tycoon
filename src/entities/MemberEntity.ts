@@ -8,6 +8,7 @@ import type {
   Shift,
   SkillKey,
   Tag,
+  Training,
 } from '@/game/types';
 import { MEMBER, WORKDAY, weeklyHoursFor } from '@/utils/constants';
 import { findPath, sameTile, type Tile } from '@/utils/grid';
@@ -59,8 +60,13 @@ export class MemberEntity {
    */
   readonly baseMood: number;
 
+  /** A course at the learning station, if they are on one (§4c). */
+  training: Training | null = null;
+
   constructor(data: MemberData, startTile: Tile) {
-    this.data = data;
+    // Skills are copied, not shared: training raises them, and the roster data is a module
+    // constant every run reads — a shared object would carry one run's training into the next.
+    this.data = { ...data, skills: { ...data.skills } };
     this.baseMood = data.mood;
     this.tile = { ...startTile };
     this.pos = { x: startTile.x, y: startTile.y };
@@ -199,6 +205,8 @@ export class MemberEntity {
       pos: { ...this.pos },
       seat: null,
       share: null,
+      skills: { ...this.data.skills },
+      training: this.training ? { ...this.training } : null,
       note: this.note,
     };
   }

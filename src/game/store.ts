@@ -125,6 +125,8 @@ export interface GameState {
   passApplicant: (id: string) => void;
   ownMachine: (type: MachineType) => void;
   buyAmenity: (id: string) => void;
+  sellAmenity: (id: string) => void;
+  forgetStation: (id: string) => void;
   placeAmenity: (id: string, placement: Placement) => void;
   placeStation: (id: string, placement: StationPlacement) => void;
   clearStationPlacements: () => void;
@@ -285,6 +287,23 @@ export const store = createStore<GameState>((set, get) => ({
   // a shop you can churn is a shop that pays for itself.
   buyAmenity: (id) =>
     set((s) => (s.amenities.includes(id) ? s : { amenities: [...s.amenities, id], amenityRev: s.amenityRev + 1 })),
+  sellAmenity: (id) =>
+    set((s) => {
+      const placements = { ...s.amenityPlacements };
+      delete placements[id];
+      return {
+        amenities: s.amenities.filter((a) => a !== id),
+        amenityPlacements: placements,
+        amenityRev: s.amenityRev + 1,
+        moving: s.moving === id ? null : s.moving,
+      };
+    }),
+  forgetStation: (id) =>
+    set((s) => {
+      const placements = { ...s.stationPlacements };
+      delete placements[id];
+      return { stationPlacements: placements, amenityRev: s.amenityRev + 1, moving: s.moving === id ? null : s.moving };
+    }),
   placeAmenity: (id, placement) =>
     set((s) => ({
       amenityPlacements: { ...s.amenityPlacements, [id]: placement },

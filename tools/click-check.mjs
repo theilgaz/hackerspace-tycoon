@@ -193,7 +193,7 @@ await check('start screen opens the game', async () => {
   return hasStart && started === true && named === 'Test Alanı';
 });
 
-// Walk the New Project wizard the way a player does: genre, brief, design, crew, review.
+// Walk the New Project wizard the way a player does: genre, brief, crew, design, review.
 async function walkWizard({ start = true } = {}) {
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
@@ -240,11 +240,13 @@ await check('a design choice is a press, and it sticks', async () => {
   await openWizard();
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
-  const target = `#modal [data-action="np-option"][data-id="2"]:not([disabled])`;
+  await click('#modal [data-action="np-next"]');
+  // One star is always available, whatever the crew can do, so it is the press to test.
+  const target = `#modal [data-action="np-option"][data-id="0"]:not([disabled])`;
   const axis = await evaluate(`document.querySelector('${target}')?.dataset.value`);
   await click(target);
   const pressed = await evaluate(
-    `document.querySelector('#modal [data-action="np-option"][data-value="${axis}"][data-id="2"]')?.getAttribute('aria-pressed')`,
+    `document.querySelector('#modal [data-action="np-option"][data-value="${axis}"][data-id="0"]')?.getAttribute('aria-pressed')`,
   );
   const others = await evaluate(
     `document.querySelectorAll('#modal [data-action="np-option"][data-value="${axis}"][aria-pressed="true"]').length`,
@@ -257,8 +259,7 @@ await check('the crew step arrives with the best people already picked', async (
   await openWizard();
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
-  await click('#modal [data-action="np-next"]');
-  // The header states the count, and the toggles carry it — check both agree, so a
+  // The crew step comes straight after the brief now. The header states the count, and the toggles carry it — check both agree, so a
   // suggestion that ticks buttons without reaching the start would still fail here.
   // Read from a data attribute, not the words: the suite runs in Turkish too.
   const label = await evaluate(`document.querySelector('#modal [data-crew]')?.dataset.crew`);
@@ -280,15 +281,15 @@ await check('breadcrumb jumps back to a completed step', async () => {
   await click('#modal [data-action="np-brief"]:not([disabled])');
   await click('#modal [data-action="np-next"]');
   const onCrew = await evaluate(`document.querySelector('#modal .step.now')?.dataset.step`);
-  // Jump straight past the design and brief steps back to the first one.
+  // Jump straight past the crew and brief steps back to the first one.
   await click('#modal button.step[data-value="genre"]');
   const afterJump = await evaluate(`document.querySelector('#modal .step.now')?.dataset.step`);
   // Steps that are not yet reached must not be clickable.
   const aheadClickable = await evaluate(`document.querySelectorAll('#modal button.step').length`);
-  if (onCrew !== 'crew' || afterJump !== 'genre') {
-    console.log(`      crew step read "${onCrew}", after jump "${afterJump}"`);
+  if (onCrew !== 'design' || afterJump !== 'genre') {
+    console.log(`      design step read "${onCrew}", after jump "${afterJump}"`);
   }
-  return onCrew === 'crew' && afterJump === 'genre' && aheadClickable === 0;
+  return onCrew === 'design' && afterJump === 'genre' && aheadClickable === 0;
 });
 
 await check('closing the wizard', async () => {
@@ -540,8 +541,9 @@ await check('Ranking: a row opens that space, and Escape comes back', async () =
         stats: document.querySelectorAll('#modal .stat').length,
         fits: detail ? detail.scrollWidth - detail.clientWidth : -1,
         // One point per night that recorded a table, and only the ends are labelled.
-        points: document.querySelectorAll('#modal .rank-chart circle').length,
-        marks: document.querySelectorAll('#modal .rank-chart .chart-mark').length,
+        // One finish chip per awards night (the line chart it replaced drew circles).
+        points: document.querySelectorAll('#modal .finish-chip').length,
+        marks: document.querySelectorAll('#modal .finish-chip b').length,
       };
     })())`),
   );
@@ -580,11 +582,11 @@ await check('Projects: the filter narrows one list', async () => {
   return ok;
 });
 
-await check('Machines: buying a printer puts one on the floor', async () => {
+await check('Build: buying a printer puts one on the floor', async () => {
   await evaluate(`(() => { __store.getState().earn(60000); __game.sim.publish(); })()`);
-  await openPanel('machines-open');
+  await openPanel('build-open');
+  await click('#modal [data-action="build-tab"][data-value="printers"]');
   const before = await evaluate(`__game.sim.machines.filter((m) => m.type === 'fdm').length`);
-  await evaluate(`document.querySelector('#modal .modal-body').scrollTop = 99999`);
   await click('#modal [data-action="buy-printer"]:not([disabled])');
   const after = JSON.parse(
     await evaluate(`(() => { const fdm = __game.sim.machines.filter((m) => m.type === 'fdm');
@@ -594,6 +596,34 @@ await check('Machines: buying a printer puts one on the floor', async () => {
   // It arrives, it arrives full, and it holds more than the one kilo the space started with.
   const ok = after.n === before + 1 && after.cap > 1000 && after.full;
   if (!ok) console.log(`      printers ${before} -> ${after.n}, capacity ${after.cap}, full ${after.full}`);
+  return ok;
+});
+
+await check('a scrolled panel stays where it was while the sim redraws it', async () => {
+  await evaluate(`window.__store.getState().setSpeed(4)`);
+  await openPanel('build-open');
+  await click('#modal [data-action="build-tab"][data-value="decor"]');
+  await evaluate(`document.querySelector('#modal .modal-body').scrollTop = 400`);
+  const before = await evaluate(`document.querySelector('#modal .modal-body').scrollTop`);
+  await sleep(1500);
+  const after = await evaluate(`document.querySelector('#modal .modal-body').scrollTop`);
+  await click('#modal header [data-action="jobs-close"]');
+  if (!(before > 0 && after === before)) console.log(`      scrollTop ${before} -> ${after}`);
+  return before > 0 && after === before;
+});
+
+await check('the move strip sells what you are holding, and says what it fetches', async () => {
+  const id = await evaluate(`(() => { __store.getState().earn(20000); __game.sim.buyFurniture('assembly-table');
+    const s = [...Object.keys(__store.getState().stationPlacements)].find((k) => k.startsWith('assembly-table'));
+    __store.getState().setMoving(s); __game.sim.publish(); return s; })()`);
+  await sleep(300);
+  const label = await evaluate(`document.querySelector('[data-action="sell-held"]')?.textContent.trim() ?? ''`);
+  const cash = await evaluate(`__store.getState().cash`);
+  await click('[data-action="sell-held"]');
+  const gone = await evaluate(`!Object.keys(__store.getState().stationPlacements).includes('${id}')`);
+  const after = await evaluate(`__store.getState().cash`);
+  const ok = Boolean(id) && /₺/.test(label) && after > cash && gone;
+  if (!ok) console.log(`      id ${id}, label "${label}", cash ${cash} -> ${after}, gone ${gone}`);
   return ok;
 });
 

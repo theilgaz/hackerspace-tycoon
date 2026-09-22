@@ -17,6 +17,7 @@ const ERA_SIZE = [
   { width: 6, height: 8 }, // the garage
   { width: 9, height: 10 }, // Unit 4B
   { width: 12, height: 12 }, // the warehouse
+  { width: 15, height: 14 }, // the old factory
 ];
 
 export interface StationDef {
@@ -88,7 +89,7 @@ function printerSlots(): { tile: Tile; stand: Tile }[] {
   // The back wall, working outward from the printer you start with.
   // Spaced out rather than shoulder to shoulder: a warehouse holds more printers than a
   // garage, but a wall of nine of them is neither a decision nor a room you want to look at.
-  return [4, 2, 5, 7, 9, 11]
+  return [4, 2, 5, 7, 9, 11, 13]
     .filter((x) => x < GRID.width)
     .map((x) => ({ tile: { x, y: 0 }, stand: { x, y: 1 } }));
 }
@@ -281,6 +282,7 @@ export const MACHINE_LABEL: Record<MachineType, string> = {
   drybox: 'Filament Dry Box',
   'table-small': 'Small Project Table',
   'table-large': 'Large Project Table',
+  learning: 'Learning Station',
 };
 
 /** The tiles a station covers. One, except the large table. */

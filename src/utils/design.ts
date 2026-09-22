@@ -1,4 +1,5 @@
 import type {
+  SkillKey,
   DesignAxisId,
   DesignChoice,
   MachineType,
@@ -65,6 +66,11 @@ export interface DesignAxis {
   question: string;
   /** Stages whose work this axis scales. */
   stages: StageKey[];
+  /**
+   * The skill the crew needs to reach the better options (§4c). A five-star IDE is no use
+   * to a crew nobody on which can drive one.
+   */
+  skill: SkillKey;
   options: [DesignOption, DesignOption, DesignOption];
 }
 
@@ -74,6 +80,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
     label: 'Tool',
     question: 'What does the crew write it in?',
     stages: ['cad', 'assembly', 'iterate'],
+    skill: 'software',
     options: [
       {
         label: 'Notepad',
@@ -104,6 +111,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
     label: 'UI Design',
     question: 'What will people actually see?',
     stages: ['cad', 'assembly'],
+    skill: 'software',
     options: [
       {
         label: 'Template',
@@ -133,6 +141,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
     label: 'Architecture',
     question: 'How is it put together underneath?',
     stages: ['cad', 'simulation', 'assembly', 'iterate'],
+    skill: 'software',
     options: [
       {
         label: 'One big script',
@@ -163,6 +172,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
     label: 'Circuit',
     question: 'What is the electronics built on?',
     stages: ['assembly', 'iterate'],
+    skill: 'electronics',
     options: [
       {
         label: 'Breadboard',
@@ -197,6 +207,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
     label: 'Firmware',
     question: 'What runs on it?',
     stages: ['simulation', 'assembly', 'iterate'],
+    skill: 'software',
     options: [
       {
         label: 'Arduino sketch',
@@ -227,6 +238,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
     label: 'Enclosure',
     question: 'What does it live in?',
     stages: ['assembly'],
+    skill: 'cad',
     options: [
       {
         label: 'Bare board',
@@ -259,6 +271,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
     label: 'Design tool',
     question: 'Where is it drawn?',
     stages: ['cad', 'iterate'],
+    skill: 'cad',
     options: [
       {
         label: 'Paper sketch',
@@ -290,6 +303,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
     label: 'Material',
     question: 'What takes the load?',
     stages: ['assembly'],
+    skill: 'machining',
     options: [
       {
         label: 'PLA',
@@ -323,6 +337,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
     label: 'Validation',
     question: 'How sure are you it works before you build it?',
     stages: ['simulation'],
+    skill: 'cad',
     options: [
       {
         label: 'Eyeball it',
@@ -351,6 +366,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
     label: 'Documentation',
     question: 'What does the neighbourhood get with it?',
     stages: ['release'],
+    skill: 'docs',
     options: [
       {
         label: 'README',
@@ -495,7 +511,9 @@ export function planProject(
     bom *= option.bom ?? 1;
     print *= option.print ?? 1;
     lead += option.lead ?? 0;
-    tooling += (option.cost ?? 0) + (option.perSeat ?? 0) * Math.max(1, plan.seats);
+    tooling +=
+      optionCost(def, option) + (option.cost ?? 0) + (option.perSeat ?? 0) * Math.max(1, plan.seats);
+    bom *= DESIGN.starBom[option.stars];
     if (option.skipSim) skipSim = true;
     for (const machine of option.requires ?? []) needs.add(machine);
     for (const stage of AXES[axis].stages) work[stage] = work[stage] * (option.work ?? 1);
@@ -532,8 +550,52 @@ export function planProject(
 }
 
 /** The same plan every harness and the Project Manager use: defaults, at the brief's size. */
-export function defaultPlan(def: ProjectDef, maxSeats = 10): ProjectPlan {
-  return { design: defaultDesign(def.category), seats: Math.max(1, Math.min(def.teamSize, maxSeats)) };
+/**
+ * The design budget an option carries, scaled by its stars (§4c): a one-star shortcut is
+ * nearly free, the three-star default costs a little, five stars costs real money. It is a
+ * share of what the brief pays plus a floor, so a big client job is dearer to do properly
+ * than a phone stand — and cost, quality and return all move the same way.
+ */
+export function optionCost(def: ProjectDef, option: DesignOption): number {
+  return Math.round(DESIGN.starBudget[option.stars] * (DESIGN.budgetBase + DESIGN.budgetShare * def.payout));
+}
+
+/** The skill level an option asks of somebody on the crew. */
+export function optionNeeds(option: DesignOption): number {
+  return DESIGN.starSkill[option.stars];
+}
+
+/** The best level anybody on the crew has in a skill; 0 for an empty crew. */
+export function crewBest(crew: { skills: Record<SkillKey, number> }[], skill: SkillKey): number {
+  return Math.max(0, ...crew.map((m) => m.skills[skill] ?? 0));
+}
+
+/** Can this crew use this option? One star is always on the table. */
+export function optionAvailable(
+  axis: DesignAxisId,
+  index: number,
+  crew: { skills: Record<SkillKey, number> }[],
+): boolean {
+  const option = AXES[axis].options[index];
+  return crewBest(crew, AXES[axis].skill) >= optionNeeds(option);
+}
+
+/**
+ * The plan the harnesses and the Project Manager take: three stars where the crew can do
+ * three stars, one star where it cannot, at the brief's own size.
+ */
+export function defaultPlan(
+  def: ProjectDef,
+  maxSeats = 10,
+  crew?: { skills: Record<SkillKey, number> }[],
+): ProjectPlan {
+  const design = defaultDesign(def.category);
+  if (crew) {
+    for (const axis of CATEGORY_AXES[def.category]) {
+      if (!optionAvailable(axis, 1, crew)) design[axis] = 0;
+    }
+  }
+  return { design, seats: Math.max(1, Math.min(def.teamSize, maxSeats)) };
 }
 
 /**

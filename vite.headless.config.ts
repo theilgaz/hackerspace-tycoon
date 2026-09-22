@@ -19,6 +19,7 @@ export default defineConfig({
         'project-times': 'tools/project-times.ts',
         'era-pace': 'tools/era-pace.ts',
         'hype-check': 'tools/hype-check.ts',
+        'kickoff-check': 'tools/kickoff-check.ts',
       },
     },
   },

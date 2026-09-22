@@ -82,10 +82,10 @@ export const ui = {
   'ui.top.allocated': 'allocated',
   'ui.top.allocatedHint': 'somebody can only be on one project at a time',
   'ui.top.reputationHint': "cumulative hype from everything you've shipped",
-  'ui.top.seasonHint': (p: { year: number; days: number }) => `${p.year} · ${p.days} days to the awards on 1 December`,
+  'ui.top.seasonHint': (p: { year: number; days: number }) => `${p.year} · ${p.days} days to the awards (day 90 of the year)`,
 
   // --- Awards night --------------------------------------------------------------
-  'ui.ceremony.title': (p: { year: number }) => `Awards night · December ${p.year}`,
+  'ui.ceremony.title': (p: { year: number }) => `Awards night · ${p.year}`,
   'ui.ceremony.won': (p: { won: string; total: number }) => `You took ${p.won} of ${p.total}.`,
   'ui.ceremony.wonRep': (p: { won: string; total: number; reputation: number }) =>
     `You took ${p.won} of ${p.total}, and ${p.reputation} reputation with them.`,
@@ -116,7 +116,7 @@ export const ui = {
   'ui.rank.foot.table':
     'Ranked on reputation, all time. The awards are judged on the year just gone, which is a different question — a quiet year costs you even while you are ahead here.',
   'ui.trophy.none':
-    'No awards night yet — the first is this December. Every category is judged on the year just gone, so there is always one to play for.',
+    'No awards night yet — the first is on day 90. Every category is judged on the year just gone, so there is always one to play for.',
   'ui.trophy.scoped': (p: { won: string; nights: number }) =>
     `${p.won} of ${p.nights} ${p.nights === 1 ? 'night' : 'nights'}`,
   'ui.trophy.summary': (p: { won: string; count: number; nights: number }) =>
@@ -132,11 +132,11 @@ export const ui = {
   'ui.trophy.notGiven': 'not given out',
   'ui.trophy.category': 'Category',
   'ui.trophy.yours': 'Yours',
-  'ui.trophy.winnerDecember': (p: { year: number }) => `Winner, December ${p.year}`,
+  'ui.trophy.winnerYear': (p: { year: number }) => `Winner, ${p.year}`,
   'ui.trophy.yearHint': (p: { year: number; won: number; total: number }) =>
-    `December ${p.year} — you took ${p.won} of ${p.total}`,
+    `${p.year} — you took ${p.won} of ${p.total}`,
   'ui.trophy.yearHintRep': (p: { year: number; won: number; total: number; reputation: number }) =>
-    `December ${p.year} — you took ${p.won} of ${p.total}, worth ${p.reputation} reputation`,
+    `${p.year} — you took ${p.won} of ${p.total}, worth ${p.reputation} reputation`,
   'ui.trophy.yearBefore': 'The year before',
   'ui.trophy.yearAfter': 'The year after',
   'ui.trophy.hackerspace': 'Hackerspace',
@@ -169,12 +169,11 @@ export const ui = {
   'ui.chart.today': 'today',
   'ui.chart.inDays': (p: { days: number }) => `in ${p.days} days`,
   'ui.chart.noTable': (p: { when: string }) =>
-    `The nights before this one kept no table of the field, so the line starts at this December's awards — ${p.when}.`,
+    `The nights before this one kept no table of the field, so the line starts at this year's awards — ${p.when}.`,
   'ui.chart.empty': (p: { when: string }) =>
-    `Nothing to plot yet. The first awards night is this December, ${p.when}, and every one after it adds a point.`,
+    `Nothing to plot yet. The first awards night is on day 90, ${p.when}, and every one after it adds a point.`,
   'ui.chart.point': (p: { year: number; place: string; field: number; reputation: string }) =>
     `${p.year} — ${p.place} of ${p.field}, ${p.reputation} reputation`,
-  'ui.chart.aria': (p: { place: string; year: number }) => `Finishing place by year. Best: ${p.place} in ${p.year}.`,
   'ui.space.allTime': 'all time',
 
   'ui.close': 'Close',

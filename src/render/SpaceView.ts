@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { caseLocale } from '@/i18n';
 import type { MachineType, RuntimeSnapshot, Seat } from '@/game/types';
 import {
+  DOOR,
   GRID,
   STATIONS,
   STATION_MAP,
@@ -25,6 +26,7 @@ const ERA_TONE = [
   { floorLight: '#626b7c', floorDark: '#58606f', wall: '#3d4551' }, // the garage: cold concrete
   { floorLight: '#6f6a63', floorDark: '#635e58', wall: '#4a4741' }, // Unit 4B: painted, warmer
   { floorLight: '#8a8c90', floorDark: '#7e8085', wall: '#565c66' }, // the warehouse: poured floor
+  { floorLight: '#7d7771', floorDark: '#716b65', wall: '#6b4a3f' }, // the old factory: brick and old boards
 ];
 
 export function toWorld(x: number, y: number, height = 0): THREE.Vector3 {
@@ -54,6 +56,7 @@ const STATION_TONE: Record<string, string> = {
   lounge: '#a2564c',
   'table-small': '#c9a26b',
   'table-large': '#c9a26b',
+  learning: '#9b7fe0',
 };
 
 /** Stable colour for recruits, matching the dot the UI shows. */
@@ -243,6 +246,59 @@ export class SpaceView {
     this.group.add(left);
 
     this.buildSign(h);
+    this.buildDoor(h);
+  }
+
+  /** The front door's swinging leaf, opened by whoever is standing at it. */
+  private doorLeaf: THREE.Object3D | null = null;
+
+  /**
+   * The way in (§10). Everybody arrives and leaves through the same tile, so it gets a real
+   * door on the left wall: a frame, a leaf that swings open when somebody is on the
+   * threshold, a lamp over it and a mat in front. A room people simply appear in reads as a
+   * stage; one they walk into reads as a building.
+   */
+  private buildDoor(wallHeight: number) {
+    const at = toWorld(-0.6, DOOR.y);
+    const face = at.x + 0.1;
+    const frame = mat('#2b313b');
+    const g = new THREE.Group();
+    for (const dz of [-0.42, 0.42]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.42, 0.08), frame);
+      post.position.set(face, 0.71, at.z + dz);
+      g.add(post);
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.92), frame);
+    lintel.position.set(face, 1.45, at.z);
+    g.add(lintel);
+    // The leaf hinges on its far edge, so it swings into the room.
+    const hinge = new THREE.Group();
+    hinge.position.set(face + 0.02, 0, at.z - 0.38);
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.36, 0.76), mat('#7a5638'));
+    leaf.position.set(0, 0.68, 0.38);
+    leaf.castShadow = true;
+    hinge.add(leaf);
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.12), mat('#cbd3de'));
+    handle.position.set(0.05, 0.72, 0.64);
+    hinge.add(handle);
+    const pane = new THREE.Mesh(
+      new THREE.BoxGeometry(0.02, 0.32, 0.4),
+      new THREE.MeshStandardMaterial({ color: '#cfe3f0', emissive: '#3a5566', flatShading: true }),
+    );
+    pane.position.set(0.03, 1.08, 0.38);
+    hinge.add(pane);
+    g.add(hinge);
+    this.doorLeaf = hinge;
+    const lamp = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 0.06, 0.22),
+      new THREE.MeshStandardMaterial({ color: '#ffe3a1', emissive: '#c99a3a', emissiveIntensity: 0.9 }),
+    );
+    lamp.position.set(face + 0.06, Math.min(wallHeight - 0.15, 1.62), at.z);
+    g.add(lamp);
+    const doormat = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.02, 0.8), mat('#4a3a2e'));
+    doormat.position.copy(toWorld(DOOR.x, DOOR.y, 0.01));
+    g.add(doormat);
+    this.group.add(g);
   }
 
   /**
@@ -409,6 +465,12 @@ export class SpaceView {
    */
   previewModel(key: string): THREE.Object3D | null {
     const [kind, id] = key.split(':');
+    if (kind === 'printer') {
+      const node = id === 'a1-mini' ? this.buildPrinter(`preview-${id}`) : this.buildCabinetPrinter(`preview-${id}`, id);
+      // A preview has no readout to keep; do not leave a handle to a model nobody draws.
+      this.machineVisuals.delete(`preview-${id}`);
+      return node;
+    }
     if (kind === 'furniture') {
       const def = FURNITURE_MAP[id];
       if (!def) return null;
@@ -448,7 +510,7 @@ export class SpaceView {
   private buildStation(def: StationDef): THREE.Object3D {
     switch (def.type) {
       case 'fdm':
-        return this.buildPrinter(def.id);
+        return def.model && def.model !== 'a1-mini' ? this.buildCabinetPrinter(def.id, def.model) : this.buildPrinter(def.id);
       case 'cnc':
         return this.buildCnc(def.id);
       case 'reflow':
@@ -465,6 +527,8 @@ export class SpaceView {
         return this.buildProjectTable(1);
       case 'table-large':
         return this.buildProjectTable(2);
+      case 'learning':
+        return this.buildLearning();
       default:
         return this.buildTable('#7d8390');
     }
@@ -526,6 +590,76 @@ export class SpaceView {
     g.add(bed);
 
     this.addReadout(g, id, 1.42, head);
+    return g;
+  }
+
+  /**
+   * Every printer past the A1 is an enclosed machine, and they grow with the price: the P2S
+   * a little larger than the A1's open frame, the X1C larger again, the H2S the biggest box
+   * on the floor. A cabinet reads as "serious kit" from across the room, which is the point
+   * of spending ₺33,000 on one.
+   */
+  private buildCabinetPrinter(id: string, model: string): THREE.Group {
+    const size = { p2s: [0.76, 0.92, 0.74], x1c: [0.82, 1.04, 0.8], h2s: [0.92, 1.2, 0.88] }[model] ??
+      [0.76, 0.92, 0.74];
+    const [w, h, d] = size;
+    const trim = { p2s: '#3a414d', x1c: '#1d2229', h2s: '#e4e7eb' }[model] ?? '#3a414d';
+    const g = new THREE.Group();
+    const frame = mat(trim);
+    // The shell: a base, a lid and four corner posts, so the glass reads as panels in a frame.
+    const base = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, d), frame);
+    base.position.y = 0.07;
+    base.castShadow = true;
+    g.add(base);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, d), frame);
+    lid.position.y = h - 0.04;
+    lid.castShadow = true;
+    g.add(lid);
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, h - 0.2, 0.05), frame);
+      post.position.set((sx * (w - 0.05)) / 2, h / 2, (sz * (d - 0.05)) / 2);
+      g.add(post);
+    }
+    const back = new THREE.Mesh(new THREE.BoxGeometry(w - 0.06, h - 0.2, 0.03), mat('#2b313b'));
+    back.position.set(0, h / 2, -(d - 0.06) / 2);
+    g.add(back);
+    // Smoked glass on the front and sides.
+    const glass = new THREE.MeshStandardMaterial({
+      color: '#9fb4c8',
+      transparent: true,
+      opacity: 0.22,
+      roughness: 0.1,
+      metalness: 0.1,
+      depthWrite: false,
+    });
+    const front = new THREE.Mesh(new THREE.BoxGeometry(w - 0.06, h - 0.2, 0.02), glass);
+    front.position.set(0, h / 2, (d - 0.04) / 2);
+    g.add(front);
+    for (const sx of [-1, 1]) {
+      const side = new THREE.Mesh(new THREE.BoxGeometry(0.02, h - 0.2, d - 0.06), glass);
+      side.position.set((sx * (w - 0.04)) / 2, h / 2, 0);
+      g.add(side);
+    }
+    // Inside: the bed and a moving toolhead, visible through the glass.
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(w * 0.7, 0.04, d * 0.65), mat('#1f242c'));
+    bed.position.set(0, 0.2, 0);
+    g.add(bed);
+    const head = new THREE.Group();
+    head.add(new THREE.Mesh(new THREE.BoxGeometry(w * 0.8, 0.05, 0.08), mat('#6f7b8c')));
+    const hotend = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.14, 0.13), mat('#d94f3d'));
+    hotend.position.y = -0.1;
+    head.add(hotend);
+    head.position.set(0, h * 0.62, 0);
+    head.userData.travel = [0.3, h - 0.2, h * 0.62];
+    g.add(head);
+    // A small screen on the front of the base, lit.
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, 0.08, 0.02),
+      new THREE.MeshStandardMaterial({ color: '#5ecfc0', emissive: '#1f7a6d', flatShading: true }),
+    );
+    panel.position.set(w * 0.28, 0.08, d / 2 + 0.01);
+    g.add(panel);
+    this.addReadout(g, id, h + 0.18, head);
     return g;
   }
 
@@ -598,6 +732,39 @@ export class SpaceView {
     keyboard.position.set(0, 0.675, 0.1);
     g.add(keyboard);
     g.add(this.chair(0, 0.52));
+    return g;
+  }
+
+  /**
+   * The Learning Station: a desk with a big screen of course material, a shelf of manuals
+   * behind it and two chairs — it seats two, and it has to read as a classroom at iso scale.
+   */
+  private buildLearning(): THREE.Group {
+    const g = new THREE.Group();
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.07, 0.56), mat('#6f5a8f'));
+    top.position.y = 0.6;
+    top.castShadow = true;
+    g.add(top);
+    for (const [sx, sz] of [[-0.4, -0.2], [0.4, -0.2], [-0.4, 0.2], [0.4, 0.2]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.06), mat('#4c5360'));
+      leg.position.set(sx, 0.3, sz);
+      g.add(leg);
+    }
+    const screen = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.4, 0.04),
+      new THREE.MeshStandardMaterial({ color: '#b7a3ef', emissive: '#3b2a6b', flatShading: true }),
+    );
+    screen.position.set(0, 0.9, -0.2);
+    screen.rotation.x = -0.08;
+    g.add(screen);
+    const books = ['#c0584a', '#3f7ea8', '#e0c36a', '#4f6f52'];
+    books.forEach((colour, i) => {
+      const book = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.16), mat(colour));
+      book.position.set(0.28 + i * 0.065, 0.735, 0.05);
+      g.add(book);
+    });
+    g.add(this.chair(-0.22, 0.52, 0, '#4a3f66'));
+    g.add(this.chair(0.22, 0.52, 0, '#4a3f66'));
     return g;
   }
 
@@ -1557,6 +1724,16 @@ export class SpaceView {
     this.elapsed += dt;
     this.syncStations();
 
+    // The door opens for whoever is on the threshold and closes behind them.
+    if (this.doorLeaf) {
+      const people = [...runtime.members, ...(runtime.player ? [runtime.player] : [])];
+      const near = people.some(
+        (p) => p.present && Math.hypot(p.pos.x - DOOR.x, p.pos.y - DOOR.y) < 0.9,
+      );
+      const target = near ? -1.25 : 0;
+      this.doorLeaf.rotation.y += (target - this.doorLeaf.rotation.y) * Math.min(1, dt * 6);
+    }
+
     for (const m of runtime.members) {
       this.placePerson(m.id, false, m.present, m.seat ?? m.pos, m.activity, m.seat);
     }
@@ -1595,7 +1772,9 @@ export class SpaceView {
       visual.bar.visible = !!job;
 
       if (visual.head) {
-        visual.head.position.y = job ? 0.34 + ratio * 0.55 : 0.62;
+        // Each model says how far its head travels; a cabinet must not print through its lid.
+        const [lo, hi, rest] = (visual.head.userData.travel as number[] | undefined) ?? [0.34, 0.89, 0.62];
+        visual.head.position.y = job ? lo + ratio * (hi - lo) : rest;
         visual.head.position.x = job ? Math.sin(this.elapsed * 6) * 0.12 : 0;
       }
     }

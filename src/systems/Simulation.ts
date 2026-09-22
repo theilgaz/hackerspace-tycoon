@@ -16,6 +16,7 @@ import type {
   ClaimKey,
   Post,
   ProjectPlan,
+  SkillKey,
   Seat,
   TableSnapshot,
 } from '@/game/types';
@@ -50,7 +51,15 @@ import {
   furnitureFits,
   amenityRoom,
 } from '@/machines/layout';
-import { defaultPlan, planProject, qualityHype, qualityPay, teamFit } from '@/utils/design';
+import {
+  CATEGORY_AXES,
+  defaultPlan,
+  optionAvailable,
+  planProject,
+  qualityHype,
+  qualityPay,
+  teamFit,
+} from '@/utils/design';
 import { coolMarket, driftMarket, warmMarket } from '@/utils/market';
 import { FURNITURE_MAP } from '@/utils/furniture';
 import { manhattan } from '@/utils/grid';
@@ -79,6 +88,8 @@ import {
   TEST,
   TIME,
   KICKOFF,
+  TRAIN,
+  RESALE,
   VERB_HOURS,
   WORKDAY,
   ERAS,
@@ -641,6 +652,7 @@ export class Simulation {
       this.decideActivity(m, dt);
       m.advance(dt);
       this.performActivity(m, dt);
+      this.tickTraining(m, dt);
     }
 
     this.applyWork(dt);
@@ -732,6 +744,24 @@ export class Simulation {
     // On a team whose project has gone? Release them.
     if (m.team && !this.project(m.team)) m.team = null;
 
+    // On a course: the learning station, and nothing else until it is done (§4c).
+    if (m.training && !m.team) {
+      const claim = this.claimSeat(m, 'learning');
+      if (!claim) {
+        this.wanting.set(m.id, 'learning');
+        m.note = t('build.note.waitingToTrain', { skill: t(`build.skill.${m.training.skill}` as MessageKey) });
+      } else {
+        const station = STATION_MAP[claim.stationId];
+        if (this.atStand(m, station)) {
+          m.activity = 'working';
+          m.note = t('build.note.training', { skill: t(`build.skill.${m.training.skill}` as MessageKey) });
+        } else if (!m.walking) {
+          m.walkTo(station.stand);
+        }
+        return;
+      }
+    }
+
     // Drift: interest gone, they walk away from the team. The core antagonist.
     if (m.team && m.interest < DRIFT.abandonThreshold) {
       const project = this.project(m.team)!;
@@ -741,7 +771,7 @@ export class Simulation {
     }
 
     // Volunteers still volunteer: an unallocated member may join something themselves.
-    if (!m.team) {
+    if (!m.team && !m.training) {
       let best: { project: ProjectData; appetite: number } | null = null;
       for (const project of this.joinableProjects()) {
         if (m.isCoolingOff(project.id)) continue;
@@ -1022,6 +1052,105 @@ export class Simulation {
       const other = this.member(id);
       return !other || other.id === member.id || overlap(other, member);
     });
+  }
+
+  /**
+   * Put somebody on a course at the learning station (§4c): one skill, one level. It is
+   * paid for now and takes hours at the station — during which they are on nobody's crew,
+   * which is the real price of it.
+   */
+  train(memberId: string, skill: SkillKey): boolean {
+    const member = this.member(memberId);
+    if (!member || member.training) return false;
+    if (!stationsOfType('learning').length) {
+      this.log(msg('build.log.noLearning'), 'warn');
+      return false;
+    }
+    if (member.team) {
+      this.log(msg('build.log.busyToTrain', { member: member.name }), 'warn');
+      return false;
+    }
+    const level = member.data.skills[skill];
+    if (level >= TRAIN.maxLevel) return false;
+    const cost = this.trainCost(memberId, skill);
+    if (!store.getState().spend(cost)) {
+      this.log(msg('log.amenity.cantAfford', { item: member.name }), 'bad');
+      return false;
+    }
+    const hours = TRAIN.hoursPerLevel * (level + 1);
+    member.training = { skill, hoursLeft: hours, total: hours };
+    this.log(msg('build.log.trainStart', { member: member.name, skill: msg(`build.skill.${skill}` as MessageKey), level: level + 1 }), 'info');
+    this.publish();
+    return true;
+  }
+
+  trainCost(memberId: string, skill: SkillKey): number {
+    const level = this.member(memberId)?.data.skills[skill] ?? 1;
+    return TRAIN.costPerLevel * (level + 1);
+  }
+
+  private tickTraining(m: MemberEntity, dt: number) {
+    if (!m.training || m.activity !== 'working' || m.team) return;
+    m.training.hoursLeft -= dt * this.comforts.focus;
+    if (m.training.hoursLeft > 0) return;
+    const skill = m.training.skill;
+    m.data.skills[skill] = Math.min(TRAIN.maxLevel, m.data.skills[skill] + 1);
+    m.training = null;
+    this.releaseSeat(m.id);
+    this.log(
+      msg('build.log.trained', { member: m.name, skill: msg(`build.skill.${skill}` as MessageKey), level: m.data.skills[skill] }),
+      'good',
+    );
+  }
+
+  /**
+   * What selling this piece of the room would fetch, and whether it can go at all (§4d). The
+   * kit the garage came with and the machines tool projects built stay; so does a table
+   * somebody is holding a kickoff at.
+   */
+  resaleOf(id: string): { value: number; reason: MessageKey | null } {
+    const comfort = amenityDef(id);
+    if (comfort) {
+      if (!store.getState().amenities.includes(id)) return { value: 0, reason: 'build.sell.notOwned' };
+      return { value: Math.round(comfort.price * RESALE.share), reason: null };
+    }
+    const station = STATION_MAP[id];
+    if (!station) return { value: 0, reason: 'build.sell.notOwned' };
+    if (station.type === 'fdm') {
+      return { value: this.resaleFor(id), reason: null };
+    }
+    if (!station.furniture) return { value: 0, reason: 'build.sell.fixture' };
+    if (this.projects.some((p) => p.tableId === id)) return { value: 0, reason: 'build.sell.inUse' };
+    const def = Object.values(FURNITURE_MAP).find((f) => f.type === station.type);
+    return { value: Math.round((def?.price ?? 0) * RESALE.share), reason: null };
+  }
+
+  /** Sell a piece of the room. Whoever was sitting at it gets up and finds somewhere else. */
+  sellPiece(id: string): boolean {
+    const { value, reason } = this.resaleOf(id);
+    if (reason) {
+      this.log(msg(reason), 'warn');
+      return false;
+    }
+    const station = STATION_MAP[id];
+    if (station?.type === 'fdm') {
+      store.getState().setMoving(null);
+      return this.sellPrinter(id);
+    }
+    const name = amenityDef(id)?.name ?? station?.label ?? id;
+    if (station) {
+      for (const [who, claim] of [...this.claims]) if (claim.stationId === id) this.claims.delete(who);
+      removeStation(id);
+      store.getState().forgetStation(id);
+      const type = station.type;
+      if (!STATIONS.some((s) => s.type === type)) store.getState().disownMachine(type);
+    } else {
+      store.getState().sellAmenity(id);
+    }
+    store.getState().earn(value);
+    this.log(msg('build.log.sold', { item: name, value }), 'info');
+    this.publish();
+    return true;
   }
 
   /** Crew who need a chair at the kickoff: the team, plus you if you are on it. */
@@ -1753,6 +1882,8 @@ export class Simulation {
         role: m.role,
         team: m.team,
         interest: m.interest,
+        skills: { ...m.data.skills },
+        training: m.training ? { ...m.training } : null,
         energy: m.data.energy,
         mood: m.data.mood,
         ghostFactor: m.ghostFactor,
@@ -1837,6 +1968,9 @@ export class Simulation {
       member.role = saved.role ?? null;
       member.team = saved.team;
       member.interest = saved.interest;
+      // Skills can be trained, so a save carries them; an older file keeps the roster's.
+      if (saved.skills) member.data.skills = { ...member.data.skills, ...saved.skills };
+      member.training = saved.training ?? null;
       member.data.energy = saved.energy;
       member.data.mood = saved.mood;
       member.ghostFactor = saved.ghostFactor;
@@ -1912,6 +2046,10 @@ export class Simulation {
 
     if (project.team.length >= project.teamSize) {
       this.log(msg('log.team.full', { project: project.name, size: project.teamSize }), 'warn');
+      return false;
+    }
+    if (member.training) {
+      this.log(msg('build.log.onCourse', { member: member.name }), 'warn');
       return false;
     }
     if (member.team) {
@@ -2045,7 +2183,7 @@ export class Simulation {
     // Hype behaves like reputation you have not earned yet: it brings the public in while it
     // lasts and takes them away again when it fades, through the same curve and the same cap.
     const borrowed = this.pressure * HYPE.extraMembers * ECONOMY.reputationPerMember;
-    return membershipFor(store.getState().reputation + borrowed);
+    return membershipFor(store.getState().reputation + borrowed, store.getState().era);
   }
 
   /** How loudly the place is being talked about, 0-1. Everything hype feeds scales off this. */
@@ -2505,7 +2643,7 @@ export class Simulation {
           // once — the manager plans a kickoff that can actually happen (§4d).
           const crew: MemberEntity[] = [];
           for (const m of this.members
-            .filter((x) => !x.team)
+            .filter((x) => !x.team && !x.training)
             .sort((a, b) => b.passionMatch(def.tags) - a.passionMatch(def.tags))) {
             if (crew.length >= Math.min(def.teamSize, this.maxTableSeats())) break;
             const clash = crew.some(
@@ -2621,7 +2759,19 @@ export class Simulation {
       this.log(msg('build.log.noTable'), 'bad');
       return false;
     }
-    const chosen = plan ?? defaultPlan(def, maxSeats);
+    // What the crew can actually do decides what the design may ask of them (§4c). The
+    // wizard never offers a locked option; a plan that arrives with one — the crew changed,
+    // or a harness — drops that axis to the best the crew can manage.
+    const crewSkills = draftTeam
+      .map((id) => this.member(id))
+      .filter((m): m is MemberEntity => !!m)
+      .map((m) => ({ skills: m.data.skills }));
+    const chosen = plan ? { ...plan, design: { ...plan.design } } : defaultPlan(def, maxSeats, crewSkills);
+    for (const axis of CATEGORY_AXES[def.category]) {
+      let index = Math.round(chosen.design[axis] ?? 1);
+      while (index > 0 && !optionAvailable(axis, index, crewSkills)) index -= 1;
+      chosen.design[axis] = index;
+    }
     if (chosen.seats > maxSeats) {
       this.log(msg('build.log.crewTooBig', { count: chosen.seats }), 'warn');
       return false;

@@ -23,6 +23,7 @@ const STATION_ROLE: Partial<Record<MachineType, string>> = {
   'table-large': 'kickoffs for up to ten',
   drybox: 'keeps the filament dry',
   reflow: 'SMD assembly',
+  learning: 'training, one level at a time',
 };
 import { LOGOS } from '@/utils/rivals';
 import { clearSave, readSave, writeSave, SAVE_VERSION, type SaveFile } from '@/systems/SaveGame';
@@ -67,6 +68,10 @@ export class Game {
       },
       pitch: (defId, offerId, team, plan) => act(() => sim.pitch(defId, offerId, team, plan)),
       buyFurniture: (id) => act(() => sim.buyFurniture(id)),
+      train: (memberId, skill) => act(() => sim.train(memberId, skill)),
+      resaleOf: (id) => sim.resaleOf(id),
+      sellPiece: (id) => act(() => sim.sellPiece(id)),
+      trainCost: (memberId, skill) => sim.trainCost(memberId, skill),
       furnitureFits: (type, span) => this.fits(type, span),
       thumbnail: (key) => this.thumbs.get(key),
       workOn: (projectId) => act(() => sim.workOn(projectId)),

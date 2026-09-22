@@ -38,6 +38,7 @@ import {
   STAGE_ORDER,
   TIME,
   TRAIT_BLURB,
+  TRAIN,
   TRAIT_LABEL,
   VERB_HOURS,
   eraDef,
@@ -54,7 +55,7 @@ import {
 } from '@/utils/amenities';
 import { CLAIMS, SUBREDDITS, SUBREDDIT_MAP, tasteMatch } from '@/utils/subreddits';
 import { merit, projectSubject, react, type Subject } from '@/systems/HypeSystem';
-import type { PrinterModel } from '@/utils/printers';
+import { PRINTERS, type PrinterModel } from '@/utils/printers';
 import {
   AXES,
   CATEGORY_AXES,
@@ -62,6 +63,10 @@ import {
   defaultDesign,
   optionOf,
   planProject,
+  optionAvailable,
+  optionCost,
+  optionNeeds,
+  crewBest,
   qualityHype,
   qualityPay,
   qualityStars,
@@ -82,6 +87,10 @@ export interface UIHandlers {
   setSpeed(speed: number): void;
   pitch(defId: string, offerId: string | undefined, team: string[], plan: ProjectPlan): void;
   buyFurniture(id: string): void;
+  train(memberId: string, skill: SkillKey): void;
+  resaleOf(id: string): { value: number; reason: MessageKey | null };
+  sellPiece(id: string): void;
+  trainCost(memberId: string, skill: SkillKey): number;
   /** Could a piece of furniture go anywhere on the floor right now? */
   furnitureFits(type: MachineType, span: number): boolean;
   /** A rendered picture of a buyable thing, or null where there is no renderer. */
@@ -220,7 +229,7 @@ function demandBadge(value: number): string {
 }
 
 /** One badge per thing a design option changes. Good reads green, a cost reads red. */
-function optionEffects(option: DesignOption, seats: number): string {
+function optionEffects(option: DesignOption, seats: number, def: ProjectDef): string {
   const out: string[] = [];
   const badge = (text: string, good: boolean | null, title = '') =>
     `<span class="ui-badge ${good === null ? '' : 'ui-badge--tone'}" ${
@@ -241,13 +250,14 @@ function optionEffects(option: DesignOption, seats: number): string {
     out.push(badge(t('build.fx.printing', { value: change(option.print) }), option.print < 1));
   }
   if (option.lead) out.push(badge(t('build.fx.delivery', { days: option.lead }), false));
-  const cost = (option.cost ?? 0) + (option.perSeat ?? 0) * Math.max(1, seats);
-  if (cost) {
-    const text = option.perSeat
-      ? t('build.fx.perSeat', { cost, each: option.perSeat })
-      : t('build.fx.cost', { cost });
-    out.push(badge(text, false, t('build.fx.costHint')));
-  }
+  // Every option has a price now, and it rises with the stars (§4c).
+  const cost = optionCost(def, option) + (option.cost ?? 0) + (option.perSeat ?? 0) * Math.max(1, seats);
+  const text = option.perSeat
+    ? t('build.fx.perSeat', { cost, each: option.perSeat })
+    : t('build.fx.cost', { cost });
+  out.unshift(
+    `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)" title="${esc(t('build.fx.costHint'))}">${icon('coins')}${text}</span>`,
+  );
   if (option.skipSim) out.push(badge(t('build.fx.noSim'), null));
   if (option.requires?.length) {
     out.push(badge(t('build.fx.needs', { machines: option.requires.map((m) => MACHINE_LABEL[m]).join(', ') }), null));
@@ -326,7 +336,7 @@ export class UI {
     | 'new' | 'people' | 'ranking' | 'machines' | 'projects' | 'reddit' | 'build' | null = null;
 
   /** Which shelf of the Build panel is open. */
-  private buildTab: 'workspace' | 'comfort' | 'decor' = 'workspace';
+  private buildTab: 'workspace' | 'printers' | 'comfort' | 'decor' = 'workspace';
 
   /** Which group of projects is on screen. Falls through when the chosen one is empty. */
   private projectsTab: 'all' | 'on' | 'done' = 'all';
@@ -364,6 +374,43 @@ export class UI {
    * folded to give that room; the roster is gone (People has it), so the log opens.
    */
   private folded: { log: boolean } = { log: false };
+
+  /** Whose training picker is open in the People table (§4c). */
+  private trainOpen: string | null = null;
+
+  /**
+   * The courses on offer for one person: every skill, its level now and what the next one
+   * costs. Says out loud why a course cannot start — no station, on a crew, already on one.
+   */
+  private trainRow(m: MemberSnapshot, state: GameState): string {
+    const hasStation = (state.runtime.seats.learning ?? 0) > 0;
+    const blocked = !hasStation
+      ? t('build.people.noStation')
+      : m.team
+        ? t('build.people.onCrew')
+        : m.training
+          ? t('build.people.alreadyOnCourse')
+          : '';
+    const skills: SkillKey[] = ['software', 'electronics', 'cad', 'machining', 'welding', 'docs'];
+    const chips = skills
+      .map((skill) => {
+        const level = m.skills[skill];
+        const maxed = level >= TRAIN.maxLevel;
+        const cost = this.handlers.trainCost(m.id, skill);
+        const ok = !blocked && !maxed && this.affordable(state, cost);
+        return `<button class="ui-toggle" data-action="train" data-id="${m.id}" data-value="${skill}" ${ok ? '' : 'disabled'}>
+          ${esc(t(`build.skill.${skill}` as MessageKey))}
+          <span class="ui-toggle__pct">${level}${maxed ? '' : ` → ${level + 1} · ${money(cost)}`}</span>
+        </button>`;
+      })
+      .join('');
+    return `<tr class="train-row"><td colspan="6">
+      <div class="row wrap" style="gap:5px;align-items:center">
+        ${chips}
+        ${blocked ? `<span class="ui-desc" style="margin-left:6px;color:var(--warning)">${esc(blocked)}</span>` : ''}
+      </div>
+    </td></tr>`;
+  }
 
   /** Which standing job is showing its list of candidates. */
   private roleOpen: Role | null = null;
@@ -806,6 +853,15 @@ export class UI {
           if (id) h.hire(id, (value as Employment) ?? 'full-time');
           this.rerender();
           break;
+        case 'train-open':
+          this.trainOpen = this.trainOpen === id ? null : (id ?? null);
+          this.rerender();
+          break;
+        case 'train':
+          if (id && value) h.train(id, value as SkillKey);
+          this.trainOpen = null;
+          this.rerender();
+          break;
         case 'hire-all':
           for (const applicant of [...(this.lastState?.applicants ?? [])]) {
             h.hire(applicant, h.canHireFullTime(applicant) ? 'full-time' : 'part-time');
@@ -817,7 +873,7 @@ export class UI {
           this.rerender();
           break;
         case 'np-back': {
-          const order: NewStep[] = ['genre', 'brief', 'design', 'crew', 'review'];
+          const order: NewStep[] = ['genre', 'brief', 'crew', 'design', 'review'];
           this.np.step = order[Math.max(0, order.indexOf(this.np.step) - 1)];
           this.rerender();
           break;
@@ -834,7 +890,8 @@ export class UI {
           break;
         case 'np-brief':
           if (id && this.lastState) this.npChooseBrief(id, id2 || null, this.lastState);
-          this.np.step = 'design';
+          // The crew comes before the design (§4c): what they can do decides what is on offer.
+          this.np.step = 'crew';
           this.rerender();
           break;
         case 'np-option':
@@ -844,6 +901,7 @@ export class UI {
         case 'np-seats':
           this.np.seats = Number(value) || 1;
           if (this.lastState) this.npSuggestCrew(this.lastState);
+          if (this.lastState) this.npFitDesign(this.lastState);
           this.rerender();
           break;
         case 'np-crew': {
@@ -852,14 +910,15 @@ export class UI {
           else if (this.np.crew.size < this.np.seats) this.np.crew.add(id);
           // From here the crew is the player's, not a suggestion.
           this.np.crewTouched = true;
+          if (this.lastState) this.npFitDesign(this.lastState);
           this.rerender();
           break;
         }
         case 'np-next':
-          if (this.np.step === 'design') {
-            this.np.step = 'crew';
-            if (this.lastState) this.npSuggestCrew(this.lastState);
-          } else if (this.np.step === 'crew') {
+          if (this.np.step === 'crew') {
+            this.np.step = 'design';
+            if (this.lastState) this.npFitDesign(this.lastState);
+          } else if (this.np.step === 'design') {
             this.np.step = 'review';
           }
           this.rerender();
@@ -932,6 +991,10 @@ export class UI {
         case 'turn-amenity':
           h.turnAmenity();
           break;
+        case 'sell-held':
+          if (id) h.sellPiece(id);
+          this.rerender();
+          break;
         case 'done-moving':
           h.stopMoving();
           this.rerender();
@@ -941,7 +1004,7 @@ export class UI {
           this.rerender();
           break;
         case 'build-tab':
-          this.buildTab = (value as 'workspace' | 'comfort' | 'decor') ?? 'workspace';
+          this.buildTab = (value as 'workspace' | 'printers' | 'comfort' | 'decor') ?? 'workspace';
           this.rerender();
           break;
         case 'buy-furniture':
@@ -1065,6 +1128,16 @@ export class UI {
          <span class="ui-desc">${how}</span>
        </div>
        <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="turn-amenity">${icon('shuffle')}${t('ui.moving.turn')}</button>
+       ${(() => {
+         // Sell straight from the room — the only place you can see how full it has got.
+         const sale = this.handlers.resaleOf(id);
+         return sale.reason
+           ? `<span class="ui-desc moving-note">${esc(t(sale.reason))}</span>`
+           : `<button class="ui-btn ui-btn--danger ui-btn--sm" data-action="sell-held" data-id="${id}"
+               title="${esc(t('build.sell.button', { value: sale.value }))}">
+               ${icon('coins')}${t('build.sell.button', { value: sale.value })}
+             </button>`;
+       })()}
        <button class="ui-btn ui-btn--primary ui-btn--sm" data-action="done-moving">${icon('check')}${t('ui.done')}</button>`,
     );
   }
@@ -1884,7 +1957,7 @@ export class UI {
             <th class="space-head trophy-cat">
               <span class="trophy-cat-line"><span>${t('ui.trophy.category')}</span><span>${t('ui.trophy.yours')}</span></span>
             </th>
-            <th class="space-head">${t('ui.trophy.winnerDecember', { year: active.year })}</th>
+            <th class="space-head">${t('ui.trophy.winnerYear', { year: active.year })}</th>
           </tr></thead>
           <tbody>${body}</tbody>
         </table>
@@ -2193,7 +2266,7 @@ export class UI {
 
     if (!points.length) {
       // Say when the line starts rather than only that it is empty: a run that predates the
-      // record reads "no table was recorded" as a fault, when it is simply not December yet.
+      // record reads "no table was recorded" as a fault, when it is simply not awards night yet.
       const season = state.runtime.season;
       const days = Math.max(0, season.length - season.dayOfYear);
       const when = days === 0 ? t('ui.chart.today') : t('ui.chart.inDays', { days });
@@ -2202,66 +2275,20 @@ export class UI {
       }</p>`;
     }
 
-    const W = 624;
-    const H = 132;
-    const padL = 30;
-    const padR = 14;
-    const padT = 14;
-    const padB = 20;
-    const field = Math.max(...points.map((p) => p.field));
-    const x = (i: number) =>
-      points.length === 1 ? W / 2 : padL + (i * (W - padL - padR)) / (points.length - 1);
-    const y = (rank: number) =>
-      padT + ((rank - 1) / Math.max(1, field - 1)) * (H - padT - padB);
-
-    const line =
-      points.length > 1
-        ? `<polyline fill="none" stroke="${colour}" stroke-width="2" stroke-linejoin="round"
-             stroke-linecap="round"
-             points="${points.map((p, i) => `${x(i).toFixed(1)},${y(p.stand.rank).toFixed(1)}`).join(' ')}" />`
-        : '';
-
-    // Years thin out once there are more of them than there is room for labels.
-    const every = points.length > 8 ? 2 : 1;
-
-    const dots = points
-      .map((p, i) => {
-        const end = i === 0 || i === points.length - 1;
-        const cx = x(i);
-        const cy = y(p.stand.rank);
-        return `<g>
-          <title>${esc(t('ui.chart.point', { year: p.year, place: ordinal(p.stand.rank), field: p.field, reputation: num(p.stand.reputation) }))}</title>
-          <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4" fill="${colour}"
-            stroke="var(--popover)" stroke-width="2" />
-          ${
-            end
-              ? `<text class="chart-mark" x="${cx.toFixed(1)}" y="${(cy - 9).toFixed(1)}"
-                   text-anchor="${i === 0 && points.length > 1 ? 'start' : points.length === 1 ? 'middle' : 'end'}"
-                   >${ordinal(p.stand.rank)}</text>`
-              : ''
-          }
-          ${
-            i % every === 0 || i === points.length - 1
-              ? `<text class="chart-tick" x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle">${p.year}</text>`
-              : ''
-          }
-          <rect x="${(cx - 16).toFixed(1)}" y="${padT - 8}" width="32" height="${H - padT - padB + 16}"
-            fill="transparent" />
-        </g>`;
-      })
+    // A strip of finishes, not a chart. The line chart spent a panel's width on two or three
+    // points, repeated its year labels whenever two nights fell in one calendar year, and its
+    // slope said less than the numbers did. One chip per awards night: the place, big; the
+    // year under it; gold for a win.
+    const chips = points
+      .map(
+        (p, index) => `<span class="finish-chip ${p.stand.rank === 1 ? 'finish-chip--gold' : ''}"
+          title="${esc(t('ui.chart.point', { year: p.year, place: ordinal(p.stand.rank), field: p.field, reputation: num(p.stand.reputation) }))}">
+          <b>${ordinal(p.stand.rank)}</b>
+          <small>${t('build.rank.night', { n: index + 1 })} · ${p.year}</small>
+        </span>`,
+      )
       .join('');
-
-    const best = points.reduce((a, b) => (b.stand.rank < a.stand.rank ? b : a));
-    return `<svg class="rank-chart" viewBox="0 0 ${W} ${H}" width="100%" height="${H}"
-      preserveAspectRatio="xMidYMid meet" role="img"
-      aria-label="${esc(t('ui.chart.aria', { place: ordinal(best.stand.rank), year: best.year }))}">
-      <line class="chart-grid" x1="${padL}" y1="${y(1)}" x2="${W - padR}" y2="${y(1)}" />
-      <line class="chart-grid" x1="${padL}" y1="${y(field)}" x2="${W - padR}" y2="${y(field)}" />
-      <text class="chart-tick" x="${padL - 7}" y="${y(1) + 3}" text-anchor="end">${ordinal(1)}</text>
-      <text class="chart-tick" x="${padL - 7}" y="${y(field) + 3}" text-anchor="end">${ordinal(field)}</text>
-      ${line}
-      ${dots}
-    </svg>`;
+    return `<div class="finish-strip" style="--tone:${colour}">${chips}</div>`;
   }
 
   /** The monthly books, as an event you have to look at. */
@@ -2322,10 +2349,17 @@ export class UI {
     return true;
   }
 
+  /** Which panel shell is standing, and which of its views; see `renderModal`. */
+  private modalShell = '';
+  private modalSection = '';
+
   private renderModal(state: GameState) {
-    if (this.renderBill(state)) return;
-    if (this.renderCeremony(state)) return;
+    if (this.renderBill(state) || this.renderCeremony(state)) {
+      this.modalShell = '';
+      return;
+    }
     if (this.openModal === null) {
+      this.modalShell = '';
       this.setHTML(this.modal, 'modal', '');
       return;
     }
@@ -2343,36 +2377,64 @@ export class UI {
                 : this.openModal === 'build'
                   ? this.buildBody(state)
                   : this.newProjectBody(state);
-    this.setHTML(
-      this.modal,
-      'modal',
-      `<div class="modal-backdrop" data-action="jobs-close">
-        <div class="modal ${
-          this.openModal === 'machines' ||
-          this.openModal === 'projects' ||
-          this.openModal === 'people' ||
-          this.openModal === 'build'
-            ? 'modal--fit'
-            : ''
-        } ${
-          this.openModal === 'projects' || this.openModal === 'people' || this.openModal === 'build'
-            ? 'modal--wide'
-            : this.openModal === 'new'
-              ? 'modal--wizard'
-              : ''
-        }"
-          data-action="noop">
-          <header>
-            ${body.head}
-            <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="jobs-close">
-              ${icon('x')}${t('ui.close')}
-            </button>
-          </header>
-          <div class="modal-body">${body.content}</div>
-          <footer>${body.foot}</footer>
+    const classes = [
+      this.openModal === 'machines' ||
+      this.openModal === 'projects' ||
+      this.openModal === 'people' ||
+      this.openModal === 'build'
+        ? 'modal--fit'
+        : '',
+      this.openModal === 'projects' || this.openModal === 'people' || this.openModal === 'build'
+        ? 'modal--wide'
+        : this.openModal === 'new'
+          ? 'modal--wizard'
+          : '',
+    ].join(' ');
+    /**
+     * **The shell is built once and only its insides change.** Rebuilding the whole modal at
+     * 5 Hz replaced the scrolling element every time, so a panel with a running printer in
+     * it snapped back to the top the moment you scrolled — and a purchase in Build jumped
+     * the list under the cursor. The body element now stays put, and so does its scroll.
+     */
+    const shell = `${this.openModal}|${classes}`;
+    if (this.modalShell !== shell || !this.modal.querySelector('.modal-body')) {
+      this.modalShell = shell;
+      this.htmlCache.set('modal', `shell:${shell}`);
+      for (const key of ['m-head', 'm-body', 'm-foot']) this.htmlCache.delete(key);
+      this.modal.innerHTML = `<div class="modal-backdrop" data-action="jobs-close">
+        <div class="modal ${classes}" data-action="noop">
+          <header></header>
+          <div class="modal-body"></div>
+          <footer></footer>
         </div>
-      </div>`,
+      </div>`;
+    }
+    const headEl = this.modal.querySelector<HTMLElement>('.modal > header')!;
+    const bodyEl = this.modal.querySelector<HTMLElement>('.modal-body')!;
+    const footEl = this.modal.querySelector<HTMLElement>('.modal > footer')!;
+    this.setHTML(
+      headEl,
+      'm-head',
+      `${body.head}
+       <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="jobs-close">
+         ${icon('x')}${t('ui.close')}
+       </button>`,
     );
+    this.setHTML(bodyEl, 'm-body', body.content);
+    this.setHTML(footEl, 'm-foot', body.foot);
+    // A different view of the panel — a wizard step, another tab — starts at the top.
+    const section = [
+      this.openModal,
+      this.np.step,
+      this.buildTab,
+      this.projectsTab,
+      this.peopleTab,
+      this.rankTab,
+    ].join('|');
+    if (section !== this.modalSection) {
+      this.modalSection = section;
+      bodyEl.scrollTop = 0;
+    }
   }
 
   // --- Reddit: attention, and what you claimed to get it -------------------
@@ -2401,19 +2463,26 @@ export class UI {
     ];
     const chosen = subjects.find((x) => x.id === this.reddit.projectId) ?? subjects[0];
 
-    const subjectChips = `<div class="ui-segmented" style="margin-bottom:11px;flex-wrap:wrap">
-      ${subjects
-        .map(
-          (x) => `<button data-action="reddit-project" data-id="${x.id}"
-            aria-pressed="${x.id === chosen.id}" ${postedToday(x.id) ? 'disabled' : ''}
-            title="${esc(postedToday(x.id) ? t('ui.social.postedToday') : t('ui.social.meritHint', { merit: pct(x.sub.merit) }))}">
-            ${esc(x.label)}<span class="seg-count">${pct(x.sub.merit)}</span>
-          </button>`,
-        )
-        .join('')}
-    </div>`;
+    /**
+     * Two panes, one decision each (§6): **what** on the left, **where** on the right —
+     * with the claim above the rooms because it changes every number in them. The rooms are
+     * sorted by what they would actually give, so the answer to "where should this go" is
+     * the first row rather than a grid of eight to compare by eye.
+     */
+    const subjectList = subjects
+      .map((x) => {
+        const done = postedToday(x.id);
+        return `<button class="social-subject ${x.id === chosen.id ? 'on' : ''}" data-action="reddit-project"
+          data-id="${x.id}" ${done ? 'disabled' : ''}
+          title="${esc(done ? t('ui.social.postedToday') : t('ui.social.meritHint', { merit: pct(x.sub.merit) }))}">
+          <span class="social-subject__name">${esc(x.label)}</span>
+          <span class="social-subject__meter"><i style="width:${Math.round(x.sub.merit * 100)}%"></i></span>
+          <span class="social-subject__val">${done ? icon('check') : pct(x.sub.merit)}</span>
+        </button>`;
+      })
+      .join('');
 
-    const claimChips = `<div class="ui-segmented" style="margin-bottom:11px">
+    const claimChips = `<div class="ui-segmented social-claims">
       ${CLAIMS.map(
         (claim) => `<button data-action="reddit-claim" data-value="${claim.key}"
           aria-pressed="${claim.key === this.reddit.claim}" title="${esc(claim.blurb)}">
@@ -2423,56 +2492,41 @@ export class UI {
     </div>`;
 
     const blocked = postedToday(chosen.id);
-    const rooms = `<div class="ui-grid ui-grid--3">
-      ${SUBREDDITS.map((room) => {
-        const already = state.posts.filter(
-          (p) => p.projectId === chosen.id && p.subreddit === room.id,
-        ).length;
-        const preview = react(chosen.sub, room, this.reddit.claim, already);
+    const can = !blocked && hoursLeft >= VERB_HOURS.post;
+    const previews = SUBREDDITS.map((room) => {
+      const already = state.posts.filter((p) => p.projectId === chosen.id && p.subreddit === room.id).length;
+      return { room, preview: react(chosen.sub, room, this.reddit.claim, already), fit: tasteMatch(chosen.sub.tags, room) };
+    }).sort((a, b) => b.preview.upvotes - a.preview.upvotes);
+    const top = previews.find((x) => !x.preview.burned)?.room.id;
+    const rooms = previews
+      .map(({ room, preview, fit }) => {
         const bad = preview.burned;
-        const can = !blocked && hoursLeft >= VERB_HOURS.post;
-        return `<button class="ui-option" data-action="reddit-post" data-value="${room.id}"
-          ${can ? '' : 'disabled'} style="--tone:${bad ? 'var(--destructive)' : 'var(--primary)'}"
-          title="${esc(room.blurb)}">
-          <div class="ui-option__head">
-            <span class="icon-chip">${icon(room.icon, 'ui-icon ui-icon--lg')}</span>
-            <span class="ui-title">${esc(room.name)}</span>
-          </div>
-          <span class="ui-row__meta" style="margin:0">
-            <span class="ui-badge ui-badge--tone"
-              style="--tone:var(--${bad ? 'destructive' : 'success'})">
-              ${icon('arrowUp')}${preview.upvotes}
-            </span>
-            <span class="ui-badge" title="${esc(t('ui.social.tasteHint'))}">
-              ${icon('flame')}${pct(tasteMatch(chosen.sub.tags, room))}
-            </span>
-            ${bad ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--destructive)">${t('ui.social.theyTurn')}</span>` : ''}
-          </span>
-        </button>`;
-      }).join('')}
-    </div>`;
+        return `<div class="social-room ${bad ? 'bad' : ''}" title="${esc(room.blurb)}">
+          <span class="social-room__icon">${icon(room.icon, 'ui-icon')}</span>
+          <span class="social-room__name"><span class="social-room__label">${esc(room.name)}</span>${
+            room.id === top ? `<span class="social-best">${t('build.social.best')}</span>` : ''
+          }</span>
+          <span class="social-room__fit" title="${esc(t('ui.social.tasteHint'))}"><i style="width:${Math.round(fit * 100)}%"></i></span>
+          <span class="social-room__votes">${bad ? t('ui.social.theyTurn') : `${icon('arrowUp')}${num(preview.upvotes)}`}</span>
+          <button class="ui-btn ${bad ? 'ui-btn--outline' : room.id === top ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
+            data-action="reddit-post" data-value="${room.id}" ${can ? '' : 'disabled'}>${t('build.social.post')}</button>
+        </div>`;
+      })
+      .join('');
 
     const feed = state.posts.length
       ? [...state.posts]
           .reverse()
-          .slice(0, 6)
+          .slice(0, 5)
           .map(
-            (post) => `<div class="ui-row" style="cursor:default">
-              <span class="icon-chip" style="--tone:${post.burned ? 'var(--destructive)' : 'var(--success)'}">
-                ${icon('arrowUp', 'ui-icon ui-icon--lg')}
-              </span>
-              <span class="ui-row__main">
-                <span class="row between" style="gap:8px">
-                  <b>${esc(post.projectName)}</b>
-                  <span class="mono">${post.upvotes}</span>
-                </span>
-                <span class="ui-desc">${esc(SUBREDDIT_MAP[post.subreddit]?.name ?? post.subreddit)} ·
-                  ${t('ui.top.day', { day: post.day })} · ${esc(post.comment)}</span>
-              </span>
+            (post) => `<div class="social-post ${post.burned ? 'bad' : ''}" title="${esc(post.comment)}">
+              <span class="social-post__votes">${post.burned ? '−' : icon('arrowUp')}${num(post.upvotes)}</span>
+              <span class="social-post__what">${esc(post.projectName)}</span>
+              <span class="social-post__where">${esc(SUBREDDIT_MAP[post.subreddit]?.name ?? post.subreddit)} · ${t('ui.top.day', { day: post.day })}</span>
             </div>`,
           )
           .join('')
-      : `<p class="ui-desc">${t('ui.social.nothingYet')}</p>`;
+      : `<p class="ui-desc" style="margin:0">${t('ui.social.nothingYet')}</p>`;
 
     return {
       head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>${t('ui.social.title')}</b>
@@ -2480,19 +2534,22 @@ export class UI {
           title="${esc(t('ui.social.hypeHint'))}">
           ${t('ui.social.hype', { hype: Math.round(state.hype) })}
         </span></div>`,
-      content: `
-        <div class="ui-label" style="margin-bottom:9px">${t('ui.social.about')}</div>
-        ${subjectChips}
-        <div class="ui-label" style="margin-bottom:9px">${t('ui.social.howLoud')}</div>
-        ${claimChips}
-        <div class="ui-label" style="margin-bottom:9px">
-          ${blocked ? t('ui.social.blocked') : t('ui.social.pickRoom')}
+      content: `<div class="social">
+        <div class="social-left">
+          <div class="ui-label">${t('ui.social.about')}</div>
+          <div class="social-subjects">${subjectList}</div>
+          <div class="ui-label" style="margin-top:14px">${t('ui.social.cameBack')}</div>
+          <div class="social-feed">${feed}</div>
         </div>
-        ${rooms}
-        <hr class="ui-sep" />
-        <div class="ui-label" style="margin-bottom:9px">${t('ui.social.cameBack')}</div>
-        ${feed}
-      `,
+        <div class="social-right">
+          <span class="ui-label">${t('ui.social.howLoud')}</span>
+          ${claimChips}
+          <div class="ui-label" style="margin-top:12px">
+            ${blocked ? t('ui.social.blocked') : t('ui.social.pickRoom')}
+          </div>
+          <div class="social-rooms">${rooms}</div>
+        </div>
+      </div>`,
       foot: `<span class="ui-desc" style="font-size:10.5px">${t('ui.social.foot', { hours: hours(VERB_HOURS.post) })}</span>`,
     };
   }
@@ -2524,12 +2581,22 @@ export class UI {
         <span class="space-name">${esc(name)}</span>
       </td>`;
     };
-    const skillCell = (id: string) => {
+    const skillCell = (id: string, skills?: Record<SkillKey, number>) => {
       const data = MEMBER_DATA[id];
+      // What they love, and under it what they can actually do — which training changes.
+      const best = skills
+        ? (Object.entries(skills) as [SkillKey, number][])
+            .filter(([, level]) => level >= 2)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([skill, level]) => `${t(`build.skill.${skill}` as MessageKey)} ${level}`)
+            .join(' · ')
+        : '';
       return `<td class="num wide">
         ${topCategories(data?.passions ?? {}, 2)
           .map(({ category, score }) => `${profileOf(category).label} ${pct(score)}`)
           .join(' · ')}
+        ${best ? `<div class="skill-line">${esc(best)}</div>` : ''}
       </td>`;
     };
     const traitCell = (id: string) => {
@@ -2543,10 +2610,17 @@ export class UI {
 
     const memberRow = (m: MemberSnapshot) => {
       const project = m.team ? state.runtime.projects.find((x) => x.id === m.team) : null;
+      const course = m.training
+        ? t('build.people.onCourse', {
+            skill: t(`build.skill.${m.training.skill}` as MessageKey),
+            pct: pct(1 - m.training.hoursLeft / m.training.total),
+          })
+        : '';
+      const trainOpen = this.trainOpen === m.id;
       return `<tr>
         ${nameCell(m.id, m.name)}
-        <td class="note ${project ? '' : 'warn'}">
-          ${project ? esc(project.name) : t('ui.people.nothingAllocated')}
+        <td class="note ${project || course ? '' : 'warn'}">
+          ${project ? esc(project.name) : course ? esc(course) : t('ui.people.nothingAllocated')}
         </td>
         <td class="num" title="${esc(
           m.employment === 'full-time'
@@ -2555,15 +2629,19 @@ export class UI {
         )}">
           ${m.employment === 'full-time' ? t('ui.people.fullTime') : t('ui.people.partTime')}
         </td>
-        ${skillCell(m.id)}
+        ${skillCell(m.id, m.skills)}
         ${traitCell(m.id)}
-        <td class="num">
+        <td class="num" style="white-space:nowrap">
+          <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="train-open" data-id="${m.id}"
+            aria-pressed="${trainOpen}" title="${esc(t('build.people.trainHint'))}">
+            ${icon('book')}${t('build.people.train')}
+          </button>
           <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="let-go" data-id="${m.id}"
             title="${esc(t('ui.people.letGoHint', { name: m.name, dues: ECONOMY.crewDues }))}">
             ${icon('x')}
           </button>
         </td>
-      </tr>`;
+      </tr>${trainOpen ? this.trainRow(m, state) : ''}`;
     };
 
     const candidateCard = (id: string) => {
@@ -2830,7 +2908,7 @@ export class UI {
    */
   private newProjectBody(state: GameState): { head: string; content: string; foot: string } {
     const steps: { key: NewStep; label: string }[] = (
-      ['genre', 'brief', 'design', 'crew', 'review'] as NewStep[]
+      ['genre', 'brief', 'crew', 'design', 'review'] as NewStep[]
     ).map((key) => ({ key, label: t(`build.np.step.${key}` as MessageKey) }));
     const current = steps.findIndex((x) => x.key === this.np.step);
     const trail = steps
@@ -2860,7 +2938,7 @@ export class UI {
     const next =
       this.np.step === 'design' || this.np.step === 'crew'
         ? `<button class="ui-btn ui-btn--primary ui-btn--sm" data-action="np-next" style="margin-left:auto">
-             ${t(this.np.step === 'design' ? 'build.np.step.crew' : 'build.np.step.review')}${icon('chevronRight')}
+             ${t(this.np.step === 'crew' ? 'build.np.step.design' : 'build.np.step.review')}${icon('chevronRight')}
            </button>`
         : '';
     return {
@@ -3064,28 +3142,65 @@ export class UI {
   }
 
   /** Step 3: how it gets built. Three decisions, each a one-, three- or five-star option. */
+  /** Skills of the crew picked on the step before — what the design options are gated on. */
+  private npCrewSkills(state: GameState): { skills: Record<SkillKey, number> }[] {
+    return [...this.np.crew]
+      .map((id) => state.runtime.members.find((m) => m.id === id))
+      .filter((m): m is MemberSnapshot => !!m)
+      .map((m) => ({ skills: m.skills }));
+  }
+
+  /** Drop any choice the crew can no longer back to the best it can (§4c). */
+  private npFitDesign(state: GameState) {
+    const def = this.npDef();
+    if (!def) return;
+    const crew = this.npCrewSkills(state);
+    const design = { ...this.np.design };
+    for (const axis of CATEGORY_AXES[def.category]) {
+      let index = Math.round(design[axis] ?? 1);
+      while (index > 0 && !optionAvailable(axis, index, crew)) index -= 1;
+      design[axis] = index;
+    }
+    this.np.design = design;
+  }
+
+  /** Step 4: how it gets built — three decisions, and the crew decides what is on offer. */
   private npDesignStep(state: GameState): string {
     const def = this.npDef();
     if (!def) return `<p class="empty">${t('build.np.pickBrief')}</p>`;
+    const crew = this.npCrewSkills(state);
     const axes = CATEGORY_AXES[def.category];
     const sections = axes
       .map((axisId) => {
         const axis = AXES[axisId];
         const chosen = Math.round(this.np.design[axisId] ?? 1);
+        const best = crewBest(crew, axis.skill);
+        const skillName = t(`build.skill.${axis.skill}` as MessageKey);
         const cards = axis.options
           .map((option, index) => {
             const missing = (option.requires ?? []).filter((m) => !state.ownedMachines.includes(m));
+            const skilled = optionAvailable(axisId, index, crew);
             const on = index === chosen;
-            return `<button class="ui-option design-option ${on ? 'ui-option--on' : ''}"
+            const locked = missing.length > 0 || !skilled;
+            const why = missing.length
+              ? t('build.np.needsMachine', { machines: missing.map((m) => MACHINE_LABEL[m]).join(' + ') })
+              : !skilled
+                ? t('build.np.needsSkill', { skill: skillName, level: optionNeeds(option) })
+                : '';
+            return `<button class="ui-option design-option ${on ? 'ui-option--on' : ''} ${locked ? 'design-option--locked' : ''}"
               data-action="np-option" data-value="${axisId}" data-id="${index}"
-              aria-pressed="${on}" ${missing.length ? 'disabled' : ''}
-              title="${missing.length ? esc(t('build.np.needsMachine', { machines: missing.map((m) => MACHINE_LABEL[m]).join(' + ') })) : ''}">
+              aria-pressed="${on}" ${locked ? 'disabled' : ''} title="${esc(why)}">
               <span class="row between" style="width:100%">
                 <span class="ui-title">${esc(option.label)}</span>
                 ${starRow(option.stars)}
               </span>
               <span class="ui-option__desc ui-clamp-3">${esc(option.blurb)}</span>
-              <span class="ui-row__meta" style="margin:0">${optionEffects(option, this.np.seats)}</span>
+              <span class="ui-row__meta" style="margin:0">${optionEffects(option, this.np.seats, def)}</span>
+              ${
+                locked
+                  ? `<span class="design-lock">${icon('x')}${esc(why)}</span>`
+                  : ''
+              }
             </button>`;
           })
           .join('');
@@ -3093,6 +3208,9 @@ export class UI {
           <div class="design-axis__head">
             <span class="ui-label">${esc(axis.label)}</span>
             <span class="ui-desc">${esc(axis.question)}</span>
+            <span class="ui-badge" style="margin-left:auto" title="${esc(t('build.np.crewBestHint'))}">
+              ${t('build.np.crewBest', { skill: skillName, level: best })}
+            </span>
           </div>
           <div class="ui-grid ui-grid--3">${cards}</div>
         </div>`;
@@ -3677,6 +3795,7 @@ export class UI {
     const waiting = Object.values(state.runtime.waitingFor).reduce((n, v) => n + (v ?? 0), 0);
     const tabs = [
       { key: 'workspace' as const, label: t('build.panel.workspace'), count: FURNITURE.length },
+      { key: 'printers' as const, label: t('build.panel.printers'), count: PRINTERS.filter((m) => m.price > 0).length },
       { key: 'comfort' as const, label: t('build.panel.comfort'), count: AMENITIES.filter((a) => a.group !== 'decor').length },
       { key: 'decor' as const, label: t('build.panel.decor'), count: AMENITIES.filter((a) => a.group === 'decor').length },
     ];
@@ -3693,7 +3812,9 @@ export class UI {
     const content =
       this.buildTab === 'workspace'
         ? this.workspaceShelf(state)
-        : this.buildTab === 'comfort'
+        : this.buildTab === 'printers'
+          ? this.printerShelf(state)
+          : this.buildTab === 'comfort'
           ? this.comfortShelf(state)
           : this.decorShelf(state);
 
@@ -3746,13 +3867,13 @@ export class UI {
     const room = this.handlers.furnitureFits(def.type, def.span);
     const queue = state.runtime.waitingFor[def.type] ?? 0;
     const buyable = !locked && afford && room;
-    return `<button class="ui-option build-card" data-action="buy-furniture" data-value="${def.id}"
+    return `<button class="ui-option build-card ${owned ? 'build-card--owned' : ''}" data-action="buy-furniture" data-value="${def.id}"
       ${buyable ? '' : 'disabled'}
       title="${esc(locked ? t('build.card.comesWith', { era: eraDef(def.era).name }) : !room ? t('build.card.noRoomHint') : !afford ? t('build.card.notEnough') : t('build.card.price', { price: def.price }))}">
       ${this.thumb(`furniture:${def.id}`, def.icon)}
       <div class="ui-option__head">
         <span class="ui-title">${esc(def.name)}</span>
-        ${owned ? `<span class="ui-badge ui-badge--accent">×${owned}</span>` : ''}
+        ${owned ? `<span class="build-owned">${icon('check')}${t('build.card.ownedN', { count: owned })}</span>` : ''}
       </div>
       <span class="ui-option__desc ui-clamp-2">${esc(def.blurb)}</span>
       <span class="ui-row__meta" style="margin:0">
@@ -3767,6 +3888,45 @@ export class UI {
         ${!room && !locked ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${t('build.card.noRoom')}</span>` : ''}
       </span>
     </button>`;
+  }
+
+  /**
+   * Printers, on their own shelf (§4d) — bought here rather than from the Machines panel,
+   * which is for watching what is on the floor. Every model is listed, the ones the lease
+   * does not allow yet included: a machine you cannot see is one you cannot plan for.
+   */
+  private printerShelf(state: GameState): string {
+    const room = this.handlers.buyablePrinters().length > 0;
+    const cards = PRINTERS.filter((m) => m.price > 0)
+      .map((model) => {
+        const owned = state.runtime.machines.filter((m) => m.label === model.name).length;
+        const locked = model.era > state.era;
+        const afford = this.affordable(state, model.price);
+        const ok = !locked && afford && room;
+        return `<button class="ui-option build-card ${owned ? 'build-card--owned' : ''}" data-action="buy-printer"
+          data-value="${model.id}" ${ok ? '' : 'disabled'}
+          title="${esc(locked ? t('build.card.comesWith', { era: eraDef(model.era).name }) : !room ? t('build.card.noRoomHint') : !afford ? t('build.card.notEnough') : t('build.card.price', { price: model.price }))}">
+          ${this.thumb(`printer:${model.id}`, 'printer')}
+          <div class="ui-option__head">
+            <span class="ui-title">${esc(model.name)}</span>
+            ${owned ? `<span class="build-owned">${icon('check')}${t('build.card.ownedN', { count: owned })}</span>` : ''}
+          </div>
+          <span class="ui-option__desc ui-clamp-2">${esc(model.blurb)}</span>
+          <span class="ui-row__meta" style="margin:0">
+            <span class="ui-badge" title="${esc(t('ui.machines.speedHint'))}">${icon('effort')}${Math.round(model.speed * 100)}%</span>
+            <span class="ui-badge" title="${esc(t('ui.machines.capacityHint'))}">${icon('package')}${t('ui.machines.kg', { kg: model.capacity / 1000 })}</span>
+            <span class="ui-badge">${t('build.printer.fails', { pct: `×${model.reliability.toFixed(2)}` })}</span>
+          </span>
+          <span class="ui-row__meta" style="margin:0">
+            <span class="ui-badge ui-badge--tone" style="--tone:var(--${afford ? 'success' : 'destructive'})">${icon('coins')}${money(model.price)}</span>
+            ${locked ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('clock')}${t('build.card.era', { era: model.era })}</span>` : ''}
+            ${!room && !locked ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${t('build.card.noRoom')}</span>` : ''}
+          </span>
+        </button>`;
+      })
+      .join('');
+    return `<p class="ui-desc" style="margin:0 0 11px">${t('build.printer.intro')}</p>
+      <div class="ui-grid ui-grid--3">${cards}</div>`;
   }
 
   /**
@@ -3833,8 +3993,8 @@ export class UI {
     const locked = def.era > state.era;
     const afford = this.affordable(state, def.price);
     const buyable = !owned && !locked && afford;
-    return `<button class="ui-option build-card ${owned ? 'ui-option--on' : ''}" data-action="buy-amenity"
-      data-value="${def.id}" ${buyable ? '' : 'disabled'} style="--tone:${def.tone}"
+    return `<button class="ui-option build-card ${owned ? 'build-card--owned' : ''}" data-action="buy-amenity"
+      data-value="${def.id}" ${buyable ? '' : 'disabled'}
       title="${esc(
         owned
           ? t('build.card.alreadyIn')
@@ -3849,7 +4009,7 @@ export class UI {
       ${this.thumb(`amenity:${def.id}`, def.icon)}
       <div class="ui-option__head">
         <span class="ui-title">${esc(def.name)}</span>
-        ${owned ? `<span class="ui-badge ui-badge--accent">${icon('check')}${t('build.card.in')}</span>` : ''}
+        ${owned ? `<span class="build-owned">${icon('check')}${t('build.card.owned')}</span>` : ''}
       </div>
       <span class="ui-option__desc ui-clamp-2">${esc(def.blurb)}</span>
       <span class="ui-row__meta" style="margin:0">
@@ -3885,47 +4045,10 @@ export class UI {
     const machines = state.runtime.machines;
     const running = machines.filter((m) => m.current).length;
     const queued = machines.reduce((n, m) => n + m.queue.length, 0);
-    const forSale = this.handlers.buyablePrinters();
-    const shop = forSale.length
-      ? `<hr class="ui-sep" />
-         <div class="ui-label" style="margin-bottom:9px">${t('ui.machines.buy')}</div>
-         <div class="ui-grid ui-grid--3">
-           ${forSale
-             .map((model) => {
-               const locked = model.era > state.era;
-               const afford = !locked && this.affordable(state, model.price);
-               return `<button class="ui-option" data-action="buy-printer" data-value="${model.id}"
-                 ${afford ? '' : 'disabled'} style="--tone:var(--primary)"
-                 title="${locked ? esc(t('ui.machines.locked', { space: eraDef(state.era).name })) : ''}">
-                 <div class="ui-option__head">
-                   <span class="icon-chip">${icon('printer', 'ui-icon ui-icon--lg')}</span>
-                   <span class="ui-title">${esc(model.name)}</span>
-                 </div>
-                 <span class="ui-option__desc ui-clamp-3">${esc(model.blurb)}</span>
-                 <span class="ui-row__meta" style="margin:0">
-                   <span class="ui-badge" title="${esc(t('ui.machines.speedHint'))}">
-                     ${icon('effort')}${Math.round(model.speed * 100)}%
-                   </span>
-                   <span class="ui-badge" title="${esc(t('ui.machines.capacityHint'))}">
-                     ${icon('package')}${t('ui.machines.kg', { kg: model.capacity / 1000 })}
-                   </span>
-                   ${
-                     locked
-                       ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">
-                            ${icon('clock')}${t('ui.machines.era', { era: model.era })}
-                          </span>`
-                       : ''
-                   }
-                   <span class="ui-badge ui-badge--tone"
-                     style="--tone:var(--${afford ? 'success' : 'destructive'})">
-                     ${icon('coins')}${money(model.price)}
-                   </span>
-                 </span>
-               </button>`;
-             })
-             .join('')}
-         </div>`
-      : '';
+    // Buying printers moved to Build (§4d): this panel is for what is on the floor.
+    const shop = `<p class="ui-desc" style="margin:12px 0 0">${t('build.machines.buyInBuild', {
+      build: `<b>${t('build.bar.build')}</b>`,
+    })}</p>`;
 
     const content =
       (machines.length

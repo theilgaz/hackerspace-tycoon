@@ -14,7 +14,8 @@
     "project-times": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/project-times.js",
     "click-check": "node tools/click-check.mjs",
     "era-pace": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/era-pace.js",
-    "hype-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/hype-check.js"
+    "hype-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/hype-check.js",
+    "kickoff-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/kickoff-check.js"
   },
   "dependencies": {
     "three": "^0.186.0",

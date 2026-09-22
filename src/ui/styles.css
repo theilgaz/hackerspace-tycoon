@@ -2013,20 +2013,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Finishing place by year. One series, so no legend — the heading names the space. Grid and
-   ticks stay recessive; the only saturated thing on it is the line, which wears the space's
-   own colour, and every figure on it is a text token rather than the series colour. */
-.rank-chart {
-  display: block;
-  width: 100%;
-  padding: 4px 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--card);
-}
-.chart-grid { stroke: var(--border); stroke-width: 1; }
-.chart-tick { fill: var(--subtle-foreground); font-family: var(--font); font-size: 9.5px; }
-.chart-mark { fill: var(--muted-foreground); font-family: var(--font); font-size: 10.5px; font-weight: 600; }
 
 .cabinet tbody tr { height: 28px; }
 .cabinet-year {
@@ -2396,3 +2382,122 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 #topbar .tb-meter > i { display: block; height: 100%; background: var(--warning); border-radius: 3px; }
 #topbar .season { margin-left: 8px; }
 #topbar .lang-toggle { margin-left: 6px; }
+
+/* A design option the crew cannot back yet says why, in place (§4c). */
+.design-option--locked { opacity: 0.55; }
+.design-option--locked:disabled { opacity: 0.55; }
+.design-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--warning);
+}
+.design-lock .ui-icon { width: 11px; height: 11px; }
+
+.skill-line { font-size: 10px; color: var(--subtle-foreground); margin-top: 2px; }
+.train-row td { padding: 6px 7px 9px; background: color-mix(in srgb, var(--muted) 50%, transparent); }
+
+/* What the space already has reads the same on every shelf: a green edge and a tick, never
+   the item's own colour — which painted every owned card a different border. */
+.build-card--owned { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); }
+.build-card--owned:disabled { opacity: 1; }
+.build-owned {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+.build-owned .ui-icon { width: 11px; height: 11px; stroke-width: 2.5; }
+
+/* --- the socials: what on the left, where on the right (§6) --------------- */
+.social { display: grid; grid-template-columns: 260px 1fr; gap: 18px; min-height: 0; }
+.social-left, .social-right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.social-subjects { display: flex; flex-direction: column; gap: 2px; }
+.social-subject {
+  display: grid;
+  grid-template-columns: 1fr 52px 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.social-subject:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.social-subject.on { background: var(--card-hover); border-color: var(--border-strong); color: var(--foreground); }
+.social-subject:disabled { opacity: 0.45; cursor: default; }
+.social-subject__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.social-subject__meter, .social-room__fit { display: block; height: 4px; border-radius: 3px; background: var(--muted); overflow: hidden; }
+.social-subject__meter > i, .social-room__fit > i { display: block; height: 100%; background: var(--primary); }
+.social-subject__val { font-family: var(--font); font-size: 10.5px; text-align: right; color: var(--subtle-foreground); }
+.social-subject__val .ui-icon { width: 12px; height: 12px; color: var(--success); }
+.social-claims button { font-size: 11px; }
+.social-rooms { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.social-room {
+  display: grid;
+  grid-template-columns: 22px 1fr 64px 76px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.social-room:first-child { border-top: none; }
+.social-room__icon { color: var(--subtle-foreground); display: grid; place-items: center; }
+.social-room__icon .ui-icon { width: 15px; height: 15px; }
+.social-room__name { display: flex; align-items: center; gap: 7px; color: var(--foreground); min-width: 0; }
+.social-best {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+.social-room__votes { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; font-family: var(--font); font-size: 12px; color: var(--success); }
+.social-room__votes .ui-icon { width: 12px; height: 12px; }
+.social-room.bad .social-room__votes { color: var(--destructive); font-family: var(--sans); font-size: 11px; }
+.social-room.bad .social-room__name { color: var(--muted-foreground); }
+.social-feed { display: flex; flex-direction: column; gap: 4px; }
+.social-post { display: grid; grid-template-columns: 58px 1fr; gap: 0 8px; font-size: 11px; }
+.social-post__votes { grid-row: span 2; display: inline-flex; align-items: center; gap: 2px; font-family: var(--font); color: var(--success); }
+.social-post__votes .ui-icon { width: 11px; height: 11px; }
+.social-post.bad .social-post__votes { color: var(--destructive); }
+.social-post__what { color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.social-post__where { color: var(--subtle-foreground); font-size: 10px; }
+.moving-note { max-width: 240px; font-size: 11px; color: var(--warning); }
+
+/* Where a space finished, one chip per awards night. */
+.finish-strip { display: flex; flex-wrap: wrap; gap: 6px; }
+.finish-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 64px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+.finish-chip b { font-family: var(--font); font-size: 15px; font-weight: 500; color: var(--foreground); }
+.finish-chip small { font-size: 10px; color: var(--subtle-foreground); white-space: nowrap; }
+.finish-chip--gold { border-color: color-mix(in srgb, var(--gold) 50%, var(--border)); }
+.finish-chip--gold b { color: var(--gold); }
+
+.social-claims { display: flex; width: 100%; }
+.social-claims button { flex: 1; justify-content: center; white-space: nowrap; }
+.social-room { grid-template-columns: 22px minmax(0, 1fr) 64px 76px auto; }
+.social-room__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.social-best { flex: none; white-space: nowrap; }
+.social-room { grid-template-columns: 22px minmax(0, 1fr) 46px 70px auto; }

@@ -6,12 +6,16 @@ import type {
   Role,
   Shift,
   Tag,
+  Skills,
+  Training,
 } from '@/game/types';
 import type { Job } from '@/machines/Machine';
 import type { Tile } from '@/utils/grid';
 
 export interface MemberSave {
   id: string;
+  skills?: Skills;
+  training?: Training | null;
   employment: Employment;
   shift: Shift | null;
   role: Role | null;

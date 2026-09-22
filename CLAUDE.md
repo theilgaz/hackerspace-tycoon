@@ -136,7 +136,28 @@ been decided, so the only choice left was which name to click. The game had thou
 the project so the player did not have to. **+ New Project** replaces it at the head of the
 build menu, and three of its five steps are decisions:
 
-  **Genre → Brief → Design → Crew → Review**
+  **Genre → Brief → Crew → Design → Review**
+
+**The crew comes before the design**, because the crew decides what the design may be. Every
+axis leans on a skill (Tool, UI and Architecture on software; Circuit on electronics; Design
+tool, Enclosure and Validation on CAD; Material on machining; Documentation on docs), and an
+option needs somebody on the crew good enough to use it: ★ needs nobody, ★★★ a 2, ★★★★★ a
+4 (`DESIGN.starSkill`). A locked option says what is missing — "needs software 4 on the crew
+— train someone" — rather than simply greying out. Changing the crew drops any choice it can
+no longer back to the best it can, and the sim checks the same thing at the pitch.
+
+**Every option has a price, and it moves with the stars** (`optionCost`): a design budget per
+axis of `budgetBase + budgetShare × payout`, times 0.3 for ★, 1 for ★★★, 2.4 for ★★★★★,
+plus a small multiplier on the bill of materials. One star is cheap, rough and pays less;
+five stars is dear, good and pays more. Cost, quality and return all go the same way.
+
+**Training is how a crew gets better** (`Simulation.train`, `TRAIN`). Buy a **Learning
+Station** in Build, then press **Train** on somebody in People and pick a skill: one level
+up, paid now (`500 × next level`), and hours at the station (`12 × next level`) during which
+they are on nobody's crew. That absence is the real price, and it is what makes a five-star
+IDE an investment rather than a checkbox. Skills live on the member now (saved, copied per
+run — the roster data is a module constant, and sharing its `skills` object would carry one
+run's training into the next).
 
 - **Genre** — the ten genres as tiles, each with how many briefs it offers and **what the
   market is paying for it this week** (§4d), plus an **Offers** row for proposals, sponsors
@@ -460,26 +481,27 @@ usually second.
 Their pace **compounds with their reputation**, as the player's does. Without that they grow
 linearly while the player's roster snowballs, and by day 200 the table is a formality.
 
-**The run keeps a real date.** The space opens on **1 January 2026**; **a year is 365 days**
-with real month lengths and no leap years, and the **awards are held every 1 December** —
-1 December 2026 (day 335), 1 December 2027, and so on. It used to be a ninety-day year with
-the night in October; a real year makes a date mean something.
+**The run keeps a date.** The space opens on **1 January 2026**; **a year is 100 days**,
+spread over twelve months, and the **awards are held on day 90 of every year** — the first on
+day 90 of the run, then day 190, 290. It was briefly 365 days with the night on 1 December,
+which put the first awards night on day 335: a set piece almost nobody would ever play to.
 
-**What the longer year changed** (measured over 400 days, past the first night):
+**What the calendar changes left behind** (measured at 220 days, 8 seeds):
 
 - **Rival compounding needed a knee.** Their pace grows with reputation, which was tuned over
   a 220-day horizon; run on to day 400 it overtook the player, whose own growth flattens once
   the roster is full, and a normal run finished 5th-6th. Past `RIVAL_GROWTH_KNEE` (14,000
   reputation, roughly where the field stood on day 220) a rival keeps its pace but stops
   accelerating. Everything before the knee is exactly as it was.
-- **Biggest Crew is set against the crew a player has on 1 December**, not against the full
-  cast. The cast grew to twenty-five, so at fifteen the player took it every night; at
-  twenty-six Dallas did. Dallas caps at 22: a committed hirer edges it on normal and easy, a
-  hard start does not.
-- Measured: normal first in 8/8 (about 1.05-1.3× the field), easy 8/8, hard 4/8 and usually
-  in the top three; the player takes 19 of 40 first-night awards on normal and easy, 8 on
-  hard. Most Projects still goes to Konya and Deepest Pockets to Garaj on the first night —
-  their identities, and the two locks worth watching.
+- **Biggest Crew is set against the crew a player has on awards night**, not against the
+  full cast of twenty-five. Dallas caps at 17: an easy crew (18 by day 90) takes the first
+  night, a normal one contests it from the second year once the roster has grown.
+- Measured: normal first in 8/8 (about 1.05-1.4× the field), easy 8/8, hard 5/8 and at
+  worst sixth; the player takes 15 of 40 first-night awards on normal and hard, 23 on easy.
+  Deepest Pockets still always goes to Garaj on the first night — its identity, and the lock
+  worth watching.
+- **The rival knee stays** even at 100-day years: it only bites past 14,000 reputation and
+  keeps a long run from being decided by compounding alone.
 
 **A year ends with an awards night.** Five categories, judged on the year
 just gone rather than all time, so a bad year costs you even when you are ahead overall:
@@ -1136,8 +1158,10 @@ to save money. The button stays, its meaning is inverted, and the People panel s
 
 ## 7b. The Shop — BUILT (`src/utils/amenities.ts`), now the Comforts shelf of **Build**
 
-**Build replaced the Shop on the menu** (§4d). It has three shelves: **Workspace** (tables and
-workstations), **Comforts** (everything below), and **Decor** — twelve smaller things, a
+**Build replaced the Shop on the menu** (§4d). It has four shelves: **Workspace** (tables,
+workstations and the Learning Station), **Printers** (moved here from the Machines panel,
+which is now only for watching what is on the floor), **Comforts** (everything below), and
+**Decor** — twelve smaller things, a
 Monstera, an olive tree, a lava lamp, a giant rubber duck, a Tux statue, a shelf of manuals,
 bean bags, a server rack, a neon `</>`, a whiteboard wall, a circuit-art print and, from Unit
 4B, a retro terminal. Decor runs through the same mood curve as the comforts, so a room full
@@ -1147,6 +1171,15 @@ of it is nicer rather than faster, and the harnesses do not buy it.
 in the room (`render/Thumbnails.ts`) and cached as a data URL — a card with a name is a
 spreadsheet row, a card with the thing on it is a shop, and the picture cannot drift from
 what turns up.
+
+**What the space already has looks the same on every shelf**: a green edge and a "✓ in the
+space" pill. The first version gave owned cards the item's own colour as a border, so a
+shelf of owned things was a row of unrelated colours that said nothing about which ones
+were bought.
+
+**Printers past the A1 are cabinets, and they grow with the price**: the P2S a little larger
+than the A1's open frame, the X1C larger and darker, the H2S the biggest box on the floor, in
+white. The toolhead's travel is per model, so a cabinet never prints through its own lid.
 
 
 **Machines make parts; the Shop makes the place worth turning up to.** Nine comforts, gated
@@ -1210,6 +1243,12 @@ tiles you are choosing between.
 **While something is held, clicking another piece picks that one up instead.** Moving five
 things used to be pick up, drop, press Done, and start again — five times. Done is now only
 for when you have finished rearranging.
+
+**Selling happens from the same strip** (`Simulation.sellPiece`): it names what the piece
+fetches — half what it cost for furniture and decor, the resale value for a printer — or why
+it cannot go: the kit the garage came with and machines built by tool projects stay, and so
+does a table a crew is holding its kickoff at. A room that can only fill up eventually
+becomes unplayable, and the room is the only place you can see how full it has got.
 
 Where they start is derived — the open edges, the bottom row and the odd rows of the
 right-hand column, spaced a tile apart for the same reason the printer wall is — and a tile
@@ -1276,7 +1315,16 @@ Two more, from getting the props on screen at all:
 |---|---|---|---|
 | 1 — Garage | 6×8, single-phase power | FDM printer, soldering bench, hand tools | Ship any project + 50 backers |
 | 2 — Unit 4B | ~15×12, 3-phase | CNC, laser cutter, welding bay, certifications | 20 members + break even for 3 months |
-| 3 — The Warehouse | large, multi-room | Mill/lathe, motorcycle-scale projects, grants | Front page of r/all |
+| 3 — The Warehouse | 12×12 | Mill/lathe, motorcycle-scale projects, grants | Front page of r/all |
+| 4 — The Old Factory | 15×14, brick | room for the public at scale (community cap ×1.6) | — |
+
+**The Old Factory is the lease after the warehouse**: 22,000 reputation opens it, ₺120,000
+moves you in, ₺65,000 a month to rent. What it buys is floor — more printer slots, more room
+for furniture — and room for the public, whose dues are what carry that rent.
+
+**There is a front door** on the left wall at the door tile: a frame, a leaf that swings open
+for whoever is on the threshold, a lamp and a mat. Everybody arrives and leaves through it; a
+room people simply appear in reads as a stage, one they walk into reads as a building.
 
 Each era raises rent and unlocks project scale. **The player signs the lease; reputation only
 unlocks it.** Moving costs ₺18,000 to Unit 4B and ₺52,000 to the Warehouse, and the rent goes
@@ -1437,6 +1485,20 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   Side by side as two numbers ("Kasa", "Fatura") nobody could tell which was about which.
   It has its own `tb-*` classes on purpose: the generic `.stat` picked up a bordered card
   style for the space screen, and every top-bar figure turned into a box overnight.
+- **A panel is a shell that stays, with insides that change.** Every panel used to be rebuilt
+  whole at 5 Hz, which replaced the scrolling element each time: with a printer running the
+  Machines panel snapped back to the top the moment you scrolled it, and a purchase in Build
+  jumped the list under the cursor. `renderModal` builds the shell once per panel and only
+  rewrites the header, body and footer inside it; the body keeps its scroll until the view
+  inside it (a tab, a wizard step) actually changes.
+- **The Socials panel is two panes**: what you are posting about on the left, with each
+  subject's readiness as a thin bar, and where on the right — the claim as one full-width
+  switch, then every room as a row sorted by the upvotes it would give, the best one marked
+  and its Post button primary, the rooms that would turn on you in red. The grid of eight
+  cards it replaced had to be compared by eye.
+- **A space's own screen shows where it finished as a strip of chips**, one per awards night
+  — place, night and year, gold for a win. The line chart it replaced spent the panel's width
+  on two or three points and repeated year labels whenever two nights fell in one year.
 - **Scrollbars are styled once, globally** — thin and dark. Left to the platform, macOS with
   "always show scrollbars" drew a white gutter down every panel, and the bench's verb row
   (a fixed three-column grid) pushed a button past the edge and added a sideways one.
@@ -1642,6 +1704,21 @@ is visible rather than rediscovered:
 
 ## 14. Development Priority
 
+**Phase 1.14 — Crews that can, a room you can shape, a shorter year — BUILT.**
+The wizard asks for the crew before the design, and the design's better options need crew who
+can use them; a Learning Station trains people up one level at a time (§4c). Every design
+option carries a cost that rises with its stars. Printers are bought in Build and past the
+A1 they are cabinets that grow with the price; owned things read the same on every shelf;
+pieces of the room sell from the move strip. The year is 100 days with awards on day 90. The
+Old Factory is a fourth lease, the room has a front door, Socials is two panes, and a
+space's finishes are a strip of chips. Panels keep their scroll while the sim redraws them.
+`npm run kickoff-check` guards the rule that a kickoff needs the whole crew at once.
+
+Measured (`era-pace`, 220 days, 8 seeds): normal first 8/8, hard 5/8, easy 8/8;
+`project-times` 52/52. `sim-check`'s attentive player now ships about 42 in 150 days rather
+than 64 — its crews are small, so its designs fall to one star where nobody has the skill,
+which is the rule working; the campaign balance is where it was.
+
 **Phase 1.13 — Designing projects and building the room — BUILT.**
 The Jobs board is replaced by **+ New Project** (§4c): a brief, three star-rated design
 decisions and a crew size, previewed by the same `planProject` the sim builds from. Projects
@@ -1762,6 +1839,9 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     door. Every stall in §4d was found with this, not by tuning.
   - `tools/furnish.ts` — the one furnishing rule every harness shares: buy the seat or table
     people are queueing for (`Simulation.workspaceNeeds`), when comfortably affordable.
+  - `npm run kickoff-check` — a crew of four, one kept at home: the kickoff must not move
+    without them, must move once all four sit down, and everybody must leave the table when
+    it is done. Seen to fail with the rule broken; run it after touching the kickoff.
   - `npm run click-check` — needs `npm run dev` running. Drives the real UI with real mouse
     press/release pairs while the sim runs, and counts DOM rebuilds. Run it after touching
     anything in `src/ui/`.

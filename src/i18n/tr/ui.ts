@@ -79,10 +79,10 @@ export const ui: typeof en = {
   'ui.top.allocated': 'görevde',
   'ui.top.allocatedHint': 'herkes aynı anda tek bir projede olabilir',
   'ui.top.reputationHint': 'teslim ettiğin her şeyden biriken ilgi',
-  'ui.top.seasonHint': (p) => `${p.year} · Aralık’taki ödüllere ${p.days} gün`,
+  'ui.top.seasonHint': (p) => `${p.year} · ödüllere ${p.days} gün (yılın 90. günü)`,
 
   // --- Awards night --------------------------------------------------------------
-  'ui.ceremony.title': (p) => `Ödül gecesi · Aralık ${p.year}`,
+  'ui.ceremony.title': (p) => `Ödül gecesi · ${p.year}`,
   'ui.ceremony.won': (p) => `${p.total} ödülden ${p.won} tanesi bizim.`,
   'ui.ceremony.wonRep': (p) => `${p.total} ödülden ${p.won} tanesi bizim, yanında da ${p.reputation} itibar.`,
   'ui.ceremony.none': 'Bu yıl bize bir şey çıkmadı. Başkasının yılı daha iyiydi.',
@@ -112,7 +112,7 @@ export const ui: typeof en = {
   'ui.rank.foot.table':
     'Tüm zamanların itibarına göre sıralı. Ödüller ise geçen yıla göre verilir, bu başka bir soru — burada öndeyken bile sessiz bir yıl sana kaybettirir.',
   'ui.trophy.none':
-    'Henüz ödül gecesi olmadı — ilki bu Aralık’ta. Her kategori geçen yıla göre değerlendirilir, yani her zaman oynanacak bir ödül vardır.',
+    'Henüz ödül gecesi olmadı — ilki 90. günde. Her kategori geçen yıla göre değerlendirilir, yani her zaman oynanacak bir ödül vardır.',
   'ui.trophy.scoped': (p) => `${p.nights} gecenin ${p.won} tanesi`,
   'ui.trophy.summary': (p) => `${p.nights} gecede ${p.won} kupa`,
   'ui.trophy.summaryRep': (p) => `${p.nights} gecede ${p.won} kupa, değeri ${num(p.reputation)} itibar`,
@@ -124,10 +124,10 @@ export const ui: typeof en = {
   'ui.trophy.notGiven': 'verilmedi',
   'ui.trophy.category': 'Kategori',
   'ui.trophy.yours': 'Senin',
-  'ui.trophy.winnerDecember': (p) => `Kazanan, Aralık ${p.year}`,
-  'ui.trophy.yearHint': (p) => `Aralık ${p.year} — ${p.total} ödülden ${p.won} tanesi senin`,
+  'ui.trophy.winnerYear': (p) => `Kazanan, ${p.year}`,
+  'ui.trophy.yearHint': (p) => `${p.year} — ${p.total} ödülden ${p.won} tanesi senin`,
   'ui.trophy.yearHintRep': (p) =>
-    `Aralık ${p.year} — ${p.total} ödülden ${p.won} tanesi senin, değeri ${p.reputation} itibar`,
+    `${p.year} — ${p.total} ödülden ${p.won} tanesi senin, değeri ${p.reputation} itibar`,
   'ui.trophy.yearBefore': 'Önceki yıl',
   'ui.trophy.yearAfter': 'Sonraki yıl',
   'ui.trophy.hackerspace': 'Hackerspace',
@@ -160,11 +160,10 @@ export const ui: typeof en = {
   'ui.chart.today': 'bugün',
   'ui.chart.inDays': (p) => `${p.days} gün sonra`,
   'ui.chart.noTable': (p) =>
-    `Bundan önceki geceler sıralamayı kaydetmedi, bu yüzden çizgi bu Aralık’taki ödüllerle başlıyor — ${p.when}.`,
+    `Bundan önceki geceler sıralamayı kaydetmedi, bu yüzden çizgi bu yılın ödülleriyle başlıyor — ${p.when}.`,
   'ui.chart.empty': (p) =>
-    `Henüz çizilecek bir şey yok. İlk ödül gecesi bu Aralık’ta, ${p.when}; sonraki her gece bir nokta ekler.`,
+    `Henüz çizilecek bir şey yok. İlk ödül gecesi 90. günde, ${p.when}; sonraki her gece bir nokta ekler.`,
   'ui.chart.point': (p) => `${p.year} — ${p.field} mekân içinde ${p.place}, ${p.reputation} itibar`,
-  'ui.chart.aria': (p) => `Yıllara göre bitiriş sırası. En iyisi: ${p.year} yılında ${p.place}.`,
   'ui.space.allTime': 'tüm zamanlar',
 
   'ui.close': 'Kapat',

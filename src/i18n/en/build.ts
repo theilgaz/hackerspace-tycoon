@@ -46,6 +46,52 @@ export const build = {
   'build.people.hireAll': (p: { count: number; cost: number }) => `Take all ${num(p.count)} on · ${money(p.cost)}`,
   'build.people.hireAllHint': 'Full-time where they can be, part-time for anybody with a day job.',
 
+  'build.skill.cad': 'CAD',
+  'build.skill.electronics': 'electronics',
+  'build.skill.machining': 'machining',
+  'build.skill.welding': 'welding',
+  'build.skill.software': 'software',
+  'build.skill.docs': 'documentation',
+  'build.note.waitingToTrain': (p: { skill: string }) => `waiting for a learning station (${p.skill})`,
+  'build.note.training': (p: { skill: string }) => `training: ${p.skill}`,
+  'build.log.onCourse': (p: { member: string }) => `${p.member} is on a course and cannot join a crew until it is done.`,
+  'build.log.noLearning': 'There is no Learning Station to train at. Build one first.',
+  'build.log.busyToTrain': (p: { member: string }) => `${p.member} is on a crew. Take them off it before sending them on a course.`,
+  'build.log.trainStart': (p: { member: string; skill: string; level: number }) =>
+    `${p.member} is off to the learning station — ${p.skill} ${num(p.level)} next.`,
+  'build.log.trained': (p: { member: string; skill: string; level: number }) =>
+    `${p.member} finished the course: ${p.skill} is ${num(p.level)} now.`,
+
+  'build.np.needsSkill': (p: { skill: string; level: number }) => `needs ${p.skill} ${num(p.level)} on the crew — train someone`,
+  'build.np.crewBest': (p: { skill: string; level: number }) => `crew ${p.skill}: ${num(p.level)}`,
+  'build.np.crewBestHint': 'The best level on the crew you picked. Three stars needs 2, five stars needs 4.',
+
+  'build.people.train': 'Train',
+  'build.people.trainHint': 'Send them to the Learning Station for one level of one skill',
+  'build.people.onCourse': (p: { skill: string; pct: string }) => `training ${p.skill} · ${p.pct}`,
+  'build.people.noStation': 'Build a Learning Station first.',
+  'build.people.onCrew': 'On a crew — take them off it first.',
+  'build.people.alreadyOnCourse': 'Already on a course.',
+
+  'build.panel.printers': 'Printers',
+  'build.machines.buyInBuild': (p: { build: string }) => `New printers are in ${p.build}.`,
+  'build.printer.intro':
+    'Two cheap printers print two things at once; one dear one prints one thing quickly. Past the A1 they are all enclosed, and they grow with the price.',
+  'build.printer.fails': (p: { pct: string }) => `failures ${p.pct}`,
+  'build.card.ownedN': (p: { count: number }) => `${num(p.count)} in the space`,
+  'build.card.owned': 'In the space',
+
+  'build.sell.notOwned': 'That is not something the space can sell.',
+  'build.sell.fixture': 'Part of the building — it stays.',
+  'build.sell.inUse': 'A crew is planning at this table. Sell it when the kickoff is done.',
+  'build.sell.button': (p: { value: number }) => `Sell · ${money(p.value)}`,
+  'build.log.sold': (p: { item: string; value: number }) => `Sold the ${p.item} for ${money(p.value)}.`,
+
+  'build.social.best': 'best',
+  'build.social.post': 'Post',
+
+  'build.rank.night': (p: { n: number }) => `night ${num(p.n)}`,
+
   // --- The wizard ------------------------------------------------------------
   'build.np.step.genre': 'Genre',
   'build.np.step.brief': 'Brief',

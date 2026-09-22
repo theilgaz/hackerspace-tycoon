@@ -64,6 +64,14 @@ export interface MemberData {
   repRequired?: number;
 }
 
+/** A course at the learning station: one skill, one level up. */
+export interface Training {
+  skill: SkillKey;
+  /** Hours at the station still to go, and how many the course took in all. */
+  hoursLeft: number;
+  total: number;
+}
+
 /** A specific job: one stage of one project. Used for the player's chosen task. */
 export interface Assignment {
   projectId: string;
@@ -115,6 +123,10 @@ export interface MemberSnapshot {
   pos: { x: number; y: number };
   /** Where they are sitting, when they are sitting somewhere. Drawn instead of `pos`. */
   seat: Seat | null;
+  /** Their skills as they stand today — training changes them, so the roster data will not do. */
+  skills: Skills;
+  /** A course they are on at the learning station, if any. */
+  training: Training | null;
   /**
    * Their own share of the stage they are working, 0-1 — the bar over their head. The
    * stage is pooled work, so this is what they have put in against an even split.
@@ -401,7 +413,9 @@ export type MachineType =
   | 'drybox'
   /** Project tables (§4d). Nothing is built on them — they are where a crew plans. */
   | 'table-small'
-  | 'table-large';
+  | 'table-large'
+  /** Where somebody goes to get better at a skill (§4c). */
+  | 'learning';
 
 export interface JobSnapshot {
   id: string;

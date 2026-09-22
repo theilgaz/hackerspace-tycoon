@@ -209,11 +209,11 @@ export const RIVALS: RivalDef[] = [
     icon: 'building',
     colour: '#d99a5c',
     startMembers: 11,
-    // Set against what a player actually has on 1 December, not against the full cast: at
-    // fifteen the player took Biggest Crew every night (23 by December on normal), at
-    // twenty-six Dallas did. Twenty-two makes it a contest — a committed hirer edges it,
-    // a hard start does not.
-    maxMembers: 22,
+    // Set against the crew a player has on awards night, not against the full cast: at 22
+    // Dallas took Biggest Crew every first night (a normal run has under 14 people by day
+    // 90, an easy one 18). Seventeen gives the first night to a big easy crew, and makes it a
+    // contest from the second year on normal, once the roster has grown.
+    maxMembers: 17,
     startCash: 9000,
     shipPace: 0.203,
     repPerProject: 108,

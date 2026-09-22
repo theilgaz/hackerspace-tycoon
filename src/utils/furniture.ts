@@ -70,6 +70,17 @@ export const FURNITURE: FurnitureDef[] = [
     use: 'electronics assembly',
   },
   {
+    id: 'learning-station',
+    type: 'learning',
+    name: 'Learning Station',
+    blurb: 'Two chairs, a screen full of courses and a shelf of manuals. Train people up here.',
+    icon: 'book',
+    era: 1,
+    price: 3200,
+    span: 1,
+    use: 'training',
+  },
+  {
     id: 'assembly-table',
     type: 'assembly',
     name: 'Assembly Table',

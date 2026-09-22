@@ -25,7 +25,7 @@ const firstNight: string[] = [];
 const outcomes: string[] = [];
 const SEEDS = Number(process.argv[2] ?? 4);
 /** How long a run is played for. Long enough to reach the first 1 December awards night. */
-const DAYS = Number(process.env.DAYS ?? 400);
+const DAYS = Number(process.env.DAYS ?? 220);
 // Difficulty now sets the crew you start with and how fast more arrive, so it has to be
 // measurable here rather than assumed to be 'normal'.
 const LEVEL = (process.argv[3] ?? 'normal') as DifficultyKey;
@@ -76,7 +76,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   // The board as it stood on the morning of the awards, read before the night resets the year.
   let eve: ScoreRow[] = [];
   let eveDay = 0;
-  // Past the first awards night (1 December, day 335) and into the second year.
+  // Past the first awards night (day 90) and well into the third year.
   while (sim.day <= DAYS) {
     if (sim.day !== eveDay) {
       eve = sim.scoreboard();
@@ -324,7 +324,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
 console.log(`\n  ERA PACING (${DAYS} days, engaged player, ${LEVEL})\n` + rows.join('\n'));
 const wins = firstNight.reduce((n, line) => n + (line.match(/: US/g) ?? []).length, 0);
 console.log(
-  `\n  FIRST AWARDS NIGHT (1 December) — you took ${wins} of ${firstNight.length * AWARDS.length} across ${firstNight.length} runs\n` +
+  `\n  FIRST AWARDS NIGHT (day 90) — you took ${wins} of ${firstNight.length * AWARDS.length} across ${firstNight.length} runs\n` +
     firstNight.join('\n'),
 );
 console.log('\n  THE BOOKS\n' + outcomes.join('\n'));

@@ -378,7 +378,9 @@ export const ERAS: EraDef[] = [
   // 550/2600 put a committed player in Era 3 by about day 40.
   { era: 1, name: 'The Garage', repToAdvance: 1800, moveCost: 0 },
   { era: 2, name: 'Unit 4B', repToAdvance: 6000, moveCost: 18000 },
-  { era: 3, name: 'The Warehouse', repToAdvance: Number.POSITIVE_INFINITY, moveCost: 52000 },
+  { era: 3, name: 'The Warehouse', repToAdvance: 22000, moveCost: 52000 },
+  // After the warehouse: an old factory floor, brick walls and room for the public at scale.
+  { era: 4, name: 'The Old Factory', repToAdvance: Number.POSITIVE_INFINITY, moveCost: 120000 },
 ];
 
 export function eraDef(era: number): EraDef {
@@ -822,6 +824,17 @@ export const DESIGN = {
   /** Quality lost per doubling past twice the size — too many cooks. */
   teamCrowd: 0.2,
   /**
+   * What each star costs (§4c). `starBudget` multiplies the design budget
+   * (`budgetBase + budgetShare × payout`) per axis; `starBom` multiplies the bill of
+   * materials per axis. One star is cheap and it shows, five stars is dear and it shows.
+   */
+  starBudget: { 1: 0.3, 3: 1, 5: 2.4 } as Record<1 | 3 | 5, number>,
+  budgetBase: 100,
+  budgetShare: 0.02,
+  starBom: { 1: 0.9, 3: 1, 5: 1.12 } as Record<1 | 3 | 5, number>,
+  /** Skill level somebody on the crew needs for each star rating. One star needs nobody. */
+  starSkill: { 1: 0, 3: 2, 5: 4 } as Record<1 | 3 | 5, number>,
+  /**
    * The kickoff is a meeting, not a stage of work: an afternoon round the table, not the
    * day and a half the old Concept stage took. That mattered less when every project could
    * hold its concept at once; with one table per kickoff it was the bottleneck of the whole
@@ -887,4 +900,19 @@ export const SEATS: Partial<Record<MachineType, number>> = {
   assembly: 2,
   'table-small': 4,
   'table-large': 10,
+  learning: 2,
+};
+
+/**
+ * Training at the learning station (§4c): one level of one skill at a time. Each level up
+ * costs more money and more hours at the station than the last — from 2 to 3 is a week of
+ * a full-timer's shifts, from 4 to 5 nearly two.
+ */
+/** What something bought for the room fetches when it is sold again. */
+export const RESALE = { share: 0.5 };
+
+export const TRAIN = {
+  costPerLevel: 500,
+  hoursPerLevel: 12,
+  maxLevel: 5,
 };
