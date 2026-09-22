@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { MachineType, RuntimeSnapshot } from '@/game/types';
 import { GRID, STATIONS, type StationDef } from '@/machines/layout';
 import { MACHINE } from '@/utils/constants';
+import { iconDataUrl, type IconName } from '@/ui/icons';
 
 const TILE = 1;
 
@@ -60,16 +61,23 @@ function mat(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> 
 }
 
 /**
- * Paints a name onto a canvas for the wall sign. **This is the one texture in the room**,
- * and it is a deliberate exception to §11's "no textures": letterforms are the single thing
- * flat-shaded boxes cannot do, and a hackerspace with its name on the wall is what every one
- * of them actually looks like.
+ * Paints the badge and the name onto a canvas for the wall sign. **This is the one texture
+ * in the room**, and it is a deliberate exception to §11's "no textures": letterforms are
+ * the single thing flat-shaded boxes cannot do, and a hackerspace with its name on the wall
+ * is what every one of them actually looks like.
  *
- * Letter spacing is applied a character at a time rather than through `ctx.letterSpacing`,
- * which is recent enough that it would silently do nothing on an older engine — and a sign
- * that quietly loses its spacing is worse than one that never had any.
+ * Two details worth keeping. Letter spacing is applied a character at a time rather than
+ * through `ctx.letterSpacing`, which is recent enough that it would silently do nothing on
+ * an older engine — and a sign that quietly loses its spacing is worse than one that never
+ * had any. And the badge is an `<img>`, so it **arrives after the text**: its box is
+ * measured and reserved up front, which is what stops the layout jumping when it lands.
  */
-function paintSign(name: string, colour: string): { texture: THREE.CanvasTexture; aspect: number } {
+function paintSign(
+  name: string,
+  colour: string,
+  badge: IconName | null,
+  onBadge: () => void,
+): { texture: THREE.CanvasTexture; aspect: number } {
   const text = name.trim().toUpperCase();
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d')!;
@@ -90,31 +98,52 @@ function paintSign(name: string, colour: string): { texture: THREE.CanvasTexture
   const maxText = 1500;
   const px = widthOf(size) > maxText ? Math.max(38, Math.floor(size * (maxText / widthOf(size)))) : size;
   const textWidth = widthOf(px);
-  const padX = px * 0.6;
-  canvas.width = Math.ceil(textWidth + padX * 2);
+
+  // Sized against the cap height rather than the line: a lucide glyph carries padding
+  // inside its own 24px box, so a badge set to the height of the letters reads smaller
+  // than them.
+  const badgeSize = badge ? px * 1.45 : 0;
+  const badgeGap = badge ? px * 0.46 : 0;
+  const padX = px * 0.5;
+  canvas.width = Math.ceil(padX * 2 + badgeSize + badgeGap + textWidth);
   canvas.height = Math.ceil(px * 2.1);
 
   ctx.font = font(px);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   const baseline = px * 1.1;
+  const textLeft = padX + badgeSize + badgeGap;
 
-  let cursor = padX;
+  let cursor = textLeft;
   ctx.fillStyle = colour;
   for (const ch of text) {
     ctx.fillText(ch, cursor, baseline);
     cursor += ctx.measureText(ch).width + spacing;
   }
 
-  // A rule under the name, the way a painted sign is finished. Short of the full width so
-  // it reads as part of the mark rather than as a shelf.
+  // A rule under the whole mark, badge included, the way a painted sign is finished. It is
+  // what ties the two halves together rather than leaving a logo standing next to a word.
+  const ruleY = baseline + px * 0.36;
   ctx.globalAlpha = 0.55;
-  ctx.fillRect(padX, baseline + px * 0.36, textWidth, Math.max(2, px * 0.055));
+  ctx.fillRect(padX, ruleY, badgeSize + badgeGap + textWidth, Math.max(2, px * 0.055));
   ctx.globalAlpha = 1;
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
+
+  if (badge) {
+    const img = new Image();
+    img.onload = () => {
+      // Optically centred on the letters rather than on the canvas: the cap height is the
+      // line the eye reads along, and the descender space below it is not part of the word.
+      ctx.drawImage(img, padX, baseline - px * 0.74 - (badgeSize - px * 0.74) / 2, badgeSize, badgeSize);
+      texture.needsUpdate = true;
+      onBadge();
+    };
+    img.src = iconDataUrl(badge, colour, 256, 2.1); // a hair heavier: it is read across a room
+  }
+
   return { texture, aspect: canvas.width / canvas.height };
 }
 
@@ -142,7 +171,10 @@ export class SpaceView {
   /** The name painted on the left wall, and what it is painted in. */
   private signName = '';
   private signColour = '#5ecfc0';
+  private signBadge: IconName | null = null;
   private sign: THREE.Mesh | null = null;
+  /** Bumped on every repaint, so a badge that loads late cannot draw onto a stale sign. */
+  private signToken = 0;
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
@@ -206,13 +238,17 @@ export class SpaceView {
     }
     if (!this.signName.trim()) return;
 
-    const { texture, aspect } = paintSign(this.signName, this.signColour);
+    this.signToken += 1;
+    const token = this.signToken;
+    const { texture, aspect } = paintSign(this.signName, this.signColour, this.signBadge, () => {
+      if (token !== this.signToken) texture.dispose();
+    });
     // **Sized by the wall it is on, not by a fixed cap height.** A fixed height made a long
     // name a thin strip across a fifth of the wall — the letters have to grow or shrink so
     // that a one-word name and a four-word one both take up about half the wall. The cap
     // stops a short name turning into a billboard.
     const wallLength = GRID.height * TILE + 0.3;
-    let height = Math.min(0.52, Math.max(0.26, (wallLength * 0.55) / aspect));
+    let height = Math.min(0.62, Math.max(0.3, (wallLength * 0.66) / aspect));
     let width = height * aspect;
     if (width > wallLength * 0.78) {
       width = wallLength * 0.78;
@@ -244,11 +280,12 @@ export class SpaceView {
     this.sign = mesh;
   }
 
-  /** Called every frame by `Game`; repaints only when the name or the badge colour changes. */
-  setSign(name: string, colour: string) {
-    if (name === this.signName && colour === this.signColour) return;
+  /** Called every frame by `Game`; repaints only when the mark itself changes. */
+  setSign(name: string, colour: string, badge: IconName | null) {
+    if (name === this.signName && colour === this.signColour && badge === this.signBadge) return;
     this.signName = name;
     this.signColour = colour;
+    this.signBadge = badge;
     this.buildSign();
   }
 

@@ -942,15 +942,24 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
 - **Art:** clean low-poly, flat-shaded, no textures. Procedural geometry first; glTF assets later
   only where silhouette demands it. Readability over fidelity — a machine's state (idle / running /
   failed / needs calibration) must be legible at a glance from the iso camera.
-- **The space's name is painted on the left wall.** The back wall is where the kit lives;
-  the left wall is the one big blank face the camera looks straight at, and it is still
-  blank in the warehouse. It is drawn in the badge's own colour, so naming the place and
-  choosing its badge show up in the room rather than only in the top bar. **This is the one
-  texture in the game** and a deliberate exception to the rule below: letterforms are the
-  single thing flat-shaded boxes cannot do. It is **sized by the wall, not by a fixed cap
-  height** — a fixed height turned a long name into a thin strip across a fifth of the wall,
-  so the letters grow or shrink until any name takes up about half of it, with a cap so a
-  three-letter name does not become a billboard.
+- **The badge and the name are painted on the left wall.** The back wall is where the kit
+  lives; the left wall is the one big blank face the camera looks straight at, and it is
+  still blank in the warehouse. The mark is the badge, the name beside it and a rule under
+  both — the rule is what ties them together rather than leaving a logo standing next to a
+  word — all in the badge's own colour, so naming the place and choosing its badge show up
+  in the room rather than only in the top bar. **This is the one texture in the game** and a
+  deliberate exception to the rule below: letterforms are the single thing flat-shaded boxes
+  cannot do. Three things it got wrong first, each worth not repeating:
+  - **Size it by the wall, not by a fixed cap height.** A fixed height turned a long name
+    into a thin strip across a fifth of the wall. The letters now grow or shrink until any
+    name takes up about half of it, with a cap so a three-letter name is not a billboard.
+  - **Size a line icon against the cap height, not the line.** A lucide glyph carries
+    padding inside its own 24px box, so a badge set to the height of the letters reads
+    smaller than them.
+  - **The badge is an `<img>`, so it arrives after the text.** Its box is measured and
+    reserved up front and the texture is simply marked dirty when it lands; otherwise the
+    whole sign re-lays-out a frame later. A repaint token stops a late badge drawing onto
+    a sign that has since been replaced.
 - **Stations face whoever uses them.** Everything is modelled facing +y and the node is turned
   toward its stand tile, with the painted bay running the same way. The bay used to always
   point along −y, so a bench against the left wall faced away from its own user and its bay lay

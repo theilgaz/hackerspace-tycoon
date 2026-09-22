@@ -6,6 +6,7 @@ import { store } from './store';
 import { STATION_MAP } from '@/machines/layout';
 import { pct } from '@/utils/format';
 import type { MachineType } from './types';
+import type { IconName } from '@/ui/icons';
 
 /** What a station is for, shown when you point at one that has no queue of its own. */
 const STATION_ROLE: Partial<Record<MachineType, string>> = {
@@ -197,8 +198,12 @@ export class Game {
 
     // A new room needs a new shot of it, so the camera reframes when the floor changes.
     if (this.view.setEra(state.era)) this.scene.resize();
-    // The name goes on the wall the moment the doors open, in the badge's own colour.
-    this.view.setSign(state.identity?.name ?? '', state.identity?.colour ?? '#5ecfc0');
+    // The badge and the name go on the wall the moment the doors open.
+    this.view.setSign(
+      state.identity?.name ?? '',
+      state.identity?.colour ?? '#5ecfc0',
+      (state.identity?.icon as IconName | undefined) ?? null,
+    );
     this.view.update(state.runtime, dt);
     const over = this.scene.pick(this.pointer.x, this.pointer.y, this.view.pickables);
     if (over !== this.hovered) {

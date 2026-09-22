@@ -80,6 +80,19 @@ export function icon(name: IconName, className = 'ui-icon'): string {
     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[name]}</svg>`;
 }
 
+/**
+ * The same glyph as a standalone SVG document, for the places a stylesheet cannot reach —
+ * `icon()` leans on `.ui-icon` for its size and stroke width, and a canvas drawing an
+ * `<img>` has no stylesheet at all. `currentColor` is resolved here for the same reason.
+ */
+export function iconDataUrl(name: IconName, colour: string, size = 128, stroke = 1.75): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" ` +
+    `fill="none" stroke="${colour}" stroke-width="${stroke}" stroke-linecap="round" ` +
+    `stroke-linejoin="round">${PATHS[name]}</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 /** One icon per genre, so a category reads the same everywhere it appears. */
 export const CATEGORY_ICON: Record<ProjectCategory, IconName> = {
   software: 'code',
