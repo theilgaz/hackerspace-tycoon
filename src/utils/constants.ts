@@ -872,6 +872,12 @@ export const SEATS: Partial<Record<MachineType, number>> = {
 /** What something bought for the room fetches when it is sold again. */
 export const RESALE = { share: 0.5 };
 
+/** Standing jobs (§3b). */
+export const ROLES = {
+  /** The Technician levels a bed that has drifted below this, between prints. */
+  technicianLevelsBelow: 0.7,
+};
+
 export const TRAIN = {
   costPerLevel: 500,
   hoursPerLevel: 12,

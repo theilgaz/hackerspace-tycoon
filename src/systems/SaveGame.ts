@@ -62,7 +62,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -205,6 +205,12 @@ function migrate(file: SaveFile): SaveFile {
   // month opens where the balance stands; the first statement lists the gap as "other".
   if (!store.ledger || typeof store.ledger !== 'object') store.ledger = {};
   if (typeof store.monthOpen !== 'number') store.monthOpen = store.cash;
+
+  // v12 — the Project Manager is gone (it chose projects for the player). Whoever held it
+  // holds nothing now; the Technician is a new slot to fill.
+  for (const member of sim.members ?? []) {
+    if ((member as { role?: unknown }).role === 'manager') (member as { role: null }).role = null;
+  }
 
   file.version = SAVE_VERSION;
   return file;

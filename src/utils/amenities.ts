@@ -71,7 +71,11 @@ export interface AmenityDef {
     | 'whiteboard'
     | 'poster'
     | 'terminal'
-    | 'lava';
+    | 'lava'
+    | 'console'
+    | 'tv'
+    | 'espresso'
+    | 'nappod';
   mount: 'floor' | 'wall';
   /** The prop's own colour; the room is otherwise deliberately grey. */
   tone: string;
@@ -194,6 +198,62 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'acoustics',
     mount: 'wall',
     tone: '#5a5f6b',
+  },
+  // --- The Old Factory (§8): the lease with room for the public ------------------
+  // A factory floor holds the things a garage never could. They are the dearest comforts in
+  // the game and the loudest: the console is the biggest draw there is and the biggest drain
+  // on the afternoon, which is the table-tennis trade at factory scale.
+  {
+    id: 'console-corner',
+    name: 'PlayStation Corner',
+    blurb: 'A console, a telly and four controllers. The "quick game after lunch" that is never quick.',
+    icon: 'gamepad',
+    era: 4,
+    price: 28000,
+    upkeep: 700,
+    effect: { mood: 8, focus: 0.9, draw: 1.18 },
+    shape: 'console',
+    mount: 'floor',
+    tone: '#2b3f8f',
+  },
+  {
+    id: 'big-tv',
+    name: 'Big-Screen TV',
+    blurb: 'Eighty-five inches on the wall. Demo days, launch streams, and the odd match night.',
+    icon: 'image',
+    era: 4,
+    price: 24000,
+    upkeep: 400,
+    effect: { mood: 4, draw: 1.1, drift: 0.92 },
+    shape: 'tv',
+    mount: 'wall',
+    tone: '#1a1d23',
+  },
+  {
+    id: 'espresso-bar',
+    name: 'Espresso Bar',
+    blurb: 'A proper machine, a grinder and somebody who cares far too much about both.',
+    icon: 'dish',
+    era: 4,
+    price: 19000,
+    upkeep: 1400,
+    effect: { mood: 3, rest: 1.25, fatigue: 0.9 },
+    shape: 'espresso',
+    mount: 'floor',
+    tone: '#8a5a3c',
+  },
+  {
+    id: 'nap-pod',
+    name: 'Nap Pod',
+    blurb: 'Twenty minutes in a dark egg and the afternoon is somebody else’s problem again.',
+    icon: 'clock',
+    era: 4,
+    price: 21000,
+    upkeep: 300,
+    effect: { rest: 1.4, fatigue: 0.88, drift: 0.95 },
+    shape: 'nappod',
+    mount: 'floor',
+    tone: '#e4e7eb',
   },
   // --- Decor (§4d): the room as somewhere you would want to be ---------------
   {

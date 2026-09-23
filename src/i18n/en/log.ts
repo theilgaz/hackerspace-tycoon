@@ -148,9 +148,6 @@ export const log = {
   'log.role.loaded': (p: { member: string; machine: string }) => `${p.member} loaded the ${p.machine} back up.`,
   'log.role.ordered': (p: { member: string; project: string }) =>
     `${p.member} got the ${p.project} parts on order.`,
-  'log.role.started': (p: { member: string; item: string }) =>
-    `${p.member} started ${p.item} — there were hands going spare.`,
-
   'log.pitch.cantBuild': "The space can't build that yet.",
   'log.pitch.sponsorPaid': (p: { item: string; cash: number }) =>
     `Sponsor paid ${money(p.cash)} up front for ${p.item}.`,
@@ -236,5 +233,6 @@ export const log = {
   'bill.powerDetail': (p: { hours: number }) => `${p.hours} machine-hours`,
   'bill.comforts': 'Comforts',
   'bill.comfortsDetail': (p: { count: number }) => `${p.count} in the space · running costs`,
+  'log.role.levelled': (p: { member: string; machine: string }) => `${p.member} levelled the bed on the ${p.machine} between prints.`,
 };
 

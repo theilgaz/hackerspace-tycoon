@@ -1487,6 +1487,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .cash--good { color: var(--success); }
 .cash--warn { color: var(--warning); }
 .cash--bad { color: var(--destructive); }
+.cash--flat { color: var(--foreground); }
 
 /* --- the shop floor: one row per printer ----------------------------------- */
 

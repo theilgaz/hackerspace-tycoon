@@ -66,7 +66,7 @@ export const build: typeof en = {
   'build.people.alreadyOnCourse': 'Zaten eğitimde.',
 
   'build.panel.printers': 'Yazıcılar',
-  'build.machines.buyInBuild': (p) => `Yeni yazıcılar ${ek(p.build, 'loc')}.`,
+  'build.machines.buyInBuild': (p) => `Yeni yazıcılar ${p.build} menüsünde.`,
   'build.printer.intro':
     'İki ucuz yazıcı aynı anda iki şey basar; bir pahalı yazıcı tek şeyi hızlı basar. A1 dışındakilerin hepsi kabinli ve fiyatla birlikte büyüyor.',
   'build.printer.fails': (p) => `arıza ${p.pct}`,
@@ -151,7 +151,7 @@ export const build: typeof en = {
   'build.np.everyoneBusy':
     'Herkes bir şeyle meşgul. Yine de başlatıp ekibini sonra tezgâhtan kurabilirsin — ya da ' +
     'kendin katılırsın.',
-  'build.np.largeHint': (p) => `Beş ve on kişilik ekipler için ${p.table} gerekir. ${ek(p.build, 'loc')} bulunur.`,
+  'build.np.largeHint': (p) => `Beş ve on kişilik ekipler için ${p.table} gerekir; ${p.build} menüsünde bulunur.`,
 
   'build.review.quality': 'Kalite',
   'build.review.qualityHint': 'ekibin ustalığı + tasarım + ekip büyüklüğü',
@@ -276,7 +276,7 @@ export const build: typeof en = {
   'build.people.trainCell': (p) =>
     `${p.skill} eğitimi ${num(p.from)} → ${num(p.to)} · ${money(p.cost)} · öğrenme istasyonunda ${num(p.hours)} saat`,
   'build.people.trainHow': 'Bir sonraki seviye için bir beceriye bas. Eğitim bitene kadar ekiplere katılamaz.',
-  'build.people.trainNeedsStation': (p) => `Eğitim için Öğrenme İstasyonu gerekir — ${ek(p.build, 'loc')} bulunur.`,
+  'build.people.trainNeedsStation': (p) => `Eğitim için Öğrenme İstasyonu gerekir — ${p.build} menüsünde bulunur.`,
   'build.skillShort.software': 'YZL',
   'build.skillShort.electronics': 'ELK',
   'build.skillShort.cad': 'CAD',
@@ -311,4 +311,8 @@ export const build: typeof en = {
   'build.trophy.firstNight': (p) =>
     `İlk ödül gecesi ${p.date} tarihinde — ${p.days} gün sonra. ${num(p.count)} kupa, yılın performansına göre.`,
   'build.trophy.repHint': 'Kazananın aldığı itibar',
+  'build.np.cantAfford': (p) => `${money(p.cost)} tasarım bütçesi — eksi bakiye sınırını aşar`,
+  'build.review.cantStart': (p) =>
+    `Tasarım bütçesi ${money(p.cost)}; mekân −${money(p.floor)} sınırının altına inemez. Önce para kazan ya da daha ucuz seçenekler seç.`,
+  'build.log.ownerPicksUp': (p) => `Elin boştu — ${ek(p.project, 'dat')} el atıyorsun.`,
 };

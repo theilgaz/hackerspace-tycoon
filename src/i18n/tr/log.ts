@@ -118,8 +118,6 @@ export const log: typeof en = {
   'log.role.cleared': (p) => `${p.member} görevi bıraktı.`,
   'log.role.loaded': (p) => `${p.member}, ${ek(p.machine, 'acc')} yeniden doldurdu.`,
   'log.role.ordered': (p) => `${p.member}, ${p.project} parçalarını siparişe verdi.`,
-  'log.role.started': (p) => `${p.member}, ${p.item} projesini başlattı — boşta eller vardı.`,
-
   'log.pitch.cantBuild': 'Mekân bunu henüz yapamaz.',
   'log.pitch.sponsorPaid': (p) => `Sponsor ${p.item} için ${money(p.cash)} peşin ödedi.`,
   'log.pitch.proposerSigned': (p) => `${p.member} hemen ${p.item} ekibine yazıldı.`,
@@ -200,4 +198,5 @@ export const log: typeof en = {
   'bill.powerDetail': (p) => `${p.hours} makine-saat`,
   'bill.comforts': 'Konfor',
   'bill.comfortsDetail': (p) => `mekânda ${p.count} tane · işletme giderleri`,
+  'log.role.levelled': (p) => `${p.member}, iki baskı arasında ${p.machine} tablasını ayarladı.`,
 };

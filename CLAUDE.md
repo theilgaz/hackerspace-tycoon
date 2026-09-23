@@ -145,6 +145,14 @@ option needs somebody on the crew good enough to use it: ★ needs nobody, ★�
 — train someone" — rather than simply greying out. Changing the crew drops any choice it can
 no longer back to the best it can, and the sim checks the same thing at the pitch.
 
+**A design the space cannot pay for is not offered.** The design budget is paid at the pitch
+and refused past the overdraft, and the wizard used to find that out only afterwards — a Start
+button that looked like it worked, then a red log line about licences. An option whose budget
+would take the space past −₺30,000 is now locked on its card with the reason, changing the
+crew or the size drops choices to what can be afforded, and the review disables Start and says
+why when even one star is out of reach. Same rule as the skill gate: the wizard only ever
+offers what the pitch will accept.
+
 **Every option has a price, and it moves with the stars** (`optionCost`): a design budget per
 axis of `budgetBase + budgetShare × payout`, times 0.3 for ★, 1 for ★★★, 2.4 for ★★★★★,
 plus a small multiplier on the bill of materials. One star is cheap, rough and pays less;
@@ -295,6 +303,16 @@ twice.
 You are on the grid, you are always in the building, and you can work. That matters because
 §13 established that **attendance is the binding constraint** — and you are the one person
 whose attendance is guaranteed.
+
+**The owner never stands about.** With nothing chosen you put yourself on the oldest build
+that has already kicked off — or, failing that, one with nobody on it — and when it ships you
+move to the next, with a line in the log each time. **Stop** holds for the rest of the day and
+no longer. This replaced the Project Manager, a keyholder who *started* projects when hands
+were spare: what the space builds is the one decision that must always be the player's, and a
+role that made it for them took away the game. Idle hands are different — nobody chooses
+those. Never auto-join a kickoff that already has a crew: it was planned for its own chairs,
+and one more at a full table is a meeting that never starts (`kickoff-check` caught exactly
+that).
 
 The counterweight is the hour budget, and **it is the only number you have**:
 
@@ -901,7 +919,7 @@ Three jobs a member can hold on top of their build work, one holder each:
 
 | | What they watch |
 |---|---|
-| **Project Manager** | Starts something new when there are hands going spare |
+| **Technician** | Levels a printer bed that has drifted, between prints (`ROLES.technicianLevelsBelow`) |
 | **Printer Keeper** | Loads the printers back up before they run dry |
 | **Quartermaster** | Gets bills of materials on order so assembly is never waiting |
 | **Social Media Manager** | Keeps the feeds ticking over so attention never quite dies |
@@ -1135,7 +1153,8 @@ The previous statement listed only dues, rent and power, plus the shipped work "
 banked" — so its bottom line never matched the change in the balance, because everything
 bought during the month was missing. That is exactly the confusion it was meant to prevent.
 
-**The top bar shows the balance and nothing else.** It carried a projection of the next bill
+**The top bar shows the balance and nothing else**, green in the black, red under it, plain
+at exactly nothing. It carried a projection of the next bill
 under it, which read as a second balance; nobody could say which of the two they had.
 
 **Nobody is paid.** The people on your books are members, not staff, and a flat ₺2,000 a
@@ -1251,6 +1270,12 @@ maximal shopper gets there a month later while shipping a fifth more. The first 
 is untouched because it falls on day 69, before there is money for any of this. **Era 3's
 documented day 102-118 is the no-shop pace**; a player who furnishes the place should expect
 the warehouse later and a better-run garage meanwhile.
+
+**The Old Factory has its own four** — the dearest comforts in the game: a **PlayStation
+Corner** (the biggest draw there is, and the biggest drain on the afternoon: mood +8, work
+−10%), a **Big-Screen TV** on the back wall, an **Espresso Bar** and a **Nap Pod**. They are
+the lease's answer to "what do sixty members of the public and a full crew do between
+builds", and the console is the table-tennis trade at factory scale.
 
 **They stand in the room, and you arrange them.** A comfort you cannot see is a number in a
 panel, and ₺22,000 of arcade cabinet should be in the building the moment it is paid for.
@@ -1746,6 +1771,17 @@ is visible rather than rediscovered:
   anything. Each is a Phase 5 job, and §13's rule applies: measure it against attendance.
 
 ## 14. Development Priority
+
+**Phase 1.16 — The owner works, the wizard is honest, the factory is furnished — BUILT.**
+The Project Manager is gone — it chose projects for the player — and the Technician, who
+levels drifting printer beds between prints, took its slot. The owner picks up the oldest
+running build when their hands are empty (§3a). The wizard locks design options the overdraft
+cannot pay for and will not offer a Start it would refuse (§4c). Cash is green, red or plain.
+The Old Factory gets four comforts: PlayStation Corner, Big-Screen TV, Espresso Bar, Nap Pod.
+
+Measured (`era-pace`, 220 days, 8 seeds): normal first 7/8 (worst 2nd), hard 6/8 (worst
+3rd), easy 8/8; first night 15 / 14 / 21 of 40. `sim-check`'s hands-off player now ships 22
+rather than 6 in 150 days, because the owner works on their own — which is the feature.
 
 **Phase 1.15 — Books that add up, and a project you can read — BUILT.**
 A ledger behind every spend, so the monthly statement is income − costs = the month and the

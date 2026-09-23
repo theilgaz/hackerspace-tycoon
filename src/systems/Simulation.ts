@@ -88,6 +88,7 @@ import {
   TIME,
   KICKOFF,
   TRAIN,
+  ROLES,
   RESALE,
   VERB_HOURS,
   WORKDAY,
@@ -181,6 +182,12 @@ export class Simulation {
   private machineHoursThisMonth = 0;
   /** What the work actually brought in since the last bill — payouts and sponsor money. */
   private incomeThisMonth = 0;
+
+  /**
+   * You pressed Stop today, so the owner does not pick the next build up on their own until
+   * tomorrow. Anything else would override a choice you had just made.
+   */
+  private ownerStopped = false;
 
   /** Days of word of mouth banked toward the next person getting in touch (§3c). */
   private recruitClock = 0;
@@ -287,6 +294,8 @@ export class Simulation {
       this.day += 1;
       this.endOfDay();
       this.dayRolled = true;
+      // A Stop holds for the rest of the day, not for ever: tomorrow you pick up the work.
+      this.ownerStopped = false;
       tickRivals(this.rivals, this.rivalPressure());
       this.runBilling();
       this.checkAwards();
@@ -1264,6 +1273,22 @@ export class Simulation {
     if (p.project && !this.project(p.project)) {
       p.project = null;
       p.note = t('note.lookingForWork');
+    }
+
+    // **The owner does not stand about** (§3a). With nothing chosen you put yourself on the
+    // oldest build still open, and when it ships you move to the next. This replaced the
+    // Project Manager, which started projects for you: the space's work is yours to choose,
+    // but once it is chosen, your hands going spare is the one waste you can always avoid.
+    if (!p.project && !p.calibrating && !this.ownerStopped) {
+      // Never into somebody else's kickoff: a crew that has not sat down yet was planned
+      // for its own chairs, and one more at a full table is a meeting that never starts.
+      const next =
+        this.projects.find((x) => !x.shipped && x.kickedOff) ??
+        this.projects.find((x) => !x.shipped && !x.team.length);
+      if (next) {
+        p.project = next.id;
+        this.log(msg('build.log.ownerPicksUp', { project: next.name }), 'info');
+      }
     }
 
     if (p.calibrating) {
@@ -2630,26 +2655,17 @@ export class Simulation {
           if (this.post(best.id, room.id, 'wip', member)) this.socialDay = this.day;
           break;
         }
-        case 'manager': {
-          // Only when there are hands going spare — the point is to stop people idling,
-          // not to pile up projects nobody can touch.
-          const idle = this.members.filter((m) => !m.team && m.id !== member.id).length;
-          if (!idle) break;
-          const state = store.getState();
-          const offer = state.backlog[0];
-          const def = offer
-            ? CATALOG_MAP[offer.defId]
-            : catalogForEra(state.era).find(
-                (d) => canBuild(d, state.ownedMachines) && !this.projects.some((p) => p.defId === d.id),
-              );
-          if (!def || state.cash - def.bomCost < -ECONOMY.overdraftLimit) break;
-          // Best matches first, as many as the brief and the biggest table allow.
-          const crew = this.members
-            .filter((x) => !x.team && !x.training)
-            .sort((a, b) => b.passionMatch(def.tags) - a.passionMatch(def.tags))
-            .slice(0, Math.min(def.teamSize, this.maxTableSeats()));
-          if (this.pitch(def.id, offer?.id, crew.map((m) => m.id))) {
-            this.log(msg('log.role.started', { member: member.name, item: def.name }), 'good');
+        case 'technician': {
+          // **What replaced the Project Manager** (§3b). A role that started projects took
+          // the one decision the player should always make — what the space builds — and
+          // made it for them. Levelling beds is the opposite: a chore nobody volunteers for
+          // (§5), done between prints so a job is never interrupted.
+          const drifting = this.machines.find(
+            (m) => !m.running && m.calibration < ROLES.technicianLevelsBelow,
+          );
+          if (drifting) {
+            drifting.calibration = 1;
+            this.log(msg('log.role.levelled', { member: member.name, machine: drifting.label }), 'good');
           }
           break;
         }
@@ -2729,7 +2745,7 @@ export class Simulation {
     }
     // Every project is planned round a table (§4d), so the crew it is planned for has to
     // fit at one the space owns. The wizard never offers a size that does not; the
-    // Project Manager and the harnesses take the brief's size, capped to what there is.
+    // harnesses take the brief's size, capped to what there is.
     const maxSeats = this.maxTableSeats();
     if (maxSeats <= 0) {
       this.log(msg('build.log.noTable'), 'bad');
@@ -2818,11 +2834,13 @@ export class Simulation {
   workOn(projectId: string) {
     const project = this.project(projectId);
     if (!project) return;
+    this.ownerStopped = false;
     this.player.calibrating = false;
     this.player.project = projectId;
   }
 
   stopWork() {
+    this.ownerStopped = true;
     this.player.project = null;
     this.player.calibrating = false;
   }

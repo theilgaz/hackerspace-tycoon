@@ -275,6 +275,26 @@ await check('the crew step arrives with the best people already picked', async (
   return pressed === want && picked === want && want > 0;
 });
 
+await check('a design the overdraft cannot pay for cannot be started', async () => {
+  const before = await evaluate(`__store.getState().cash`);
+  // Right on the floor: even a one-star design budget would go past it. Paused, because a
+  // running clock would charge upkeep past the floor and end the run under the next check.
+  await evaluate(`(() => { __store.getState().setPaused(true); __store.setState({ cash: -30000, overdraftSince: null });
+    __game.sim.publish(); })()`);
+  await openWizard();
+  await click('#modal [data-action="np-genre"]:not([disabled])');
+  await click('#modal [data-action="np-brief"]:not([disabled])');
+  await click('#modal [data-action="np-next"]');
+  const lockedFive = await evaluate(`document.querySelectorAll('#modal [data-action="np-option"][data-id="2"]:not([disabled])').length`);
+  await click('#modal [data-action="np-next"]');
+  const startDisabled = await evaluate(`document.querySelector('#modal [data-action="np-start"]')?.disabled`);
+  await click('#modal header [data-action="jobs-close"]');
+  await evaluate(`(() => { __store.setState({ cash: ${before}, overdraftSince: null, gameOver: null });
+    __store.getState().setPaused(false); __game.sim.publish(); })()`);
+  if (!(lockedFive === 0 && startDisabled === true)) console.log(`      unlocked five-star ${lockedFive}, start disabled ${startDisabled}`);
+  return lockedFive === 0 && startDisabled === true;
+});
+
 await check('breadcrumb jumps back to a completed step', async () => {
   await openWizard();
   await click('#modal [data-action="np-genre"]:not([disabled])');

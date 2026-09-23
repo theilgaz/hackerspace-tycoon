@@ -121,7 +121,7 @@ const CATALOG_DATA: Draft[] = [
     tier: 'large',
     teamSize: 5,
     blurb: 'Feeds, moderation, and a scale nobody in the room has built for before.',
-    work: { concept: 39, cad: 121, simulation: 74, assembly: 184, iterate: 58, release: 52 },
+    work: { concept: 39, cad: 140, simulation: 80, assembly: 220, iterate: 58, release: 52 },
     parts: [],
     bomCost: 2500,
     leadDays: 4,

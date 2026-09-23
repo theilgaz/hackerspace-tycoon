@@ -10,6 +10,7 @@ import type {
   ClaimKey,
   ShippedRecord,
   SkillKey,
+  DesignAxisId,
   StageKey,
   Identity,
   DesignChoice,
@@ -1401,7 +1402,8 @@ export class UI {
     if (clockEl) clockEl.textContent = clock(state.simTime);
 
     // Money reads as a state, not a number: in the black, running low, or under water.
-    const cashTone = state.cash < 0 ? 'bad' : state.cash < FILAMENT.spoolCost ? 'warn' : 'good';
+    // In the black green, under water red, exactly nothing plain.
+    const cashTone = state.cash > 0 ? 'good' : state.cash < 0 ? 'bad' : 'flat';
     const next = this.handlers.previewBill();
     const era = eraDef(state.era);
     const target = Number.isFinite(era.repToAdvance) ? era.repToAdvance : null;
@@ -2744,11 +2746,10 @@ export class UI {
       const has = (trait: string) => (data.traits ?? []).includes(trait as never);
       let score = 0;
       let why = '';
-      if (role === 'manager') {
-        // Starting the right thing is judgement plus a broad enough taste to judge with.
-        const breadth = Math.min(1, Object.keys(data.passions ?? {}).length / 4);
-        score = skill('docs') * 0.55 + breadth * 0.45;
-        why = has('mentor') ? t('ui.fit.mentor') : breadth > 0.7 ? t('ui.fit.broad') : t('ui.fit.notes');
+      if (role === 'technician') {
+        // A steady hand with machines, and somebody who knows what a first layer should be.
+        score = skill('machining') * 0.6 + skill('cad') * 0.25 + 0.15;
+        why = t('ui.fit.machining', { level: data.skills.machining ?? 0 });
       } else if (role === 'printer') {
         score = skill('machining') * 0.8 + 0.2;
         why = has('nightOwl') ? t('ui.fit.nightOwl') : t('ui.fit.machining', { level: data.skills.machining ?? 0 });
@@ -2761,7 +2762,7 @@ export class UI {
         score = skill('docs') * 0.45 + skill('software') * 0.2 + breadth * 0.35;
         why = has('documenter') ? t('ui.fit.writesItDown') : breadth > 0.7 ? t('ui.fit.broad') : t('ui.fit.goodEye');
       }
-      if (has('mentor') && role === 'manager') score *= 1.25;
+      if (has('perfectionist') && role === 'technician') score *= 1.25;
       if (has('nightOwl') && role === 'printer') score *= 1.2;
       if (has('documenter') && role === 'quartermaster') score *= 1.3;
       if (has('documenter') && role === 'social') score *= 1.25;
@@ -2771,7 +2772,7 @@ export class UI {
     };
 
     const roleIcon: Record<Role, IconName> = {
-      manager: 'clipboard',
+      technician: 'cog',
       printer: 'printer',
       quartermaster: 'package',
       social: 'flame',
@@ -3177,7 +3178,19 @@ export class UI {
       while (index > 0 && !optionAvailable(axis, index, crew)) index -= 1;
       design[axis] = index;
     }
+    // Then what the space can pay for: the design budget is spent at the pitch, so a plan
+    // the overdraft cannot cover is not a plan (§7a). Cheapen the dearest axis first.
+    const tooling = () => planProject(def, { design, seats: this.np.seats }, state.ownedMachines).tooling;
+    for (const axis of CATEGORY_AXES[def.category]) {
+      while ((design[axis] ?? 1) > 0 && !this.affordable(state, tooling())) design[axis] = (design[axis] ?? 1) - 1;
+    }
     this.np.design = design;
+  }
+
+  /** What the design budget would be with one axis switched to another option. */
+  private npToolingWith(def: ProjectDef, state: GameState, axis: DesignAxisId, index: number): number {
+    const design = { ...this.np.design, [axis]: index };
+    return planProject(def, { design, seats: this.np.seats }, state.ownedMachines).tooling;
   }
 
   /** Step 4: how it gets built — three decisions, and the crew decides what is on offer. */
@@ -3197,12 +3210,19 @@ export class UI {
             const missing = (option.requires ?? []).filter((m) => !state.ownedMachines.includes(m));
             const skilled = optionAvailable(axisId, index, crew);
             const on = index === chosen;
-            const locked = missing.length > 0 || !skilled;
+            // Unaffordable is locked too, and says so here rather than at the pitch: the
+            // wizard used to let a plan through that the overdraft could not pay for, and the
+            // refusal arrived afterwards as a log line (§7a).
+            const tooling = this.npToolingWith(def, state, axisId, index);
+            const pricey = !this.affordable(state, tooling);
+            const locked = missing.length > 0 || !skilled || pricey;
             const why = missing.length
               ? t('build.np.needsMachine', { machines: missing.map((m) => MACHINE_LABEL[m]).join(' + ') })
               : !skilled
                 ? t('build.np.needsSkill', { skill: skillName, level: optionNeeds(option) })
-                : '';
+                : pricey
+                  ? t('build.np.cantAfford', { cost: tooling })
+                  : '';
             return `<button class="ui-option design-option ${on ? 'ui-option--on' : ''} ${locked ? 'design-option--locked' : ''}"
               data-action="np-option" data-value="${axisId}" data-id="${index}"
               aria-pressed="${on}" ${locked ? 'disabled' : ''} title="${esc(why)}">
@@ -3376,7 +3396,10 @@ export class UI {
       })
       .join('');
 
-    const blocked = summary.missing.length > 0 || plan.seats > this.maxSeats(state);
+    // The design budget is paid at the pitch and refused past the overdraft, so a plan it
+    // cannot cover must not reach a Start button that looks like it will work.
+    const broke = summary.tooling > 0 && !this.affordable(state, summary.tooling);
+    const blocked = summary.missing.length > 0 || plan.seats > this.maxSeats(state) || broke;
     return `${this.npHeader(def)}
       <div class="review-grid">
         ${stat(t('build.review.quality'), `${starRow(qualityStars(quality))}<span class="mono">${pct(quality)}</span>`, t('build.review.qualityHint'))}
@@ -3409,7 +3432,11 @@ export class UI {
         ${esc(t('build.review.start', { project: def.name }))}${cost ? ` · ${money(cost)}` : ''}
       </button>
       ${
-        cost > 0
+        broke
+          ? `<p class="defect" style="margin:7px 0 0;text-align:center">
+               ${icon('coins')} ${t('build.review.cantStart', { cost: summary.tooling, floor: ECONOMY.overdraftLimit })}
+             </p>`
+          : cost > 0
           ? `<p class="ui-desc" style="margin:7px 0 0;text-align:center;font-size:10.5px">
                ${t('build.review.leaves', { cash: state.cash - cost })}${this.affordable(state, cost) ? '' : ` — ${t('build.review.pastOverdraft')}`}
              </p>`
@@ -4007,7 +4034,7 @@ export class UI {
           </span>
         </div>`
       : '';
-    const groups = [1, 2, 3]
+    const groups = [1, 2, 3, 4]
       .map((era) => {
         const items = AMENITIES.filter((a) => a.era === era && a.group !== 'decor');
         if (!items.length) return '';

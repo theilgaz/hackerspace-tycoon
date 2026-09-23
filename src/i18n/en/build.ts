@@ -326,4 +326,8 @@ export const build = {
   'build.trophy.firstNight': (p: { date: string; days: string; count: number }) =>
     `The first awards night is on ${p.date} — ${p.days} days away. ${num(p.count)} trophies, judged on the year.`,
   'build.trophy.repHint': 'Reputation the winner takes home',
+  'build.np.cantAfford': (p: { cost: number }) => `${money(p.cost)} in design budget — past the overdraft`,
+  'build.review.cantStart': (p: { cost: number; floor: number }) =>
+    `The design budget is ${money(p.cost)}, and the space cannot go past −${money(p.floor)}. Earn first, or pick cheaper options.`,
+  'build.log.ownerPicksUp': (p: { project: string }) => `Nothing on your hands — you pick up ${p.project}.`,
 };

@@ -1149,6 +1149,14 @@ export class SpaceView {
         return this.propPoster(def.tone);
       case 'terminal':
         return this.propTerminal(def.tone);
+      case 'console':
+        return this.propConsole(def.tone);
+      case 'tv':
+        return this.propTv(def.tone);
+      case 'espresso':
+        return this.propEspresso(def.tone);
+      case 'nappod':
+        return this.propNapPod(def.tone);
       case 'lava':
         return this.propLava(def.tone);
       default:
@@ -1197,6 +1205,122 @@ export class SpaceView {
     const tap = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.1), mat('#5a6270'));
     tap.position.set(0, 0.6, 0.2);
     g.add(tap);
+    return g;
+  }
+
+  /** A screen that glows, for the console corner and the wall TV alike. */
+  private screen(w: number, h: number, glow = '#3a7bd5'): THREE.Mesh {
+    return new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, 0.03),
+      new THREE.MeshStandardMaterial({
+        color: '#9fd0ff',
+        flatShading: true,
+        emissive: new THREE.Color(glow),
+        emissiveIntensity: 0.85,
+      }),
+    );
+  }
+
+  /** A low media unit, a telly on it, the console beside it and two pads on the floor. */
+  private propConsole(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const unit = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.34, 0.42), mat('#2a2f38'));
+    unit.position.set(0, 0.17, -0.22);
+    unit.castShadow = true;
+    g.add(unit);
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.52, 0.05), mat('#111317'));
+    bezel.position.set(0, 0.66, -0.3);
+    bezel.castShadow = true;
+    g.add(bezel);
+    const glass = this.screen(0.8, 0.46);
+    glass.position.set(0, 0.66, -0.27);
+    g.add(glass);
+    // The console itself: white shell, dark band, stood on its end the way everybody does.
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.24), mat('#eef0f3'));
+    shell.position.set(0.36, 0.49, -0.2);
+    g.add(shell);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.3, 0.25), mat('#15171c'));
+    band.position.set(0.36, 0.49, -0.2);
+    g.add(band);
+    const lamp = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.02, 0.02),
+      new THREE.MeshStandardMaterial({ color: tone, emissive: new THREE.Color(tone), emissiveIntensity: 1 }),
+    );
+    lamp.position.set(0.36, 0.35, -0.07);
+    g.add(lamp);
+    for (const [x, z, yaw] of [[-0.2, 0.22, 0.3], [0.14, 0.28, -0.4]]) {
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.1), mat('#e8ebef'));
+      pad.position.set(x, 0.02, z);
+      pad.rotation.y = yaw;
+      g.add(pad);
+    }
+    return g;
+  }
+
+  /** Eighty-five inches, flat to the wall. */
+  private propTv(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.86, 0.06), mat(tone));
+    bezel.castShadow = true;
+    g.add(bezel);
+    const glass = this.screen(1.42, 0.78, '#2f6fb0');
+    glass.position.z = 0.03;
+    g.add(glass);
+    return g;
+  }
+
+  /** A counter, a proper machine on it, a grinder beside it and a stack of cups. */
+  private propEspresso(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.86, 0.5), mat(tone));
+    counter.position.y = 0.43;
+    counter.castShadow = true;
+    g.add(counter);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.04, 0.54), mat('#d9dde2'));
+    top.position.y = 0.88;
+    g.add(top);
+    const machine = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.3), mat('#b9c0c8'));
+    machine.position.set(-0.16, 1.05, -0.04);
+    g.add(machine);
+    const group = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.08, 8), mat('#2a2f38'));
+    group.position.set(-0.16, 0.96, 0.14);
+    g.add(group);
+    const grinder = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.32, 10), mat('#2a2f38'));
+    grinder.position.set(0.24, 1.06, -0.06);
+    g.add(grinder);
+    const hopper = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.05, 0.12, 10), mat('#6b4a33'));
+    hopper.position.set(0.24, 1.28, -0.06);
+    g.add(hopper);
+    for (let i = 0; i < 3; i += 1) {
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.06, 8), mat('#f2f3f5'));
+      cup.position.set(0.36, 0.93 + i * 0.062, 0.14);
+      g.add(cup);
+    }
+    return g;
+  }
+
+  /** A white egg on a plinth with a dark mouth, which is all a nap pod is. */
+  private propNapPod(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.18, 0.6), mat('#3a414d'));
+    base.position.y = 0.09;
+    base.castShadow = true;
+    g.add(base);
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(0.44, 14, 10), mat(tone));
+    shell.scale.set(1, 0.72, 0.68);
+    shell.position.y = 0.52;
+    shell.castShadow = true;
+    g.add(shell);
+    const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 8), mat('#15171c'));
+    mouth.scale.set(1, 0.6, 0.4);
+    mouth.position.set(0, 0.5, 0.2);
+    g.add(mouth);
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.02, 0.02),
+      new THREE.MeshStandardMaterial({ color: '#7fb2f0', emissive: new THREE.Color('#2b5fa8'), emissiveIntensity: 1 }),
+    );
+    glow.position.set(0, 0.26, 0.29);
+    g.add(glow);
     return g;
   }
 

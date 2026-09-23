@@ -549,7 +549,7 @@ export function planProject(
   };
 }
 
-/** The same plan every harness and the Project Manager use: defaults, at the brief's size. */
+/** The same plan every harness uses: defaults, at the brief's size. */
 /**
  * The design budget an option carries, scaled by its stars (§4c): a one-star shortcut is
  * nearly free, the three-star default costs a little, five stars costs real money. It is a
@@ -581,7 +581,7 @@ export function optionAvailable(
 }
 
 /**
- * The plan the harnesses and the Project Manager take: three stars where the crew can do
+ * The plan the harnesses take: three stars where the crew can do
  * three stars, one star where it cannot, at the brief's own size.
  */
 export function defaultPlan(
