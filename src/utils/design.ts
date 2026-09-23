@@ -45,6 +45,11 @@ export interface DesignOption {
   cost?: number;
   /** One-off cost per seat — licences are bought per person. */
   perSeat?: number;
+  /**
+   * The one-off `cost` is infrastructure the space keeps — a CI pipeline, once built, is
+   * there for the next project too — so it is paid the first time only.
+   */
+  keeps?: boolean;
   /** Multiplies the bill of materials. */
   bom?: number;
   /** Extra days on the order. */
@@ -163,6 +168,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
         quality: 0.07,
         work: 1.25,
         cost: 500,
+        keeps: true,
         testRisk: 0.6,
       },
     ],
@@ -496,7 +502,11 @@ export function licenceKey(axis: DesignAxisId, index: number): string {
   return `${axis}:${index}`;
 }
 
-/** What an option's seat licences cost for a crew this size, given what is already owned. */
+/**
+ * What an option's kept purchases cost for a crew this size, given what the space already
+ * owns: seat licences per chair, and infrastructure (`keeps`) once. Everything else about
+ * the option is the project's own and is charged every time.
+ */
 export function licenceCost(
   axis: DesignAxisId,
   index: number,
@@ -504,6 +514,10 @@ export function licenceCost(
   licences: Licences = {},
 ): { cost: number; missing: number; owned: number } {
   const option = AXES[axis].options[index];
+  if (option.keeps && option.cost) {
+    const owned = licences[licenceKey(axis, index)] ?? 0;
+    return owned ? { cost: 0, missing: 0, owned } : { cost: option.cost, missing: 1, owned: 0 };
+  }
   if (!option.perSeat) return { cost: 0, missing: 0, owned: 0 };
   const owned = licences[licenceKey(axis, index)] ?? 0;
   const missing = Math.max(0, Math.max(1, seats) - owned);
@@ -544,9 +558,13 @@ export function planProject(
     const index = Math.max(0, Math.min(2, Math.round(plan.design[axis] ?? 1)));
     const seat = licenceCost(axis, index, plan.seats, licences);
     if (seat.missing) {
-      newLicences.push({ key: licenceKey(axis, index), seats: Math.max(1, plan.seats), cost: seat.cost });
+      newLicences.push({
+        key: licenceKey(axis, index),
+        seats: option.keeps ? 1 : Math.max(1, plan.seats),
+        cost: seat.cost,
+      });
     }
-    tooling += optionCost(def, option) + (option.cost ?? 0) + seat.cost;
+    tooling += optionCost(def, option) + (option.keeps ? 0 : (option.cost ?? 0)) + seat.cost;
     bom *= DESIGN.starBom[option.stars];
     if (option.skipSim) skipSim = true;
     for (const machine of option.requires ?? []) needs.add(machine);

@@ -361,4 +361,7 @@ export const build: typeof en = {
     'yeniden gezdirir.',
   'build.fx.licensed': (p) => `${money(p.cost)} · lisans var ×${num(p.seats)}`,
   'build.log.licenceBought': (p) => `${p.item}: ${num(p.seats)} koltuk lisansı ${money(p.cost)} — artık mekânın.`,
+  'build.fx.setUp': (p) => `${money(p.cost)} · bir kez kurulur`,
+  'build.fx.inPlace': (p) => `${money(p.cost)} · zaten kurulu`,
+  'build.log.infraBuilt': (p) => `${p.item} ${money(p.cost)} ile kuruldu — bundan sonraki her projede hazır.`,
 };

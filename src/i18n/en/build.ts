@@ -380,4 +380,8 @@ export const build = {
   'build.fx.licensed': (p: { cost: number; seats: number }) => `${money(p.cost)} · licensed ×${num(p.seats)}`,
   'build.log.licenceBought': (p: { item: string; seats: number; cost: number }) =>
     `${p.item}: ${num(p.seats)} ${plural(p.seats, 'seat', 'seats')} licensed for ${money(p.cost)} — the space keeps them.`,
+  'build.fx.setUp': (p: { cost: number }) => `${money(p.cost)} · set up once`,
+  'build.fx.inPlace': (p: { cost: number }) => `${money(p.cost)} · already in place`,
+  'build.log.infraBuilt': (p: { item: string; cost: number }) =>
+    `${p.item} set up for ${money(p.cost)} — it stays for every project after this one.`,
 };

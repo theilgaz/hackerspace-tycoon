@@ -2810,7 +2810,9 @@ export class Simulation {
       for (const licence of summary.newLicences) {
         const [axis, index] = licence.key.split(':');
         const option = AXES[axis as DesignAxisId]?.options[Number(index)];
-        if (option) {
+        if (option?.keeps) {
+          this.log(msg('build.log.infraBuilt', { item: option.label, cost: licence.cost }), 'info');
+        } else if (option) {
           this.log(msg('build.log.licenceBought', { item: option.label, seats: licence.seats, cost: licence.cost }), 'info');
         }
       }

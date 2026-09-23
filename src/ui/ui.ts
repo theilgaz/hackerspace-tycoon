@@ -265,12 +265,16 @@ function optionEffects(
   // Every option has a price now, and it rises with the stars (§4c).
   // Seat licences the space already owns are not charged again (§4c), and the card says so.
   const seat = licenceCost(axis, index, seats, licences);
-  const cost = optionCost(def, option) + (option.cost ?? 0) + seat.cost;
-  const text = !option.perSeat
-    ? t('build.fx.cost', { cost })
-    : seat.missing
-      ? t('build.fx.perSeat', { cost, each: option.perSeat })
-      : t('build.fx.licensed', { cost, seats: seat.owned });
+  const cost = optionCost(def, option) + (option.keeps ? 0 : (option.cost ?? 0)) + seat.cost;
+  const text = option.keeps
+    ? seat.missing
+      ? t('build.fx.setUp', { cost })
+      : t('build.fx.inPlace', { cost })
+    : !option.perSeat
+      ? t('build.fx.cost', { cost })
+      : seat.missing
+        ? t('build.fx.perSeat', { cost, each: option.perSeat })
+        : t('build.fx.licensed', { cost, seats: seat.owned });
   out.unshift(
     `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)" title="${esc(t('build.fx.costHint'))}">${icon('coins')}${text}</span>`,
   );
