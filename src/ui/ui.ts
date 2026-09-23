@@ -68,6 +68,8 @@ import {
   optionAvailable,
   genreStars,
   designStars,
+  licenceCost,
+  type Licences,
   optionCost,
   optionNeeds,
   crewBest,
@@ -232,7 +234,14 @@ function demandBadge(value: number): string {
 }
 
 /** One badge per thing a design option changes. Good reads green, a cost reads red. */
-function optionEffects(option: DesignOption, seats: number, def: ProjectDef): string {
+function optionEffects(
+  option: DesignOption,
+  seats: number,
+  def: ProjectDef,
+  axis: DesignAxisId,
+  index: number,
+  licences: Licences,
+): string {
   const out: string[] = [];
   const badge = (text: string, good: boolean | null, title = '') =>
     `<span class="ui-badge ${good === null ? '' : 'ui-badge--tone'}" ${
@@ -254,10 +263,14 @@ function optionEffects(option: DesignOption, seats: number, def: ProjectDef): st
   }
   if (option.lead) out.push(badge(t('build.fx.delivery', { days: option.lead }), false));
   // Every option has a price now, and it rises with the stars (§4c).
-  const cost = optionCost(def, option) + (option.cost ?? 0) + (option.perSeat ?? 0) * Math.max(1, seats);
-  const text = option.perSeat
-    ? t('build.fx.perSeat', { cost, each: option.perSeat })
-    : t('build.fx.cost', { cost });
+  // Seat licences the space already owns are not charged again (§4c), and the card says so.
+  const seat = licenceCost(axis, index, seats, licences);
+  const cost = optionCost(def, option) + (option.cost ?? 0) + seat.cost;
+  const text = !option.perSeat
+    ? t('build.fx.cost', { cost })
+    : seat.missing
+      ? t('build.fx.perSeat', { cost, each: option.perSeat })
+      : t('build.fx.licensed', { cost, seats: seat.owned });
   out.unshift(
     `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)" title="${esc(t('build.fx.costHint'))}">${icon('coins')}${text}</span>`,
   );
@@ -3320,7 +3333,7 @@ export class UI {
     }
     // Then what the space can pay for: the design budget is spent at the pitch, so a plan
     // the overdraft cannot cover is not a plan (§7a). Cheapen the dearest axis first.
-    const tooling = () => planProject(def, { design, seats: this.np.seats }, state.ownedMachines).tooling;
+    const tooling = () => planProject(def, { design, seats: this.np.seats }, state.ownedMachines, state.licences).tooling;
     for (const axis of CATEGORY_AXES[def.category]) {
       while ((design[axis] ?? 1) > 0 && !this.affordable(state, tooling())) design[axis] = (design[axis] ?? 1) - 1;
     }
@@ -3330,7 +3343,7 @@ export class UI {
   /** What the design budget would be with one axis switched to another option. */
   private npToolingWith(def: ProjectDef, state: GameState, axis: DesignAxisId, index: number): number {
     const design = { ...this.np.design, [axis]: index };
-    return planProject(def, { design, seats: this.np.seats }, state.ownedMachines).tooling;
+    return planProject(def, { design, seats: this.np.seats }, state.ownedMachines, state.licences).tooling;
   }
 
   /** Step 4: how it gets built — three decisions, and the crew decides what is on offer. */
@@ -3371,7 +3384,7 @@ export class UI {
                 ${starRow(option.stars)}
               </span>
               <span class="ui-option__desc ui-clamp-3">${esc(option.blurb)}</span>
-              <span class="ui-row__meta" style="margin:0">${optionEffects(option, this.np.seats, def)}</span>
+              <span class="ui-row__meta" style="margin:0">${optionEffects(option, this.np.seats, def, axisId, index, state.licences)}</span>
               ${
                 locked
                   ? `<span class="design-lock">${icon('x')}${esc(why)}</span>`
@@ -3495,7 +3508,7 @@ export class UI {
     if (!def) return `<p class="empty">${t('build.np.pickBrief')}</p>`;
     const entry = this.np.offerId ? state.backlog.find((e) => e.id === this.np.offerId) : undefined;
     const plan = this.npPlan();
-    const summary = planProject(def, plan, state.ownedMachines);
+    const summary = planProject(def, plan, state.ownedMachines, state.licences);
     const crew = [...this.np.crew]
       .map((id) => state.runtime.members.find((m) => m.id === id))
       .filter((m): m is MemberSnapshot => !!m);

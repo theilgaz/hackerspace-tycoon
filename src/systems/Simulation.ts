@@ -2,6 +2,7 @@ import { store } from '@/game/store';
 import { caseLocale, msg, t, type Message, type MessageKey, type Text } from '@/i18n';
 import type {
   BacklogEntry,
+  DesignAxisId,
   MemberData,
   RivalState,
   ScoreRow,
@@ -51,6 +52,7 @@ import {
   amenityRoom,
 } from '@/machines/layout';
 import {
+  AXES,
   CATEGORY_AXES,
   defaultPlan,
   optionAvailable,
@@ -2788,7 +2790,7 @@ export class Simulation {
       this.log(msg('build.log.crewTooBig', { count: chosen.seats }), 'warn');
       return false;
     }
-    const summary = planProject(def, chosen, state.ownedMachines);
+    const summary = planProject(def, chosen, state.ownedMachines, state.licences);
     if (summary.missing.length) {
       this.log(
         msg('build.log.designNeeds', { machines: summary.missing.map((type) => MACHINE_LABEL[type]).join(' + ') }),
@@ -2801,6 +2803,17 @@ export class Simulation {
     if (summary.tooling > 0 && !state.spend(summary.tooling, 'design')) {
       this.log(msg('build.log.licencesOut', { item: def.name }), 'bad');
       return false;
+    }
+    // Seat licences are the space's from here on (§4c): the next build does not pay again.
+    if (summary.newLicences.length) {
+      store.getState().grantLicences(summary.newLicences);
+      for (const licence of summary.newLicences) {
+        const [axis, index] = licence.key.split(':');
+        const option = AXES[axis as DesignAxisId]?.options[Number(index)];
+        if (option) {
+          this.log(msg('build.log.licenceBought', { item: option.label, seats: licence.seats, cost: licence.cost }), 'info');
+        }
+      }
     }
 
     const offer = offerId ? state.backlog.find((e) => e.id === offerId) : undefined;

@@ -377,4 +377,7 @@ export const build = {
   'tour.done.body': (_p: { name: string }) =>
     'Ship something small, post about it, take people on, and move to a bigger space. The lightbulb in ' +
     'the top bar shows you round again.',
+  'build.fx.licensed': (p: { cost: number; seats: number }) => `${money(p.cost)} · licensed ×${num(p.seats)}`,
+  'build.log.licenceBought': (p: { item: string; seats: number; cost: number }) =>
+    `${p.item}: ${num(p.seats)} ${plural(p.seats, 'seat', 'seats')} licensed for ${money(p.cost)} — the space keeps them.`,
 };

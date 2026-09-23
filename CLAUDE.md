@@ -145,6 +145,13 @@ option needs somebody on the crew good enough to use it: ★ needs nobody, ★�
 — train someone" — rather than simply greying out. Changing the crew drops any choice it can
 no longer back to the best it can, and the sim checks the same thing at the pitch.
 
+**Seat licences belong to the space, not to the project** (`Licences`, `licenceCost`). A
+per-seat option — Full IDE, Fusion Pro — is bought once per seat and kept, so the next build
+pays only for chairs nobody holds a licence for; the card says `licensed ×N` and the log
+records each purchase. Licences used to be charged afresh on every project, which made the
+five-star tool a tax on shipping rather than an investment. A one-off `cost` (a design system,
+a CI pipeline, a workshop kit) is still per project: that is work done for that build.
+
 **A design the space cannot pay for is not offered.** The design budget is paid at the pitch
 and refused past the overdraft, and the wizard used to find that out only afterwards — a Start
 button that looked like it worked, then a red log line about licences. An option whose budget

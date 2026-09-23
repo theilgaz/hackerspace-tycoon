@@ -480,12 +480,41 @@ export interface PlanSummary {
   missing: MachineType[];
   /** 0-5, for the stars on the review screen. */
   stars: number;
+  /** Seat licences this plan still has to buy — the ones the space owns are not charged. */
+  newLicences: { key: string; seats: number; cost: number }[];
+}
+
+/**
+ * **A licence is the space's, not the project's** (§4c). A per-seat option — a Full IDE,
+ * Fusion Pro — is bought once per seat and kept, so the next build only pays for chairs
+ * nobody has a licence for yet. It used to be charged afresh on every project, which made
+ * the five-star tool a tax on shipping rather than an investment in it.
+ */
+export type Licences = Record<string, number>;
+
+export function licenceKey(axis: DesignAxisId, index: number): string {
+  return `${axis}:${index}`;
+}
+
+/** What an option's seat licences cost for a crew this size, given what is already owned. */
+export function licenceCost(
+  axis: DesignAxisId,
+  index: number,
+  seats: number,
+  licences: Licences = {},
+): { cost: number; missing: number; owned: number } {
+  const option = AXES[axis].options[index];
+  if (!option.perSeat) return { cost: 0, missing: 0, owned: 0 };
+  const owned = licences[licenceKey(axis, index)] ?? 0;
+  const missing = Math.max(0, Math.max(1, seats) - owned);
+  return { cost: missing * option.perSeat, missing, owned };
 }
 
 export function planProject(
   def: ProjectDef,
   plan: ProjectPlan,
   owned: MachineType[] = [],
+  licences: Licences = {},
 ): PlanSummary {
   const axes = CATEGORY_AXES[def.category];
   const work = {} as Record<StageKey, number>;
@@ -501,6 +530,7 @@ export function planProject(
   let skipSim = false;
   let stars = 0;
   const needs = new Set<MachineType>();
+  const newLicences: PlanSummary['newLicences'] = [];
 
   for (const axis of axes) {
     const option = optionOf(axis, plan.design);
@@ -511,8 +541,12 @@ export function planProject(
     bom *= option.bom ?? 1;
     print *= option.print ?? 1;
     lead += option.lead ?? 0;
-    tooling +=
-      optionCost(def, option) + (option.cost ?? 0) + (option.perSeat ?? 0) * Math.max(1, plan.seats);
+    const index = Math.max(0, Math.min(2, Math.round(plan.design[axis] ?? 1)));
+    const seat = licenceCost(axis, index, plan.seats, licences);
+    if (seat.missing) {
+      newLicences.push({ key: licenceKey(axis, index), seats: Math.max(1, plan.seats), cost: seat.cost });
+    }
+    tooling += optionCost(def, option) + (option.cost ?? 0) + seat.cost;
     bom *= DESIGN.starBom[option.stars];
     if (option.skipSim) skipSim = true;
     for (const machine of option.requires ?? []) needs.add(machine);
@@ -546,6 +580,7 @@ export function planProject(
     skipSim,
     missing: [...needs].filter((machine) => !owned.includes(machine)),
     stars: stars / axes.length,
+    newLicences,
   };
 }
 

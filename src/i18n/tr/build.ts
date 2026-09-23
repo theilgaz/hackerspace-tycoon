@@ -359,4 +359,6 @@ export const build: typeof en = {
   'tour.done.body': () =>
     'Küçük bir şey teslim et, paylaş, insan al ve daha büyük bir yere taşın. Üst bardaki ampul seni ' +
     'yeniden gezdirir.',
+  'build.fx.licensed': (p) => `${money(p.cost)} · lisans var ×${num(p.seats)}`,
+  'build.log.licenceBought': (p) => `${p.item}: ${num(p.seats)} koltuk lisansı ${money(p.cost)} — artık mekânın.`,
 };

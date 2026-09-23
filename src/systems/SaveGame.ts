@@ -62,7 +62,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -216,6 +216,10 @@ function migrate(file: SaveFile): SaveFile {
   for (const member of sim.members ?? []) {
     if ((member as { role?: unknown }).role === 'technician') (member as { role: null }).role = null;
   }
+
+  // v14 — seat licences are kept. What an older run paid for was never recorded, so it
+  // owns none and buys them again once; charging nothing would be the wrong guess.
+  if (!store.licences || typeof store.licences !== 'object') store.licences = {};
 
   file.version = SAVE_VERSION;
   return file;

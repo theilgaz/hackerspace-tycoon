@@ -17,6 +17,7 @@ import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
 import { uid } from '@/utils/format';
 import { sameText, setLocale as setI18nLocale, type Locale, type Text } from '@/i18n';
 import { freshMarket, type Market } from '@/utils/market';
+import type { Licences } from '@/utils/design';
 
 const MAX_LOG = 140;
 
@@ -92,6 +93,9 @@ export interface GameState {
   backlog: BacklogEntry[];
   /** The order applicants were dealt onto the reputation ladder this run. */
   ladder: string[];
+  /** Seat licences the space owns, by option (§4c). Bought once, kept for good. */
+  licences: Licences;
+  grantLicences: (grants: { key: string; seats: number }[]) => void;
   /** What each genre is worth right now (§4d). Moves daily; multiplies payouts. */
   market: Market;
   setMarket: (market: Market) => void;
@@ -188,6 +192,13 @@ export const store = createStore<GameState>((set, get) => ({
   moving: null,
   backlog: [],
   market: freshMarket(),
+  licences: {},
+  grantLicences: (grants) =>
+    set((s) => {
+      const licences = { ...s.licences };
+      for (const g of grants) licences[g.key] = Math.max(licences[g.key] ?? 0, g.seats);
+      return { licences };
+    }),
   ladder: [],
   applicants: [],
   passed: [],
@@ -211,6 +222,7 @@ export const store = createStore<GameState>((set, get) => ({
       monthOpen: DIFFICULTY_MAP[difficulty].startCash,
       // A new run gets a new market, not whatever was rolled when the page loaded.
       market: freshMarket(),
+      licences: {},
       started: true,
       paused: false,
       speed: 1,
@@ -234,14 +246,14 @@ export const store = createStore<GameState>((set, get) => ({
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements, market, ladder, ledger, monthOpen,
+      stationPlacements, market, ladder, ledger, monthOpen, licences,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements, market, ladder, ledger, monthOpen,
+      stationPlacements, market, ladder, ledger, monthOpen, licences,
     };
   },
 
