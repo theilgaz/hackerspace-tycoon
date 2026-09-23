@@ -88,8 +88,6 @@ export const build = {
   'build.social.best': 'best',
   'build.social.post': 'Post',
 
-  'build.rank.night': (p: { n: number }) => `night ${num(p.n)}`,
-
   // --- The wizard ------------------------------------------------------------
   'build.np.step.genre': 'Genre',
   'build.np.step.brief': 'Brief',
@@ -330,4 +328,53 @@ export const build = {
   'build.review.cantStart': (p: { cost: number; floor: number }) =>
     `The design budget is ${money(p.cost)}, and the space cannot go past −${money(p.floor)}. Earn first, or pick cheaper options.`,
   'build.log.ownerPicksUp': (p: { project: string }) => `Nothing on your hands — you pick up ${p.project}.`,
+  'build.note.noChair': (p: { project: string }) => `no chair at the ${p.project} kickoff — the crew plans it`,
+  'build.kick.noChairForYou': (p: { seats: number; table: string }) =>
+    `the table seats ${num(p.seats)}` + ` — the crew kicks off without you. A ${p.table} would seat you.`,
+
+  // --- The first-run tour (§11) -------------------------------------------------
+  'tour.skip': 'Skip the tour',
+  'tour.next': 'Next',
+  'tour.finish': 'Open the doors',
+  'tour.yourMove': 'your move',
+  'tour.replayHint': 'Show me round again',
+  'tour.welcome.title': (p: { name: string }) => `Welcome to ${p.name}`,
+  'tour.welcome.body': (_p: { name: string }) =>
+    'A hackerspace is a machine for <b>starting</b> projects. Your job is to make it <b>finish</b> one — ' +
+    'then another. The clock is stopped while I show you round.',
+  'tour.top.title': (_p: { name: string }) => 'The space at a glance',
+  'tour.top.body': (_p: { name: string }) =>
+    'Your cash, your reputation and what is on. Reputation is what signs the next, bigger lease — ' +
+    'and the bar on the right counts down to the yearly awards night against the other spaces.',
+  'tour.new.title': (_p: { name: string }) => 'Start something',
+  'tour.new.body': (_p: { name: string }) =>
+    'Everything begins with <b>+ New Project</b>. Press it now — the tour will wait.',
+  'tour.wizard.title': (_p: { name: string }) => 'Design it, then crew it',
+  'tour.wizard.body': (_p: { name: string }) =>
+    'Pick a genre and a brief, then who you will <b>ask</b> — they are volunteers and can say no. ' +
+    'The crew decides what the design can be: better tools need people who can use them. ' +
+    'A small first build is the right first build. Start it at the end.',
+  'tour.bench.title': (_p: { name: string }) => 'On the bench',
+  'tour.bench.body': (_p: { name: string }) =>
+    'Your builds live here. Each one starts with a <b>kickoff</b> at a project table, and only moves ' +
+    'while the whole crew is sitting down together — then everybody goes to their own station. ' +
+    'Anything blocking a build is said here, in red or amber.',
+  'tour.you.title': (_p: { name: string }) => 'Your day',
+  'tour.you.body': (_p: { name: string }) =>
+    'The bar under the clock is what is left of your day. You are the one person who always turns up: ' +
+    'when your hands are empty you pick up the oldest build yourself. Every other verb — a bounty, an ' +
+    'order, a hire — spends the same hours.',
+  'tour.menu.title': (_p: { name: string }) => 'Everything else',
+  'tour.menu.body': (_p: { name: string }) =>
+    '<b>Build</b> buys tables, stations, printers and comforts. <b>People</b> is where you take members on ' +
+    'and train them. <b>Machines</b> runs the print queue. <b>Socials</b> turns work into attention — ' +
+    'and attention fades a little every day.',
+  'tour.money.title': (_p: { name: string }) => 'The books',
+  'tour.money.body': (_p: { name: string }) =>
+    'Every 30 days the books close: members pay dues, the landlord takes the rent. You may go under, ' +
+    'down to −₺30,000 — but get back above zero within 60 days, or the lease is gone.',
+  'tour.done.title': (_p: { name: string }) => 'That is the lot',
+  'tour.done.body': (_p: { name: string }) =>
+    'Ship something small, post about it, take people on, and move to a bigger space. The lightbulb in ' +
+    'the top bar shows you round again.',
 };

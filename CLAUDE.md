@@ -274,6 +274,14 @@ assembly table.
   refused at the till rather than paid for and never shown. Reachability is one flood fill
   from the door, not a path search per station — it runs for every candidate tile.
 
+**You never size a kickoff.** The owner is never *required* at a kickoff, so a table is booked
+for the crew alone (`tableNeed`), and if you are on the project and there is no chair left you
+stand aside and the crew plans without you — with a line on the bench, the moment it happens,
+naming the table that would seat you. Counting you on top broke every full table: four crew
+and you is five, the garage table seats four, no table ever qualified and the meeting simply
+never started; ten and you at the large table, the same. `kickoff-check` now puts the owner
+on a full crew and was seen to fail with the old sizing.
+
 **A seat is a drawing position, not a tile.** Ten people round a table would need a room the
 garage does not have; the path finder walks everybody to the stand tile and the renderer
 puts them in their chair (`seatPosition`), facing the table.
@@ -303,6 +311,11 @@ twice.
 You are on the grid, you are always in the building, and you can work. That matters because
 §13 established that **attendance is the binding constraint** — and you are the one person
 whose attendance is guaranteed.
+
+**The Project Manager went, and so did the Technician that briefly replaced it.** Levelling
+beds and filling them are one job — the printers — so the Printer Keeper does both, and the
+fourth slot is the **Host**, who brings people to the door without choosing who comes in.
+Every role has to take a chore off the player without taking a decision.
 
 **The owner never stands about.** With nothing chosen you put yourself on the oldest build
 that has already kicked off — or, failing that, one with nobody on it — and when it ships you
@@ -410,9 +423,14 @@ top of it the rivals gain a yearly ramp, so a long game keeps tightening instead
 
 | | Crew on day one | Somebody new | Rivals | Opening cash |
 |---|---|---|---|---|
-| **Easy** | 10 | every 10 days | x0.95 | 10,000 |
-| **Normal** | 4 | every 30 days | x1.00 | 7,000 |
-| **Hard** | 2 | every 40 days | x1.00 | 5,000 |
+| **Easy** | 10 | every 10 days | x0.95 | 100,000 |
+| **Normal** | 4 | every 30 days | x1.00 | 50,000 |
+| **Hard** | 2 | every 40 days | x1.00 | 10,000 |
+
+**Opening cash went up tenfold on easy and sevenfold on normal** (from 10,000 / 7,000 /
+5,000). Measured, 8 seeds: normal first 8/8 at about 1.6× the field and 17 of 40 first-night
+awards; hard first 5/8, worst sixth, 13 of 40; easy first 8/8 with 26 of 40 and nearly twice
+the field — easy is now plainly easy, which is what it is for.
 
 **People are the honest difficulty knob**, because §13 established that hands in the building
 are the binding constraint. Measured over eight seeds each: easy ends with fifteen on the books
@@ -919,8 +937,8 @@ Three jobs a member can hold on top of their build work, one holder each:
 
 | | What they watch |
 |---|---|
-| **Technician** | Levels a printer bed that has drifted, between prints (`ROLES.technicianLevelsBelow`) |
-| **Printer Keeper** | Loads the printers back up before they run dry |
+| **Host** | Shows visitors round: on a day they are in, the recruitment clock runs `ROLES.hostDraw` faster. Who joins stays your call |
+| **Printer Keeper** | Fills the printers before they run dry, and levels a drifting bed between prints (`ROLES.levelBelow`) |
 | **Quartermaster** | Gets bills of materials on order so assembly is never waiting |
 | **Social Media Manager** | Keeps the feeds ticking over so attention never quite dies |
 
@@ -1016,10 +1034,14 @@ speed, reliability — because buying kit is an investment decision, not a puzzl
 
 | | Price | Holds | Speed | Fails | From |
 |---|---|---|---|---|---|
-| A1 Mini Combo | 4,500 | 1kg | 100% | ×1.00 | you start with one |
+| A1 Mini Combo | 4,500 | 4kg | 100% | ×1.00 | you start with one |
 | P2S | 9,000 | 4kg | 135% | ×0.85 | Era 1 |
 | X1C | 19,000 | 4kg | 160% | ×0.62 | Era 2 |
 | H2S | 33,000 | 8kg | 185% | ×0.55 | Era 3 |
+
+**Every printer holds a four-spool load** except the H2S's eight — a *Combo* is the A1 Mini
+with the four-spool AMS Lite, and giving it one kilo was a number no owner would recognise.
+Capacity is now only the H2S's advantage; speed and reliability are the ladder.
 
 **The starting printer is on the shelf too.** A second A1 is the cheapest way to print two
 things at once, and leaving it out made "buy a slow one" a choice the game had quietly made
@@ -1565,8 +1587,17 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   and its Post button primary, the rooms that would turn on you in red. The grid of eight
   cards it replaced had to be compared by eye.
 - **A space's own screen shows where it finished as a strip of chips**, one per awards night
-  — place, night and year, gold for a win. The line chart it replaced spent the panel's width
+  — place and year, gold for a win. It said "night 1 · 2026" once; with one night a year the
+  year already is the night. The line chart it replaced spent the panel's width
   on two or three points and repeated year labels whenever two nights fell in one year.
+- **First-run tour** (`src/ui/tour.ts`). A card and a pulsing ring round the real screen —
+  never a modal of its own, because the point is to show the thing itself, still pressable.
+  *Look* steps explain a part of the screen and wait for Next; *Do* steps ask for one real
+  action (open + New Project, start a build) and advance by themselves when the game sees it,
+  stepping back if the wizard is closed unused. It stops the clock while it runs and gives it
+  back after, runs once per browser (`hackerspace-tycoon-toured`, a preference beside the
+  language, never in the save), and the lightbulb in the top bar replays it. `click-check`
+  walks it on its fresh profile and was seen to fail with auto-advance broken.
 - **Scrollbars are styled once, globally** — thin and dark. Left to the platform, macOS with
   "always show scrollbars" drew a white gutter down every panel, and the bench's verb row
   (a fixed three-column grid) pushed a button past the edge and added a sideways one.
@@ -1771,6 +1802,12 @@ is visible rather than rediscovered:
   anything. Each is a Phase 5 job, and §13's rule applies: measure it against attendance.
 
 ## 14. Development Priority
+
+**Phase 1.17 — A first-run tour, fuller printers, and a kickoff you cannot break — BUILT.**
+A nine-step tour for first-time players (§11). The owner no longer sizes a kickoff table, so
+joining a full crew no longer stops its meeting, and the bench says so at once (§4d). The
+Printer Keeper fills *and* levels; the Host is the fourth keyholder. The A1 Mini Combo holds
+four kilos. Opening cash is 100,000 / 50,000 / 10,000. Finish chips drop "night N".
 
 **Phase 1.16 — The owner works, the wizard is honest, the factory is furnished — BUILT.**
 The Project Manager is gone — it chose projects for the player — and the Technician, who

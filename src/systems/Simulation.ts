@@ -989,7 +989,7 @@ export class Simulation {
       if (!this.crewInBuilding(project)) continue;
       // The smallest table that seats them, so a pair does not tie up the big one.
       const table = STATIONS.filter(
-        (s) => isTable(s.type) && !busy.has(s.id) && (seatsOf(s) ?? 0) >= this.crewSize(project),
+        (s) => isTable(s.type) && !busy.has(s.id) && (seatsOf(s) ?? 0) >= this.tableNeed(project),
       ).sort((a, b) => (seatsOf(a) ?? 0) - (seatsOf(b) ?? 0))[0];
       if (!table) continue;
       project.tableId = table.id;
@@ -1007,7 +1007,7 @@ export class Simulation {
     for (const type of this.wanting.values()) out[type] = (out[type] ?? 0) + 1;
     for (const project of this.projects) {
       if (project.kickedOff || project.tableId || !this.crewInBuilding(project)) continue;
-      const type: MachineType = this.crewSize(project) > 4 ? 'table-large' : 'table-small';
+      const type: MachineType = this.tableNeed(project) > 4 ? 'table-large' : 'table-small';
       out[type] = (out[type] ?? 0) + 1;
     }
     return out;
@@ -1153,8 +1153,22 @@ export class Simulation {
   }
 
   /** Crew who need a chair at the kickoff: the team, plus you if you are on it. */
-  private crewSize(project: ProjectData): number {
-    return Math.max(1, project.team.length + (this.player.project === project.id ? 1 : 0));
+  /**
+   * Chairs a kickoff books: the crew, and you only when you *are* the crew. Counting you
+   * on top broke every full table — four on a crew plus you is five, the garage's table
+   * seats four, no table ever qualified and the meeting simply never happened. You are
+   * never required at a kickoff (see `kickoffReady`), so you are never what sizes it.
+   */
+  private tableNeed(project: ProjectData): number {
+    return Math.max(1, project.team.length);
+  }
+
+  /** Is there a chair for you at this kickoff, if you are on it? */
+  ownerFits(project: ProjectData): boolean {
+    if (!project.team.length) return true;
+    const table = project.tableId ? STATION_MAP[project.tableId] : null;
+    const seats = table ? (seatsOf(table) ?? 0) : this.maxTableSeats();
+    return seats > project.team.length;
   }
 
   /** Is everybody on it actually here today? You on your own count if nobody else is on it. */
@@ -1315,7 +1329,14 @@ export class Simulation {
       // True when a kickoff or a seat has already said why you are standing about; the
       // generic "nothing to do by hand" line must not paper over it.
       let explained = false;
-      if (!project.kickedOff && project.required.concept > 0) {
+      if (!project.kickedOff && project.required.concept > 0 && !this.ownerFits(project)) {
+        // No chair for you: the crew plans without you rather than not at all, and the
+        // bench says so. Blocking the meeting on the one person who is never required
+        // would be the game punishing you for joining in.
+        this.releaseSeat(p.id);
+        p.note = t('build.note.noChair', { project: project.name });
+        explained = true;
+      } else if (!project.kickedOff && project.required.concept > 0) {
         // You sit in on your own project's kickoff like anybody else — and only the time
         // actually spent planning comes off your day, not the time spent waiting for Ada.
         if (this.attendKickoff(p, project)) {
@@ -2456,7 +2477,11 @@ export class Simulation {
     // Attention is why people hear about you at all, so it buys days on this clock.
     // Attention brings people to the door; the comforts are what they hear about when
     // they ask around, so the two stack on the same clock.
-    const gain = (1 + this.pressure * (HYPE.recruitSpeedUp - 1)) * this.comforts.draw;
+    // A Host who was in today shows the visitors round (§3b) — the clock moves faster, but
+    // who you take on is still your decision; the role only brings people to the door.
+    const host = this.members.find((m) => m.role === 'host');
+    const hosted = host && this.plans.get(host.id)?.attending ? ROLES.hostDraw : 1;
+    const gain = (1 + this.pressure * (HYPE.recruitSpeedUp - 1)) * this.comforts.draw * hosted;
     this.recruitClock = Math.min(this.recruitClock + gain, every);
     if (this.recruitClock < every) return;
     const next = this.nextApplicant();
@@ -2619,6 +2644,15 @@ export class Simulation {
             dry.refill(dry.consumableMax);
             this.log(msg('log.role.loaded', { member: member.name, machine: dry.label }), 'good');
           }
+          // And level a drifting bed between prints. This was a separate Technician for a
+          // round, which read as two people doing one job — the printers are one job.
+          const drifting = this.machines.find(
+            (m) => !m.running && m.calibration < ROLES.levelBelow,
+          );
+          if (drifting) {
+            drifting.calibration = 1;
+            this.log(msg('log.role.levelled', { member: member.name, machine: drifting.label }), 'good');
+          }
           break;
         }
         case 'quartermaster': {
@@ -2653,20 +2687,6 @@ export class Simulation {
               tasteMatch(best.subject.tags, a) * a.audience * novelty(seen(a.id)),
           )[0];
           if (this.post(best.id, room.id, 'wip', member)) this.socialDay = this.day;
-          break;
-        }
-        case 'technician': {
-          // **What replaced the Project Manager** (§3b). A role that started projects took
-          // the one decision the player should always make — what the space builds — and
-          // made it for them. Levelling beds is the opposite: a chore nobody volunteers for
-          // (§5), done between prints so a job is never interrupted.
-          const drifting = this.machines.find(
-            (m) => !m.running && m.calibration < ROLES.technicianLevelsBelow,
-          );
-          if (drifting) {
-            drifting.calibration = 1;
-            this.log(msg('log.role.levelled', { member: member.name, machine: drifting.label }), 'good');
-          }
           break;
         }
       }

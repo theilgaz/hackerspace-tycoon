@@ -82,8 +82,6 @@ export const build: typeof en = {
   'build.social.best': 'en iyi',
   'build.social.post': 'Paylaş',
 
-  'build.rank.night': (p) => `${num(p.n)}. gece`,
-
   // --- The wizard ------------------------------------------------------------
   'build.np.step.genre': 'Tür',
   'build.np.step.brief': 'Brif',
@@ -315,4 +313,50 @@ export const build: typeof en = {
   'build.review.cantStart': (p) =>
     `Tasarım bütçesi ${money(p.cost)}; mekân −${money(p.floor)} sınırının altına inemez. Önce para kazan ya da daha ucuz seçenekler seç.`,
   'build.log.ownerPicksUp': (p) => `Elin boştu — ${ek(p.project, 'dat')} el atıyorsun.`,
+  'build.note.noChair': (p) => `${p.project} açılışında sandalye yok — ekip planlıyor`,
+  'build.kick.noChairForYou': (p) =>
+    `masa ${num(p.seats)} kişilik — ekip toplantıyı sensiz yapıyor. ${p.table} seni de oturtur.`,
+
+  // --- The first-run tour (§11) -------------------------------------------------
+  'tour.skip': 'Turu geç',
+  'tour.next': 'İleri',
+  'tour.finish': 'Kapıları aç',
+  'tour.yourMove': 'sıra sende',
+  'tour.replayHint': 'Beni yeniden gezdir',
+  'tour.welcome.title': (p) => `${ek(p.name, 'dat')} hoş geldin`,
+  'tour.welcome.body': () =>
+    'Bir hackerspace proje <b>başlatan</b> bir makinedir. Senin işin ona bir tanesini <b>bitirtmek</b> — ' +
+    'sonra bir tane daha. Seni gezdirirken saat durdu.',
+  'tour.top.title': () => 'Tek bakışta mekân',
+  'tour.top.body': () =>
+    'Kasan, itibarın ve süren işler. Bir sonraki, daha büyük kiranın kapısını itibar açar — sağdaki çubuk ' +
+    'de öteki mekânlarla yarıştığın yıllık ödül gecesine kalan günleri sayar.',
+  'tour.new.title': () => 'Bir şey başlat',
+  'tour.new.body': () => 'Her şey <b>+ Yeni Proje</b> ile başlar. Şimdi bas — tur seni bekler.',
+  'tour.wizard.title': () => 'Tasarla, ekibini kur',
+  'tour.wizard.body': () =>
+    'Bir tür ve bir brif seç, sonra kimlere <b>soracağını</b> — gönüllüler, hayır diyebilirler. ' +
+    'Tasarımın ne olabileceğini ekip belirler: iyi araçlar, kullanabilecek insan ister. ' +
+    'İlk proje için küçük bir iş en doğrusu. Sonunda başlat.',
+  'tour.bench.title': () => 'Tezgâhta',
+  'tour.bench.body': () =>
+    'Projelerin burada durur. Her biri bir proje masasında <b>açılış toplantısıyla</b> başlar ve yalnızca ' +
+    'bütün ekip aynı anda oturduğunda ilerler — sonra herkes kendi istasyonuna dağılır. ' +
+    'Bir projeyi tıkayan ne varsa burada kırmızı ya da sarıyla yazar.',
+  'tour.you.title': () => 'Senin günün',
+  'tour.you.body': () =>
+    'Saatin altındaki çubuk gününden kalan. Her zaman gelen tek kişi sensin: elin boşsa en eski projeyi ' +
+    'kendin üstlenirsin. Öteki her hamle — ödül, sipariş, işe alım — aynı saatlerden yer.',
+  'tour.menu.title': () => 'Geri kalan her şey',
+  'tour.menu.body': () =>
+    '<b>İnşa</b> masa, istasyon, yazıcı ve konfor alır. <b>Ekip</b> üye aldığın ve eğittiğin yer. ' +
+    '<b>Atölye</b> baskı kuyruğunu yönetir. <b>Sosyal</b> emeği ilgiye çevirir — ilgi de her gün biraz söner.',
+  'tour.money.title': () => 'Hesaplar',
+  'tour.money.body': () =>
+    'Her 30 günde bir hesaplar kapanır: üyeler aidat öder, ev sahibi kirayı alır. Eksiye düşebilirsin, ' +
+    '−₺30.000\'e kadar — ama 60 gün içinde artıya dönmezsen kira sözleşmesi biter.',
+  'tour.done.title': () => 'Hepsi bu',
+  'tour.done.body': () =>
+    'Küçük bir şey teslim et, paylaş, insan al ve daha büyük bir yere taşın. Üst bardaki ampul seni ' +
+    'yeniden gezdirir.',
 };

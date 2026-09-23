@@ -46,6 +46,10 @@ for (const m of crew) {
   m.team = project.id;
 }
 const absent = crew[3];
+// And you on it too: four crew plus the owner is five at a four-seat table. That used to
+// mean no table ever qualified and the kickoff never started (§4d); you are never required,
+// so the crew must meet without you.
+sim.workOn(project.id);
 
 const step = (hours: number) => {
   for (let i = 0; i < hours * 20; i += 1) {
@@ -80,7 +84,7 @@ plans.set(absent.id, { attending: true, arriveAt: 9, leaveAt: 18 });
 absent.arrive({ x: 0, y: 7 });
 const before = project.progress.concept;
 step(1.5);
-check('the meeting moves once all four are seated', project.progress.concept > before, `progress ${project.progress.concept.toFixed(2)}`);
+check('the meeting moves once all four are seated, owner on it or not', project.progress.concept > before, `progress ${project.progress.concept.toFixed(2)}`);
 
 // Run it to the end, then watch them leave the table.
 let guard = 0;

@@ -46,6 +46,7 @@ import {
   type EraDef,
   WEEKLY_HOURS,
 } from '@/utils/constants';
+import { TOUR, hasToured, rememberToured } from './tour';
 import { awardsDay, clock, dayName, hours, money, pct, shortDate } from '@/utils/format';
 import { LOCALES, getLocale, num, say, t, type Locale, type MessageKey, type Text } from '@/i18n';
 import {
@@ -323,6 +324,10 @@ export class UI {
   private readonly root: HTMLElement;
   private readonly handlers: UIHandlers;
   private lastState: GameState | null = null;
+  /** The first-run tour, while it is running: which step, and whether it paused the clock. */
+  private tour: { step: number; paused: boolean } | null = null;
+  private tourRing!: HTMLElement;
+  private tourCard!: HTMLElement;
   /** Last HTML written per section, so unchanged sections keep their DOM nodes. */
   private htmlCache = new Map<string, string>();
 
@@ -510,7 +515,13 @@ export class UI {
       <div id="bottombar"></div>
       <div id="modal"></div>
       <div id="start"></div>
+      <div id="tour-ring"></div>
+      <div id="tour-card"></div>
     `;
+    this.tourRing = this.root.querySelector('#tour-ring')!;
+    this.tourCard = this.root.querySelector('#tour-card')!;
+    // The ring follows its target, and a resized window moves every target.
+    window.addEventListener('resize', () => this.rerender());
     this.topbar = this.root.querySelector('#topbar')!;
     this.clockPanel = this.root.querySelector('#clockpanel')!;
     this.bottombar = this.root.querySelector('#bottombar')!;
@@ -618,6 +629,15 @@ export class UI {
       switch (action) {
         case 'speed':
           h.setSpeed(Number(value));
+          break;
+        case 'tour-start':
+          this.startTour();
+          break;
+        case 'tour-next':
+          this.advanceTour();
+          break;
+        case 'tour-skip':
+          this.endTour();
           break;
         case 'noop':
           break;
@@ -777,6 +797,8 @@ export class UI {
           const name = this.nameField().trim();
           if (!name) break;
           h.begin(name, this.start.logo, this.start.difficulty, this.playerField());
+          // Somebody who has never played gets shown round; everybody else gets the game.
+          if (!hasToured()) this.startTour();
           break;
         }
         case 'people-open':
@@ -1005,6 +1027,7 @@ export class UI {
     this.lastState = state;
     if (!state.started) {
       this.renderStart();
+      this.renderTour(state);
       return;
     }
     if (state.gameOver) {
@@ -1021,6 +1044,7 @@ export class UI {
     this.renderMoving(state);
     this.renderDev();
     this.renderModal(state);
+    this.renderTour(state);
   }
 
   /**
@@ -1375,6 +1399,119 @@ export class UI {
 
   // --- top bar --------------------------------------------------------------
 
+  // --- The first-run tour (§11) ----------------------------------------------
+
+  private startTour() {
+    const state = this.lastState;
+    // The clock stops while somebody is being shown round, and starts again when they
+    // are done — unless it was already stopped, in which case it stays that way.
+    const paused = !!state && !state.paused;
+    if (paused) this.handlers.setSpeed(0);
+    this.tour = { step: 0, paused };
+    this.rerender();
+  }
+
+  private advanceTour() {
+    if (!this.tour) return;
+    this.tour.step += 1;
+    if (this.tour.step >= TOUR.length) this.endTour();
+    else this.rerender();
+  }
+
+  private endTour() {
+    if (!this.tour) return;
+    const resume = this.tour.paused;
+    this.tour = null;
+    rememberToured();
+    if (resume && this.lastState) this.handlers.setSpeed(this.lastState.speed || 1);
+    this.rerender();
+  }
+
+  /**
+   * A ring round the thing being explained and a card beside it. The card is the only part
+   * that takes a click; the ring lets presses through, so a Do step's target stays usable.
+   * A Do step moves on by itself the moment the game sees it done.
+   */
+  private renderTour(state: GameState) {
+    const hide = () => {
+      this.tourRing.style.display = 'none';
+      this.tourCard.style.display = 'none';
+    };
+    if (!this.tour || !state.started || state.gameOver) return hide();
+    let step = TOUR[this.tour.step];
+    const ctx = { state, openModal: this.openModal };
+    // Closed the wizard without starting anything: back to the step that opens it.
+    if (step?.id === 'wizard' && this.openModal !== 'new' && !state.runtime.projects.length) {
+      this.tour.step = TOUR.findIndex((x) => x.id === 'new');
+      step = TOUR[this.tour.step];
+    }
+    // A Do step that is already done (the player got there first) is skipped over.
+    while (step?.done?.(ctx)) {
+      this.tour.step += 1;
+      step = TOUR[this.tour.step];
+    }
+    if (!step) {
+      this.endTour();
+      return hide();
+    }
+    const last = this.tour.step === TOUR.length - 1;
+    const name = state.identity?.name ?? t('ui.top.yourSpace');
+    this.setHTML(
+      this.tourCard,
+      'tour',
+      `<div class="tour-head">
+        <span class="icon-chip" style="--tone:var(--primary)">${icon(step.done ? 'sparkles' : 'lightbulb')}</span>
+        <b class="ui-title">${t(step.title as 'tour.welcome.title', { name })}</b>
+        <span class="tour-count">${this.tour.step + 1}/${TOUR.length}</span>
+      </div>
+      <p class="ui-desc">${t(step.body as 'tour.welcome.body', { name })}</p>
+      <div class="tour-foot">
+        <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="tour-skip">${last ? '' : t('tour.skip')}</button>
+        ${
+          step.done
+            ? `<span class="tour-waiting">${icon('clock')}${t('tour.yourMove')}</span>`
+            : `<button class="ui-btn ui-btn--primary ui-btn--sm" data-action="${last ? 'tour-skip' : 'tour-next'}">
+                ${last ? t('tour.finish') : t('tour.next')}${icon('chevronRight')}
+              </button>`
+        }
+      </div>`,
+    );
+    this.tourCard.style.display = 'block';
+    const card = this.tourCard.getBoundingClientRect();
+    const target = step.target ? this.root.querySelector<HTMLElement>(step.target) : null;
+    const rect = target?.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const clamp = (value: number, max: number) => Math.max(12, Math.min(max - 12, value));
+    if (!rect || rect.width === 0) {
+      this.tourRing.style.display = 'none';
+      this.tourCard.style.left = `${(vw - card.width) / 2}px`;
+      this.tourCard.style.top = `${(vh - card.height) / 2}px`;
+      return;
+    }
+    const pad = 6;
+    Object.assign(this.tourRing.style, {
+      display: 'block',
+      left: `${rect.left - pad}px`,
+      top: `${rect.top - pad}px`,
+      width: `${rect.width + pad * 2}px`,
+      height: `${rect.height + pad * 2}px`,
+    });
+    let left = rect.left + rect.width / 2 - card.width / 2;
+    let top = rect.bottom + 14;
+    if (step.place === 'above') top = rect.top - card.height - 14;
+    if (step.place === 'right') {
+      left = rect.right + 14;
+      top = rect.top;
+    }
+    if (step.place === 'corner') {
+      left = 16;
+      top = vh - card.height - 110;
+    }
+    this.tourCard.style.left = `${clamp(left, vw - card.width)}px`;
+    this.tourCard.style.top = `${clamp(top, vh - card.height)}px`;
+  }
+
   private renderTopbar(state: GameState) {
     const speedButton = (value: number, label: string) => {
       const active = value === 0 ? state.paused : !state.paused && state.speed === value;
@@ -1471,6 +1608,7 @@ export class UI {
         return `<button class="lang-toggle" data-action="lang" data-value="${next}" lang="${next}"
           title="${next === 'tr' ? 'Türkçe' : 'English'}">${icon('globe')}${next.toUpperCase()}</button>`;
       })()}
+      <button class="lang-toggle" data-action="tour-start" title="${esc(t('tour.replayHint'))}">${icon('lightbulb')}</button>
     `);
   }
 
@@ -2262,10 +2400,11 @@ export class UI {
     // year under it; gold for a win.
     const chips = points
       .map(
-        (p, index) => `<span class="finish-chip ${p.stand.rank === 1 ? 'finish-chip--gold' : ''}"
+        // One night a year, so the year *is* the night; "night 1" said the same thing twice.
+        (p) => `<span class="finish-chip ${p.stand.rank === 1 ? 'finish-chip--gold' : ''}"
           title="${esc(t('ui.chart.point', { year: p.year, place: ordinal(p.stand.rank), field: p.field, reputation: num(p.stand.reputation) }))}">
           <b>${ordinal(p.stand.rank)}</b>
-          <small>${t('build.rank.night', { n: index + 1 })} · ${p.year}</small>
+          <small>${p.year}</small>
         </span>`,
       )
       .join('');
@@ -2746,10 +2885,11 @@ export class UI {
       const has = (trait: string) => (data.traits ?? []).includes(trait as never);
       let score = 0;
       let why = '';
-      if (role === 'technician') {
-        // A steady hand with machines, and somebody who knows what a first layer should be.
-        score = skill('machining') * 0.6 + skill('cad') * 0.25 + 0.15;
-        why = t('ui.fit.machining', { level: data.skills.machining ?? 0 });
+      if (role === 'host') {
+        // Somebody who talks about the place well: broad taste, and the docs to show.
+        const breadth = Math.min(1, Object.keys(data.passions ?? {}).length / 4);
+        score = breadth * 0.55 + skill('docs') * 0.45;
+        why = has('mentor') ? t('ui.fit.mentor') : breadth > 0.7 ? t('ui.fit.broad') : t('ui.fit.goodEye');
       } else if (role === 'printer') {
         score = skill('machining') * 0.8 + 0.2;
         why = has('nightOwl') ? t('ui.fit.nightOwl') : t('ui.fit.machining', { level: data.skills.machining ?? 0 });
@@ -2762,7 +2902,7 @@ export class UI {
         score = skill('docs') * 0.45 + skill('software') * 0.2 + breadth * 0.35;
         why = has('documenter') ? t('ui.fit.writesItDown') : breadth > 0.7 ? t('ui.fit.broad') : t('ui.fit.goodEye');
       }
-      if (has('perfectionist') && role === 'technician') score *= 1.25;
+      if (has('mentor') && role === 'host') score *= 1.25;
       if (has('nightOwl') && role === 'printer') score *= 1.2;
       if (has('documenter') && role === 'quartermaster') score *= 1.3;
       if (has('documenter') && role === 'social') score *= 1.25;
@@ -2772,7 +2912,7 @@ export class UI {
     };
 
     const roleIcon: Record<Role, IconName> = {
-      technician: 'cog',
+      host: 'users',
       printer: 'printer',
       quartermaster: 'package',
       social: 'flame',
@@ -3548,6 +3688,17 @@ export class UI {
       .filter((m): m is MemberSnapshot => !!m);
     const playerOn = state.runtime.player?.project === project.id;
     if (!crew.length && !playerOn) return null; // "nobody on it" says this already
+    // You on top of a full table: say it the moment it happens, and say it is not a stall.
+    if (playerOn && crew.length) {
+      const booked = project.tableId ? state.runtime.tables.find((x) => x.id === project.tableId) : null;
+      const seats = booked ? booked.seats : Math.max(0, ...state.runtime.tables.map((x) => x.seats));
+      if (seats <= crew.length) {
+        return {
+          text: t('build.kick.noChairForYou', { seats, table: FURNITURE_MAP['table-large'].name }),
+          tone: 'warn',
+        };
+      }
+    }
     const away = crew.filter((m) => !m.present);
     if (away.length) {
       return { text: t('build.kick.notIn', { names: away.map((m) => m.name).join(', ') }), tone: 'warn' };

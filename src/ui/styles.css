@@ -2675,3 +2675,39 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .award-preview__text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .award-preview__text b { font-size: 12.5px; font-weight: 600; }
 .award-preview__text span { font-size: 11px; color: var(--muted-foreground); }
+
+/* --- the first-run tour: a ring round the real thing, and a card beside it ---------- */
+#tour-ring {
+  display: none;
+  position: fixed;
+  z-index: 50;
+  border-radius: calc(var(--radius) + 4px);
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent), 0 0 24px color-mix(in srgb, var(--primary) 30%, transparent);
+  pointer-events: none;
+  transition: left 0.18s, top 0.18s, width 0.18s, height 0.18s;
+  animation: tour-pulse 1.8s ease-in-out infinite;
+}
+@keyframes tour-pulse {
+  50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--primary) 12%, transparent), 0 0 30px color-mix(in srgb, var(--primary) 22%, transparent); }
+}
+#tour-card {
+  display: none;
+  position: fixed;
+  z-index: 51;
+  width: 330px;
+  padding: 13px 14px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+#tour-card .ui-desc { margin: 8px 0 10px; font-size: 12px; line-height: 1.5; color: var(--muted-foreground); }
+#tour-card .ui-desc b { color: var(--foreground); }
+.tour-head { display: flex; align-items: center; gap: 9px; }
+.tour-head .icon-chip { width: 28px; height: 28px; flex: none; }
+.tour-head .ui-title { flex: 1; font-size: 13.5px; }
+.tour-count { font-family: var(--font); font-size: 10px; color: var(--subtle-foreground); }
+.tour-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tour-waiting { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--primary); }
+.tour-waiting .ui-icon, .tour-waiting svg { width: 12px; height: 12px; }

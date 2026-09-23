@@ -193,6 +193,31 @@ await check('start screen opens the game', async () => {
   return hasStart && started === true && named === 'Test Alanı';
 });
 
+// A fresh browser is a first-time player: the tour opens on its own, stops the clock, waits
+// for a real press on a Do step, steps back when the wizard is closed unused, and gives the
+// clock back when skipped.
+await check('a first run is shown round, and the tour gets out of the way', async () => {
+  const card = () => evaluate(`(() => { const el = document.querySelector('#tour-card');
+    return el && el.style.display === 'block' ? (el.querySelector('.tour-count')?.textContent ?? '') : 'hidden'; })()`);
+  const opened = await card();
+  const paused = await evaluate(`__store.getState().paused`);
+  await click('#tour-card [data-action="tour-next"]');
+  await click('#tour-card [data-action="tour-next"]');
+  const waiting = await card();
+  await click('[data-action="new-open"]');
+  const onWizard = await card();
+  await click('#modal header [data-action="jobs-close"]');
+  const backToNew = await card();
+  await click('#tour-card [data-action="tour-skip"]');
+  const gone = await card();
+  const running = await evaluate(`!__store.getState().paused`);
+  const remembered = await evaluate(`localStorage.getItem('hackerspace-tycoon-toured')`);
+  const ok = opened.startsWith('1/') && paused === true && waiting.startsWith('3/') && onWizard.startsWith('4/') &&
+    backToNew.startsWith('3/') && gone === 'hidden' && running === true && remembered === '1';
+  if (!ok) console.log(`      ${JSON.stringify({ opened, paused, waiting, onWizard, backToNew, gone, running, remembered })}`);
+  return ok;
+});
+
 // Walk the New Project wizard the way a player does: genre, brief, crew, design, review.
 async function walkWizard({ start = true } = {}) {
   await click('#modal [data-action="np-genre"]:not([disabled])');
@@ -640,8 +665,8 @@ await check('Build: buying a printer puts one on the floor', async () => {
       return JSON.stringify({ n: fdm.length, cap: Math.max(...fdm.map((m) => m.consumableMax)),
                               full: fdm.every((m) => m.consumable > 0) }); })()`),
   );
-  // It arrives, it arrives full, and it holds more than the one kilo the space started with.
-  const ok = after.n === before + 1 && after.cap > 1000 && after.full;
+  // It arrives, it arrives full, and it holds a full four-spool load.
+  const ok = after.n === before + 1 && after.cap >= 4000 && after.full;
   if (!ok) console.log(`      printers ${before} -> ${after.n}, capacity ${after.cap}, full ${after.full}`);
   return ok;
 });

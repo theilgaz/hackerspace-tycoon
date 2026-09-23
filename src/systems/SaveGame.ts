@@ -62,7 +62,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -210,6 +210,11 @@ function migrate(file: SaveFile): SaveFile {
   // holds nothing now; the Technician is a new slot to fill.
   for (const member of sim.members ?? []) {
     if ((member as { role?: unknown }).role === 'manager') (member as { role: null }).role = null;
+  }
+
+  // v13 — the Technician folded into the Printer Keeper; its slot is the Host now.
+  for (const member of sim.members ?? []) {
+    if ((member as { role?: unknown }).role === 'technician') (member as { role: null }).role = null;
   }
 
   file.version = SAVE_VERSION;

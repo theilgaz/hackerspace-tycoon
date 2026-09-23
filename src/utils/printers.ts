@@ -35,9 +35,11 @@ export const PRINTERS: PrinterModel[] = [
   {
     id: 'a1-mini',
     name: 'A1 Mini Combo',
-    blurb: 'Small bed, four colours, endlessly patient. It got the space started.',
+    blurb: 'Small bed, four spools on the AMS Lite, endlessly patient. It got the space started.',
     price: 4500,
-    capacity: 1000,
+    // A Combo is four spools on the AMS Lite — four kilos, the same as the P2S. It held
+    // one for a while, which no owner of one would recognise.
+    capacity: 4000,
     speed: 1,
     reliability: 1,
     era: 1,

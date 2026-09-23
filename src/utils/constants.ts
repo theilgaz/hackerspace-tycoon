@@ -874,8 +874,10 @@ export const RESALE = { share: 0.5 };
 
 /** Standing jobs (§3b). */
 export const ROLES = {
-  /** The Technician levels a bed that has drifted below this, between prints. */
-  technicianLevelsBelow: 0.7,
+  /** The Printer Keeper levels a bed that has drifted below this, between prints. */
+  levelBelow: 0.7,
+  /** How much faster word gets round on a day the Host is in. */
+  hostDraw: 1.25,
 };
 
 export const TRAIN = {
