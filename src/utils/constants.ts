@@ -46,8 +46,6 @@ export const WORKDAY = {
   hours: 8,
   /** They are employed, so they turn up — barring mood, and whatever a Ghost is doing. */
   attendanceBase: 0.97,
-  /** How late a bounty will keep somebody. */
-  overtimeEnd: 20,
 };
 
 /** Contracted hours a week — the same for everybody. */
@@ -156,14 +154,12 @@ export const BOUNTY = {
   costPerWorkUnit: 14,
   minCost: 150,
   /**
-   * A bounty still has to move the binding constraint, which is hours in the building. With
-   * contracted shifts it buys **overtime** rather than a better dice roll: a part-timer
-   * stays on for the rest of the day, a full-timer stays past six. Posted today, felt
-   * tomorrow — planDay() runs at the day rollover.
+   * What a live bounty does to the crew working that stage. It used to buy overtime — in
+   * past six — but the crew's day is nine to six without exception now (§3d), so a bounty
+   * buys effort instead: the stage nobody wanted, worked harder by whoever is on it. It
+   * still pulls volunteers and eases an ask (`TEAM.bountyAcceptBonus`).
    */
-  overtimeChance: 0.7,
-  /** Passion match needed before the bounty tempts them in at all. */
-  temptThreshold: 0.3,
+  rateBonus: 1.3,
 };
 
 // --- Machines (§5, §13.3) ---------------------------------------------------

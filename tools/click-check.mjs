@@ -166,6 +166,13 @@ async function ensureWorkInFlight() {
         if (offer) sim.pitch(offer.defId, offer.id, []);
         else break;
       }
+      // An empty backlog used to leave nothing in flight at all, and every check after this
+      // one that needed a running build failed for a reason unrelated to its feature. Small
+      // catalogue builds the garage can always make are the fallback.
+      for (const id of ['phone-stand', 'led-badge', 'space-site', 'tool-booking', 'macropad']) {
+        if (sim.projects.filter((p) => !p.shipped).length >= 2) break;
+        if (!sim.projects.some((p) => p.defId === id && !p.shipped)) sim.pitch(id, undefined, []);
+      }
       sim.publish();
       return sim.projects.length;
     })()
@@ -173,8 +180,32 @@ async function ensureWorkInFlight() {
 }
 
 const results = [];
-const check = async (name, fn) => {
-  const ok = await fn();
+/**
+ * Every check runs with the clock stopped unless it says `{ live: true }`.
+ *
+ * **Why:** this suite was intermittent — a different check failed on roughly every other
+ * run, and the same happened on older commits, so it was the suite and not the game. The
+ * sim was left running at up to 4x between and during checks, so a check's count could go
+ * stale between reading it and clicking (a build shipped, a volunteer joined a crew), and a
+ * bill or an awards night could open over the very button about to be pressed. A check
+ * about *logic* has to see a world that holds still.
+ *
+ * The checks that exist to prove clicks survive a constantly redrawing screen stay `live`:
+ * pausing them would test nothing, because a paused sim stops republishing and the panels
+ * stop rebuilding.
+ */
+const check = async (name, fn, { live = false } = {}) => {
+  const wasPaused = await evaluate(`__store.getState().paused`);
+  if (!live && wasPaused === false) await evaluate(`__store.getState().setPaused(true)`);
+  let ok = false;
+  try {
+    ok = await fn();
+  } finally {
+    // Only give the clock back if this check took it, and only if the run is still going.
+    if (!live && wasPaused === false) {
+      await evaluate(`(() => { const st = __store.getState(); if (!st.gameOver && st.started) st.setPaused(false); })()`);
+    }
+  }
   results.push({ name, ok });
   console.log(`  ${ok ? '✓' : '✗'} ${name}`);
 };
@@ -216,7 +247,7 @@ await check('a first run is shown round, and the tour gets out of the way', asyn
     backToNew.startsWith('3/') && gone === 'hidden' && running === true && remembered === '1';
   if (!ok) console.log(`      ${JSON.stringify({ opened, paused, waiting, onWizard, backToNew, gone, running, remembered })}`);
   return ok;
-});
+}, { live: true });
 
 // Walk the New Project wizard the way a player does: genre, brief, crew, design, review.
 async function walkWizard({ start = true } = {}) {
@@ -281,6 +312,14 @@ await check('a design choice is a press, and it sticks', async () => {
 });
 
 await check('the crew step arrives with the best people already picked', async () => {
+  // The projects started above can take everybody, and then there is nobody to suggest —
+  // which is correct and tests nothing. Free one person first.
+  await evaluate(`(() => { const sim = __game.sim;
+    if (!sim.members.some((m) => !m.team && !m.training)) {
+      const m = sim.members.find((x) => x.team);
+      if (m) sim.releaseMember(m.team, m.id);
+    }
+    sim.publish(); })()`);
   await openWizard();
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
@@ -345,11 +384,11 @@ await check('closing the wizard', async () => {
 await check('speed button', async () => {
   await click('[data-action="speed"][data-value="2"]');
   return (await evaluate(`__store.getState().speed`)) === 2;
-});
+}, { live: true });
 await check('work on a project (button inside a constantly redrawing panel)', async () => {
   await click('[data-action="work"]');
   return Boolean(await evaluate(`__game.sim.player.project`));
-});
+}, { live: true });
 await check('buy a spool (machines overlay redraws every snapshot)', async () => {
   const before = await evaluate(`__store.getState().runtime.machines[0].consumable`);
   await evaluate(`__game.sim.printer.consumable = 100; __game.sim.publish();`);
@@ -359,7 +398,7 @@ await check('buy a spool (machines overlay redraws every snapshot)', async () =>
   const after = await evaluate(`__store.getState().runtime.machines[0].consumable`);
   await click('#modal header [data-action="jobs-close"]');
   return shown && after > 100 && before !== undefined;
-});
+}, { live: true });
 await check('player stays on the project across stage changes', async () =>
   evaluate(`
     (() => {
@@ -484,21 +523,30 @@ await check('Build: a workstation bought is standing in the room, with a picture
   return ok;
 });
 
-await check('Ranking: one column per award, and the table fits without scrolling', async () => {
+await check('Ranking: a lean sortable table that fits without scrolling', async () => {
+  // The standings were cut to three columns on purpose (ships this year, crew, reputation):
+  // nine scrolled sideways and most were numbers nobody reads a leaderboard for, and the
+  // awards moved to a footnote. This check asked for seven award columns for a long time
+  // after that, failing on every run — a check nobody can make pass is one nobody reads.
   await openPanel('ranking-open');
-  const shape = JSON.parse(
-    await evaluate(`JSON.stringify((() => {
+  const read = () =>
+    evaluate(`JSON.stringify((() => {
       const body = document.querySelector('#modal .modal-body');
+      const heads = [...document.querySelectorAll('#modal .standings-table th [data-action="rank-sort"]')];
       return {
-        awards: document.querySelectorAll('#modal .rank-table th.award-col').length,
+        sortable: heads.length,
+        sorted: document.querySelector('#modal .standings-table th.sorted [data-action="rank-sort"]')?.dataset.value ?? null,
+        rows: document.querySelectorAll('#modal .standings-table tbody tr').length,
         overflow: body ? body.scrollWidth - body.clientWidth : -1,
       };
-    })())`),
-  );
-  // Seven awards, seven marked columns — a category the table cannot show is one the player
-  // cannot chase.
-  const ok = shape.awards === 7 && shape.overflow === 0;
-  if (!ok) console.log(`      ${shape.awards} award columns, horizontal overflow ${shape.overflow}px`);
+    })())`).then(JSON.parse);
+  const before = await read();
+  // Sort by crew, and the crew column is the one marked.
+  await click('#modal .standings-table [data-action="rank-sort"][data-value="members"]');
+  const after = await read();
+  const ok =
+    before.sortable === 3 && before.rows >= 18 && before.overflow === 0 && after.sorted === 'members';
+  if (!ok) console.log(`      ${JSON.stringify({ before, after })}`);
   return ok;
 });
 
@@ -682,7 +730,7 @@ await check('a scrolled panel stays where it was while the sim redraws it', asyn
   await click('#modal header [data-action="jobs-close"]');
   if (!(before > 0 && after === before)) console.log(`      scrollTop ${before} -> ${after}`);
   return before > 0 && after === before;
-});
+}, { live: true });
 
 await check('the move strip sells what you are holding, and says what it fetches', async () => {
   const id = await evaluate(`(() => { __store.getState().earn(20000); __game.sim.buyFurniture('assembly-table');
@@ -733,9 +781,11 @@ await check('the overdraft ends a run two ways, and not before', async () => {
   // Past the floor.
   await evaluate(`__store.setState({ cash: -45000, overdraftSince: __store.getState().day, gameOver: null })`);
   const diesOnFloor = await evaluate(rollDay);
-  // Under for too long.
+  // Under for too long. Deep enough that a build shipping during the rolled day cannot
+  // pay it back — at −₺500 one payout lifted the balance above zero and the run rightly
+  // carried on, which read as the rule being broken.
   await evaluate(
-    `__store.setState({ cash: -500, overdraftSince: __store.getState().day - 61, gameOver: null })`,
+    `__store.setState({ cash: -25000, overdraftSince: __store.getState().day - 61, gameOver: null })`,
   );
   const diesOnTime = await evaluate(rollDay);
   await evaluate(`__store.setState({ cash: 40000, overdraftSince: null, gameOver: null })`);
@@ -791,7 +841,7 @@ await check('unchanged panels keep their DOM (build menu and top bar)', async ()
   `);
   if (churn > 4) console.log(`      ${churn} rebuilds in 1.2s — panels are churning`);
   return churn <= 4;
-});
+}, { live: true });
 
 await check('no exceptions', async () => exceptions.length === 0);
 

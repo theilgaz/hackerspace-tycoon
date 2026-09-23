@@ -59,10 +59,15 @@ Manager had to avoid them, and a whole rule (`canMeet`) existed to stop voluntee
 crew they could never sit down with. None of that was fun, and all of it is gone.
 
 Hours come from the working day, not a dice roll. The only randomness left is whether somebody
-turns up at all, which is where mood and the Ghost still live. **A bounty therefore buys overtime
-rather than a better roll** — they stay past six. Keep that: §13's rule is that every verb has
-to move hours in the building, and the only hours left to move are the ones past the end of
-the day.
+turns up at all, which is where mood and the Ghost still live. **Everybody is in at nine and
+heads for the door at six — no exceptions, no overtime.** Only the owner stays later.
+
+**A bounty therefore buys effort, not hours**: the crew on a bountied stage works it 30% harder
+(`BOUNTY.rateBonus`), on top of pulling volunteers and easing an ask. It used to buy overtime
+to eight, which broke the one rule about the crew's day. Measured: `sim-check`'s aggressive
+player (a bounty on every stage) went from 39 to 66 ships in 150 days, level with the careful
+one — it buys that with money rather than out-shipping it — and `era-pace` held (normal first
+8/8, hard 6/8, easy 8/8).
 
 You are the exception. The owner is there at any hour, weekends included; the daily budget, not
 the clock, is what limits you.
@@ -715,9 +720,9 @@ Winning pays reputation. Two tuning notes worth keeping:
   cashPerProject` and set the whole distribution at once.
 - **The leaderboard is a table, not cards.** Cards with wrapping badges give you nothing to
   read down a column, and comparison is the entire purpose of that panel. It is a sortable
-  table with tabular figures: one row per space, the four award-deciding columns marked with
-  a ◆, and the current leader of every column picked out — so "who beats me to Deepest
-  Pockets" is answerable at a glance. **Use a table whenever the job is comparison; use cards
+  table with tabular figures: one row per space and three columns — ships this year, crew,
+  reputation — with the leader of each picked out. It had nine, award-deciding ones marked
+  with a ◆, and it scrolled sideways; the awards are in the footnote and the trophy room now. **Use a table whenever the job is comparison; use cards
   only when each item is read on its own.**
 
 - **`project-times` alone cannot tune the campaign.** It measures best case — a full roster —
@@ -2003,7 +2008,16 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
   - `npm run kickoff-check` — a crew of four, one kept at home: the kickoff must not move
     without them, must move once all four sit down, and everybody must leave the table when
     it is done. Seen to fail with the rule broken; run it after touching the kickoff.
-  - `npm run click-check` — needs `npm run dev` running. Drives the real UI with real mouse
+  - `npm run click-check` — needs `npm run dev` running. **Every check runs with the clock
+    stopped unless it is marked `{ live: true }`**: a check about logic must see a world that
+    holds still. It was intermittent — a different check failing on about every other run, on
+    old commits too — because the sim kept running between reading a count and clicking, and a
+    bill could open over the button about to be pressed. Only the checks that exist to prove a
+    click survives a redrawing screen run live. Two more were precondition bugs, not flakes: a
+    crew step with nobody free to suggest, and an "under too long" overdraft that one payout
+    could clear. And the Ranking check asked for seven award columns long after the table was
+    deliberately cut to three — it failed every run for weeks, which is how a suite stops being
+    read. Measured after: 32/32 on nine consecutive runs, English and Turkish. Drives the real UI with real mouse
     press/release pairs while the sim runs, and counts DOM rebuilds. Run it after touching
     anything in `src/ui/`.
   - Harness sources live in `tools/`, built via `vite.headless.config.ts` to `dist-headless/`.

@@ -533,10 +533,6 @@ export class Simulation {
   private planDay() {
     this.kickoffWatch.clear();
     const working = isWorkingDay(this.day);
-    const bountied = this.projects.filter(
-      (p) => p.bounties.includes(p.stage) && p.required[p.stage] > 0,
-    );
-
     for (const m of this.members) {
       if (!working) {
         this.plans.set(m.id, { attending: false, arriveAt: 0, leaveAt: 0 });
@@ -548,14 +544,12 @@ export class Simulation {
       const base = WORKDAY.attendanceBase;
       const attending = rng.chance(Math.min(0.99, Math.max(0.3, base * m.ghostFactor * moodFactor)));
 
-      // A bounty buys overtime rather than a better roll: they stay past six.
-      const tempted = bountied.some((p) => m.passionMatch(p.tags) >= BOUNTY.temptThreshold);
+      // **In at nine, out at six, everybody** (§3d). A bounty used to buy overtime to eight,
+      // which put the crew in the building after hours — the owner is the only one who stays
+      // late. What a bounty buys now is effort inside the day (`BOUNTY.rateBonus`).
       const span = m.span;
-      const overtime = tempted && rng.chance(BOUNTY.overtimeChance);
-      const leaveAt = overtime ? WORKDAY.overtimeEnd : span.end;
-
-      this.plans.set(m.id, { attending, arriveAt: span.start, leaveAt });
-      m.leaveAt = leaveAt;
+      this.plans.set(m.id, { attending, arriveAt: span.start, leaveAt: span.end });
+      m.leaveAt = span.end;
     }
   }
 
@@ -729,7 +723,9 @@ export class Simulation {
         // bench is not eight times the throughput.
         const factor =
           index === 0 ? 1 : MEMBER.extraWorkerFactor * Math.pow(MEMBER.crowdDecay, index - 1);
-        const rate = m.workRate(skill, project.tags) * factor * this.comforts.focus;
+        // A live bounty on this stage is effort, not hours: the same day, worked harder.
+        const bountied = project.bounties.includes(project.stage) && m !== this.player ? BOUNTY.rateBonus : 1;
+        const rate = m.workRate(skill, project.tags) * factor * this.comforts.focus * bountied;
         total += rate * dt;
         rateSum += rate;
         // Each person's own share of the stage, for the bar over their head — and of the
