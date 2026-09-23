@@ -17,9 +17,10 @@
   --destructive: #e2725b;
   --warning: #e0a83c;
   /* A trophy you won, lit. Brighter than --warning, which is a state rather than a prize. */
-  --gold: #f4c95d;
-  --success: #7ac74f;
   --gold: #f0c040;
+  /* Learning — a course at the Learning Station. Its own hue so it never reads as work. */
+  --learning: #a98bf0;
+  --success: #7ac74f;
   --ring: #5ecfc0;
   --radius: 8px;
   --radius-sm: 6px;
@@ -2435,6 +2436,9 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .label .share { display: block; height: 3px; margin: 3px auto 0; width: 34px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 .label .share i { display: block; height: 100%; background: var(--primary); }
 .label .share.meeting i { background: var(--gold); }
+/* A course, not a build: its own colour, so a trainee's bar is never read as a share of work. */
+.label .share.learning { width: 44px; }
+.label .share.learning i { background: var(--learning); }
 
 /* Scrollbars. Left to the platform they draw a pale track on every panel — on macOS with
    "always show scrollbars" a white gutter down the side of a dark UI. Thin, dark, and
@@ -2711,3 +2715,4 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .tour-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tour-waiting { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--primary); }
 .tour-waiting .ui-icon, .tour-waiting svg { width: 12px; height: 12px; }
+.trainee .bar i { background: var(--learning); }

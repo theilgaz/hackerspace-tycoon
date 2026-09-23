@@ -362,26 +362,34 @@ export class Game {
     // A name, and under it their own share of the stage they are on (§4d): the stage is
     // pooled work, so the bar is what they have put in against an even split. Gold at a
     // kickoff, where everybody's share is the meeting itself.
-    const personLabel = (id: string, name: string, share: number | null, meeting: boolean) => {
+    const personLabel = (id: string, name: string, share: number | null, kind: '' | 'meeting' | 'learning') => {
       const world = this.view.personWorld(id);
       if (!world) return;
       const p = this.scene.project(world);
       const bar =
         share === null
           ? ''
-          : `<span class="share ${meeting ? 'meeting' : ''}"><i style="width:${Math.round(share * 100)}%"></i></span>`;
+          : `<span class="share ${kind}"><i style="width:${Math.round(share * 100)}%"></i></span>`;
       parts.push(`<div class="label" style="left:${p.x}px;top:${p.y}px">${name}${bar}</div>`);
     };
 
     const atKickoff = (projectId: string | null) =>
       !!projectId && runtime.projects.some((x) => x.id === projectId && !x.kickedOff);
     for (const member of runtime.members) {
-      if (member.present) personLabel(member.id, member.name, member.share, atKickoff(member.team));
+      if (!member.present) continue;
+      // On a course, the bar is the course: how far through the level they are, in its own
+      // colour so it never reads as a share of somebody's build.
+      if (member.training) {
+        const done = 1 - member.training.hoursLeft / Math.max(1, member.training.total);
+        personLabel(member.id, member.name, Math.max(0, Math.min(1, done)), 'learning');
+      } else {
+        personLabel(member.id, member.name, member.share, atKickoff(member.team) ? 'meeting' : '');
+      }
     }
     if (runtime.player?.present) {
       // Your own name if you gave one — the one person in the room the player picked.
       const you = store.getState().identity?.player || t('ui.you');
-      personLabel('player', you.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!), runtime.player.share, atKickoff(runtime.player.project));
+      personLabel('player', you.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!), runtime.player.share, atKickoff(runtime.player.project) ? 'meeting' : '');
     }
 
     // Machines that are doing something say so; everything else only speaks when pointed at.
