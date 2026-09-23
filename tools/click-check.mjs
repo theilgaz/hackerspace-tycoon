@@ -264,7 +264,7 @@ await check('the crew step arrives with the best people already picked', async (
   // Read from a data attribute, not the words: the suite runs in Turkish too.
   const label = await evaluate(`document.querySelector('#modal [data-crew]')?.dataset.crew`);
   const pressed = await evaluate(
-    `document.querySelectorAll('#modal .ui-toggle[aria-pressed="true"]').length`,
+    `document.querySelectorAll('#modal .crew-pick[aria-pressed="true"]').length`,
   );
   const free = await evaluate(`__game.sim.members.filter((m) => !m.team).length`);
   const [picked, size] = (label ?? '0/0').split('/').map(Number);
@@ -309,7 +309,7 @@ await check('buy a spool (machines overlay redraws every snapshot)', async () =>
   const before = await evaluate(`__store.getState().runtime.machines[0].consumable`);
   await evaluate(`__game.sim.printer.consumable = 100; __game.sim.publish();`);
   await openPanel('machines-open');
-  const shown = await evaluate(`document.querySelectorAll('#modal .machine-card').length > 0`);
+  const shown = await evaluate(`document.querySelectorAll('#modal .machine-table tbody tr').length > 0`);
   await click('#modal [data-action="filament"]');
   const after = await evaluate(`__store.getState().runtime.machines[0].consumable`);
   await click('#modal header [data-action="jobs-close"]');
@@ -582,12 +582,39 @@ await check('Projects: the filter narrows one list', async () => {
   return ok;
 });
 
+await check('Projects: a row opens that project, and the crumb comes back', async () => {
+  await ensureWorkInFlight();
+  await openPanel('projects-open');
+  await click('#modal tr.row-link[data-action="project-detail"]');
+  const open = await evaluate(`!!document.querySelector('#modal .detail-grid') && document.querySelectorAll('#modal .detail-crew tr').length > 0`);
+  await click('#modal [data-action="project-detail"][data-id=""]');
+  const back = await evaluate(`!document.querySelector('#modal .detail-grid') && !!document.querySelector('#modal tr.row-link')`);
+  await click('#modal header [data-action="jobs-close"]');
+  if (!(open && back)) console.log(`      detail open ${open}, back on the list ${back}`);
+  return open && back;
+});
+
+await check('People: pressing a skill sends somebody on a course, and the bench shows it', async () => {
+  await evaluate(`(() => { __store.getState().earn(20000); __game.sim.buyFurniture('learning-station');
+    for (const m of __game.sim.members) if (m.team) __game.sim.releaseMember(m.team, m.id); __game.sim.publish(); })()`);
+  await openPanel('people-open');
+  const cell = await evaluate(`document.querySelector('#modal .skill-btn:not([disabled])')?.dataset.id ?? null`);
+  await click('#modal .skill-btn:not([disabled])');
+  const onCourse = await evaluate(`__game.sim.members.some((m) => m.id === ${JSON.stringify(cell)} && m.training)`);
+  await click('#modal header [data-action="jobs-close"]');
+  await sleep(300);
+  const bench = await evaluate(`document.querySelectorAll('.bench-training .trainee').length`);
+  if (!(cell && onCourse && bench > 0)) console.log(`      cell ${cell}, on a course ${onCourse}, bench rows ${bench}`);
+  return Boolean(cell) && onCourse && bench > 0;
+});
+
 await check('Build: buying a printer puts one on the floor', async () => {
   await evaluate(`(() => { __store.getState().earn(60000); __game.sim.publish(); })()`);
   await openPanel('build-open');
   await click('#modal [data-action="build-tab"][data-value="printers"]');
   const before = await evaluate(`__game.sim.machines.filter((m) => m.type === 'fdm').length`);
-  await click('#modal [data-action="buy-printer"]:not([disabled])');
+  // The A1 is on the shelf too now; the P2S is the one that holds more than a kilo.
+  await click('#modal [data-action="buy-printer"][data-value="p2s"]:not([disabled])');
   const after = JSON.parse(
     await evaluate(`(() => { const fdm = __game.sim.machines.filter((m) => m.type === 'fdm');
       return JSON.stringify({ n: fdm.length, cap: Math.max(...fdm.map((m) => m.consumableMax)),

@@ -35,17 +35,17 @@ export const build = {
   'build.days': (p: { days: number }) => `${num(p.days)}d`,
   'build.stars': (p: { value: number }) => `${num(p.value)} of 5`,
 
-  'build.top.moneyHint': (p: { income: number; costs: number; days: number }) =>
-    `Next bill in ${num(p.days)} days: dues +${money(p.income)}, rent and running costs −${money(p.costs)}. ` +
-    `Project payouts land in the balance the day a project ships.`,
-  'build.top.atBill': (p: { days: number }) => `at the bill · ${num(p.days)}d`,
+  'build.top.cashHint': (p: { days: number }) =>
+    `Cash in hand. The books close in ${num(p.days)} days — dues in, rent out.`,
+  'build.bill.income': 'Income',
+  'build.bill.costs': 'Costs',
+  'build.bill.opened': 'Opened on',
+  'build.bill.now': 'Now',
   'build.top.projects': (p: { count: number }) => `${num(p.count)} ${plural(p.count, 'project', 'projects')}`,
   'build.top.busy': (p: { used: number; total: number }) => `${num(p.used)}/${num(p.total)} busy`,
   'build.top.shipped': (p: { count: number }) => `${num(p.count)} shipped`,
 
   'build.people.hireAll': (p: { count: number; cost: number }) => `Take all ${num(p.count)} on · ${money(p.cost)}`,
-  'build.people.hireAllHint': 'Full-time where they can be, part-time for anybody with a day job.',
-
   'build.skill.cad': 'CAD',
   'build.skill.electronics': 'electronics',
   'build.skill.machining': 'machining',
@@ -66,8 +66,6 @@ export const build = {
   'build.np.crewBest': (p: { skill: string; level: number }) => `crew ${p.skill}: ${num(p.level)}`,
   'build.np.crewBestHint': 'The best level on the crew you picked. Three stars needs 2, five stars needs 4.',
 
-  'build.people.train': 'Train',
-  'build.people.trainHint': 'Send them to the Learning Station for one level of one skill',
   'build.people.onCourse': (p: { skill: string; pct: string }) => `training ${p.skill} · ${p.pct}`,
   'build.people.noStation': 'Build a Learning Station first.',
   'build.people.onCrew': 'On a crew — take them off it first.',
@@ -157,26 +155,12 @@ export const build = {
   'build.np.ask': (p: { picked: number; seats: number }) => `Ask ${num(p.picked)} of ${num(p.seats)}`,
   'build.np.canSayNo': 'they can still say no',
   'build.np.proposerLocked': 'Proposed it — signs up the moment it starts',
-  'build.np.match': (p: { genre: string; match: string; shift: string }) =>
-    `${p.genre} match ${p.match} · ${p.shift}`,
   'build.np.notIn': 'not in today',
   'build.np.everyoneBusy':
     'Everybody is already on something. You can still start it and crew it later from the ' +
     'bench — or put yourself on it.',
-  'build.np.clash': (p: { names: string }) =>
-    `${p.names} are never in at the same time, so the kickoff cannot happen with both. A ` +
-    `bounty buys a part-timer the rest of the day — or leave one of them off.`,
-  'build.np.clashNames': (p: { mornings: string; afternoons: string }) =>
-    `${p.mornings} (mornings) and ${p.afternoons} (afternoons)`,
   'build.np.largeHint': (p: { table: string; build: string }) =>
     `Crews of five and ten need a ${p.table}. It is in ${p.build}.`,
-
-  'build.shift.ftShort': 'FT',
-  'build.shift.amShort': 'AM',
-  'build.shift.pmShort': 'PM',
-  'build.shift.ft': 'full-time, 9-6',
-  'build.shift.am': 'mornings',
-  'build.shift.pm': 'afternoons',
 
   'build.review.quality': 'Quality',
   'build.review.qualityHint': 'crew craft + design + crew size',
@@ -219,7 +203,6 @@ export const build = {
 
   // --- The bench -------------------------------------------------------------
   'build.bench.design': 'design',
-  'build.kick.neverOverlap': 'crew never overlap',
   'build.kick.notIn': (p: { names: string }) => `kickoff: ${p.names} not in`,
   'build.kick.noTable': 'kickoff: no free table',
   'build.kick.at': (p: { table: string }) => `kickoff at ${p.table}`,
@@ -297,4 +280,50 @@ export const build = {
   'build.note.kickoff': (p: { project: string }) => `${p.project}: kickoff`,
   'build.note.waitingFor': (p: { project: string; names: string }) => `${p.project}: waiting for ${p.names}`,
   'build.note.noFree': (p: { project: string; station: string }) => `${p.project}: no free ${p.station}`,
+
+  // --- Crew stars, people and training (round 4) -----------------------------
+  'build.np.match': (p: { genre: string; match: string }) => `${p.genre} match ${p.match}`,
+  'build.np.starsLegend': (p: { axes: string }) => `stars they unlock: ${p.axes}`,
+  'build.people.hireAllHint': 'Everybody full-time. Each one costs their joining fee and an hour of yours.',
+  'build.people.takeOn': 'Take on',
+  'build.people.maxed': 'as good as a course gets them',
+  'build.people.col.loves': 'Loves',
+  'build.people.trainCell': (p: { skill: string; from: number; to: number; cost: number; hours: number }) =>
+    `Train ${p.skill} ${num(p.from)} → ${num(p.to)} · ${money(p.cost)} · ${num(p.hours)}h at the learning station`,
+  'build.people.trainHow': 'Press a skill to send them on a course for the next level. They are off crews until it is done.',
+  'build.people.trainNeedsStation': (p: { build: string }) => `Training needs a Learning Station — it is in ${p.build}.`,
+  'build.skillShort.software': 'SW',
+  'build.skillShort.electronics': 'EL',
+  'build.skillShort.cad': 'CAD',
+  'build.skillShort.machining': 'MC',
+  'build.skillShort.welding': 'WLD',
+  'build.skillShort.docs': 'DOC',
+  'build.bench.training': 'At the learning station',
+  'build.bench.trainingLine': (p: { skill: string; from: number; to: number }) => `${p.skill} ${num(p.from)} → ${num(p.to)}`,
+  'build.bench.trainingHint': (p: { hours: string }) => `${p.hours} to go`,
+  'build.bench.rating': 'Design rating — the three choices made at the pitch, averaged',
+
+  // --- A project's own screen (§4e) --------------------------------------------
+  'build.detail.foot': 'Shares are of the whole build — every stage, from the kickoff to the release.',
+  'build.detail.whoMadeIt': 'Who made it',
+  'build.detail.noCrew': 'Nobody has put any work in yet.',
+  'build.detail.left': 'off the crew',
+  'build.detail.leftHint': 'Worked on it, and has since left the crew.',
+  'build.detail.design': 'Design',
+  'build.detail.pay': 'What it paid',
+  'build.detail.pay.base': 'The brief',
+  'build.detail.pay.market': 'Market that week',
+  'build.detail.pay.appeal': 'Design appeal',
+  'build.detail.pay.quality': 'Quality',
+  'build.detail.pay.novelty': 'Built before',
+  'build.detail.pay.paid': 'Paid',
+  'build.detail.spent': 'Spent',
+  'build.detail.net': 'Net',
+  'build.detail.took': 'Took',
+  'build.detail.tests': (p: { count: number }) => `${num(p.count)} ${plural(p.count, 'test', 'tests')}`,
+  'build.detail.failedPrints': (p: { count: number }) => `${num(p.count)} failed ${plural(p.count, 'print', 'prints')}`,
+  'build.machines.col.printer': 'Printer',
+  'build.trophy.firstNight': (p: { date: string; days: string; count: number }) =>
+    `The first awards night is on ${p.date} — ${p.days} days away. ${num(p.count)} trophies, judged on the year.`,
+  'build.trophy.repHint': 'Reputation the winner takes home',
 };

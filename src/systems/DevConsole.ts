@@ -191,9 +191,8 @@ const COMMANDS: Command[] = [
       const taken: string[] = [];
       for (const id of [...store.getState().applicants].slice(0, want)) {
         const before = store.getState().cash;
-        store.setState({ cash: before + sim.hireCost(id, 'full-time') });
-        const employment = sim.canHireFullTime(id) ? 'full-time' : 'part-time';
-        if (sim.hire(id, employment)) taken.push(id);
+        store.setState({ cash: before + sim.hireCost(id) });
+        if (sim.hire(id)) taken.push(id);
         else store.setState({ cash: before });
       }
       sim.publish();

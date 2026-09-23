@@ -1,10 +1,8 @@
 import type {
-  Employment,
   MachineType,
   ProjectData,
   RivalState,
   Role,
-  Shift,
   Tag,
   Skills,
   Training,
@@ -16,8 +14,9 @@ export interface MemberSave {
   id: string;
   skills?: Skills;
   training?: Training | null;
-  employment: Employment;
-  shift: Shift | null;
+  /** Gone since v11 — everybody is full-time — but still in older files. */
+  employment?: string;
+  shift?: string | null;
   role: Role | null;
   team: string | null;
   interest: number;
@@ -63,7 +62,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -201,6 +200,11 @@ function migrate(file: SaveFile): SaveFile {
   // v10 — applicants are dealt onto the ladder in a shuffled order per run. An older run
   // met them in the catalogue's order, which is what an empty order means.
   if (!Array.isArray(store.ladder)) store.ladder = [];
+
+  // v11 — the month keeps a ledger. What was spent before the update is not known, so the
+  // month opens where the balance stands; the first statement lists the gap as "other".
+  if (!store.ledger || typeof store.ledger !== 'object') store.ledger = {};
+  if (typeof store.monthOpen !== 'number') store.monthOpen = store.cash;
 
   file.version = SAVE_VERSION;
   return file;

@@ -614,3 +614,35 @@ export function qualityHype(quality: number): number {
 export function qualityStars(quality: number): number {
   return Math.max(0.5, Math.min(5, Math.round(quality * 10) / 2));
 }
+
+/** The best option somebody with this level unlocks on their own: five, three or one star. */
+export function starsFor(level: number): 1 | 3 | 5 {
+  return level >= DESIGN.starSkill[5] ? 5 : level >= DESIGN.starSkill[3] ? 3 : 1;
+}
+
+/**
+ * One person against a genre's three decisions (§4c): what they would unlock on each, and
+ * the average as the one figure a crew chip has room for. Training moves it.
+ */
+export function genreStars(
+  skills: Record<SkillKey, number>,
+  category: ProjectCategory,
+): { stars: number; axes: { axis: DesignAxisId; skill: SkillKey; level: number; stars: 1 | 3 | 5 }[] } {
+  const axes = CATEGORY_AXES[category].map((axis) => {
+    const skill = AXES[axis].skill;
+    const level = skills[skill] ?? 0;
+    return { axis, skill, level, stars: starsFor(level) };
+  });
+  const mean = axes.reduce((sum, a) => sum + a.stars, 0) / axes.length;
+  return { stars: Math.round(mean * 2) / 2, axes };
+}
+
+/**
+ * A plan's design as one rating (§4c): the three choices' stars averaged, to the half star.
+ * One, three and five on three axes give 1 to 5 in half steps.
+ */
+export function designStars(category: ProjectCategory, design: DesignChoice): number {
+  const axes = CATEGORY_AXES[category];
+  const total = axes.reduce((sum, axis) => sum + optionOf(axis, design).stars, 0);
+  return Math.round((total / axes.length) * 2) / 2;
+}

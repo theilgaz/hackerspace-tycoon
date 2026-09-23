@@ -10,7 +10,7 @@ import type {
 } from './types';
 import type { Ceremony } from '@/systems/RivalSystem';
 import type { Placement, StationPlacement } from '@/machines/layout';
-import type { Bill } from '@/utils/economy';
+import type { Bill, Ledger, LedgerKind } from '@/utils/economy';
 import { START_CASH } from '@/utils/constants';
 import { ECONOMY } from '@/utils/economy';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
@@ -48,6 +48,10 @@ export interface GameState {
   speed: number;
   paused: boolean;
   cash: number;
+  /** This month's money by where it went (§7a). Reset when the bill lands. */
+  ledger: Ledger;
+  /** The balance the month opened on, so the statement can add up. */
+  monthOpen: number;
   era: number;
   shippedCount: number;
   /** Everything that made it out of the door, newest last. */
@@ -113,8 +117,10 @@ export interface GameState {
   setPaused: (paused: boolean) => void;
   setClock: (day: number, simTime: number) => void;
   setRuntime: (runtime: RuntimeSnapshot) => void;
-  spend: (amount: number) => boolean;
-  earn: (amount: number) => void;
+  spend: (amount: number, kind?: LedgerKind) => boolean;
+  earn: (amount: number, kind?: LedgerKind) => void;
+  /** Close the month: the statement has been drawn up and a new page starts here. */
+  closeMonth: () => void;
   pushLog: (text: Text, kind?: LogEntry['kind']) => void;
 
   setBacklog: (backlog: BacklogEntry[]) => void;
@@ -168,6 +174,8 @@ export const store = createStore<GameState>((set, get) => ({
   speed: 1,
   paused: true,
   cash: START_CASH,
+  ledger: {},
+  monthOpen: START_CASH,
   era: 1,
   shippedCount: 0,
   shipped: [],
@@ -199,6 +207,8 @@ export const store = createStore<GameState>((set, get) => ({
       identity,
       difficulty,
       cash: DIFFICULTY_MAP[difficulty].startCash,
+      ledger: {},
+      monthOpen: DIFFICULTY_MAP[difficulty].startCash,
       // A new run gets a new market, not whatever was rolled when the page loaded.
       market: freshMarket(),
       started: true,
@@ -224,14 +234,14 @@ export const store = createStore<GameState>((set, get) => ({
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements, market, ladder,
+      stationPlacements, market, ladder, ledger, monthOpen,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements, market, ladder,
+      stationPlacements, market, ladder, ledger, monthOpen,
     };
   },
 
@@ -244,14 +254,16 @@ export const store = createStore<GameState>((set, get) => ({
   setClock: (day, simTime) => set({ day, simTime }),
   setRuntime: (runtime) => set({ runtime }),
 
-  spend: (amount) => {
+  spend: (amount, kind = 'other') => {
     // The overdraft is the point: an action is refused only when it would take the space
     // past the floor, not merely because the balance is thin.
     if (get().cash - amount < -ECONOMY.overdraftLimit) return false;
-    set((s) => ({ cash: s.cash - amount }));
+    set((s) => ({ cash: s.cash - amount, ledger: { ...s.ledger, [kind]: (s.ledger[kind] ?? 0) - amount } }));
     return true;
   },
-  earn: (amount) => set((s) => ({ cash: s.cash + amount })),
+  earn: (amount, kind = 'other') =>
+    set((s) => ({ cash: s.cash + amount, ledger: { ...s.ledger, [kind]: (s.ledger[kind] ?? 0) + amount } })),
+  closeMonth: () => set((s) => ({ ledger: {}, monthOpen: s.cash })),
 
   pushLog: (text, kind = 'info') => {
     const { day, simTime, log } = get();

@@ -62,6 +62,31 @@ export function membershipFor(reputation: number, era = 1): number {
   return Math.min(cap, Math.floor(reputation / ECONOMY.reputationPerMember));
 }
 
+/**
+ * Where a lira went, or came from (§7a). Every `spend` and `earn` names one, and the month's
+ * running totals are what the statement is built from — which is what lets it add up:
+ * **opening balance + income − costs = closing balance**, to the lira, every month.
+ */
+export type LedgerKind =
+  | 'work' | 'sponsor' | 'sales' | 'crewDues' | 'communityDues'
+  | 'rent' | 'power' | 'comforts'
+  | 'parts' | 'design' | 'kit' | 'filament' | 'hiring' | 'training' | 'bounties' | 'lease'
+  | 'other';
+
+/** Kinds that are money in. Anything else is a cost. */
+export const INCOME_KINDS: LedgerKind[] = ['work', 'sponsor', 'sales', 'crewDues', 'communityDues'];
+
+/** The order a statement lists them in: money in first, then what it cost to run the place,
+ *  then what was spent on purpose. */
+export const LEDGER_ORDER: LedgerKind[] = [
+  'crewDues', 'communityDues', 'work', 'sponsor', 'sales',
+  'rent', 'power', 'comforts', 'parts', 'design', 'filament', 'kit', 'hiring', 'training',
+  'bounties', 'lease', 'other',
+];
+
+/** Signed running totals for the month so far, by kind. */
+export type Ledger = Partial<Record<LedgerKind, number>>;
+
 export interface BillLine {
   /** Messages, rendered at display time: the bill is saved with the run (§11). */
   label: Text;
@@ -77,6 +102,8 @@ export interface Bill {
   total: number;
   balanceBefore: number;
   balanceAfter: number;
+  /** The balance the month opened on; `opening + total === balanceAfter`. Older bills lack it. */
+  opening?: number;
   /** Short by this much; zero when it was covered. */
   shortfall: number;
   missesInARow: number;

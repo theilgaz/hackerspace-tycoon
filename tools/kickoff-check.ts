@@ -34,8 +34,8 @@ const check = (name: string, ok: boolean, detail = '') => {
   console.log(`  ${ok ? '✓' : '✗'} ${name}${detail ? ` — ${detail}` : ''}`);
 };
 
-// Four full-timers, so shifts cannot be the reason anything waits.
-const crew = sim.members.filter((m) => m.employment === 'full-time').slice(0, 4);
+// Four of them — everybody works the same day now, so only absence can make anybody wait.
+const crew = sim.members.slice(0, 4);
 for (const m of crew) m.interest = 5;
 const plans = (sim as unknown as { plans: Map<string, { attending: boolean; arriveAt: number; leaveAt: number }> }).plans;
 sim.pitch('fpv-drone', undefined, [], { design: { cadtool: 0, material: 0, validation: 0 }, seats: 4 });

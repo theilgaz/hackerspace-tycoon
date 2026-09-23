@@ -49,21 +49,20 @@ push back against drift — they are the game's clock, not decoration.
 ### The working day (§3d)
 
 Nine to six, Monday to Friday, with **lunch from twelve to one** when the lounge finally earns
-its floor space. Two contracts:
+its floor space. **Everybody is full-time** — 8h a day, 40h a week (`WEEKLY_HOURS`).
 
-| | Hours | Span |
-|---|---|---|
-| **Full-time** | 8h/day, 40h/week | 09:00-18:00 |
-| **Part-time** | 4h/day, 20h/week | mornings 09:00-14:00 or afternoons 14:00-18:00 |
+There used to be a part-time contract (mornings or afternoons, half the hours, half the
+induction fee), and thirteen applicants had a day job that allowed nothing else. It was taken
+out because it made the kickoff (§4d) a scheduling puzzle rather than a decision: a morning
+crew never met its afternoon half, so the wizard had to warn about shift clashes, the Project
+Manager had to avoid them, and a whole rule (`canMeet`) existed to stop volunteers joining a
+crew they could never sit down with. None of that was fun, and all of it is gone.
 
-You choose the contract when you hire, and it is the decision: more hours from fewer people, or
-more people on fewer hours. Some applicants have a day job and can only take a part-time shift.
-
-Hours come from the contract now, not a dice roll. The only randomness left is whether somebody
+Hours come from the working day, not a dice roll. The only randomness left is whether somebody
 turns up at all, which is where mood and the Ghost still live. **A bounty therefore buys overtime
-rather than a better roll** — a part-timer stays on for the rest of the day, a full-timer stays
-past six. Keep that: §13's rule is that every verb has to move hours in the building, and with a
-rota the only hours left to move are the ones past the end of a shift.
+rather than a better roll** — they stay past six. Keep that: §13's rule is that every verb has
+to move hours in the building, and the only hours left to move are the ones past the end of
+the day.
 
 You are the exception. The owner is there at any hour, weekends included; the daily budget, not
 the clock, is what limits you.
@@ -199,9 +198,19 @@ Carried over from the Jobs wizard, because they were right: **it is a fixed box*
 now — three option cards a row with their effects do not fit in 680), `npm run click-check`
 asserts the size is identical on every step; **completed breadcrumbs navigate**; the crew
 step **arrives already picked** with the best matches, a proposer is locked in, and **a crew
-the player has touched is never re-suggested over**. The picker shows each person's shift
-(FT / AM / PM), and a crew with a morning and an afternoon part-timer gets a warning in the
-step itself — they are never in the building together (§4d).
+the player has touched is never re-suggested over**.
+
+**The size meter is the size picker.** Crew size used to be a segmented control in the
+corner with a coloured meter under it saying how each size would go — and the meter looked
+like the thing to press, so people pressed it and nothing happened. The meter's six cells
+are now the buttons, coloured by what each size does to quality, with the verdict ("3
+people · crowded") under them. One control, where the eye already was.
+
+**Each person shows the stars they unlock** (`genreStars`). The design step gates its better
+options on the crew's skills, so the crew step says, per person, what they would open up on
+each of the genre's three decisions — three small tiles (1 / 3 / 5) and their average as a
+star row, with the axis-by-axis breakdown in the tooltip. Somebody just back from a course
+shows it here first.
 
 ## 4d. Tables, workstations and the kickoff (`src/utils/furniture.ts`, `machines/layout.ts`)
 
@@ -232,16 +241,14 @@ assembly table.
 **Five things that were wrong first, each worth not repeating:**
 
 - **A table held from the pitch deadlocked the garage.** One crew that could never meet —
-  a morning part-timer and an afternoon one — kept the only table for the rest of the run
+  a morning part-timer and an afternoon one, back when there were part-timers — kept the only table for the rest of the run
   while every project behind it waited. **A table is now booked only by a crew who are all
   in the building**, and the booking lapses the moment one leaves. Progress is pooled on
   the project, so giving the table up costs nothing.
 - **A crew does not wait for ever** (`KICKOFF.missLimit`). On a working day when a kickoff
   went nowhere, anybody who was not in while most of the crew was gets a mark; two, and the
-  log says *the crew went ahead without them*. One rule covers the Ghost and the shift that
-  never overlaps, and it tells a story instead of stalling silently (§13's invisible-gate
-  rule). Volunteers, re-pitches and the Project Manager never sign somebody onto a kickoff
-  they could not sit in on (`canMeet`); the player still can, with the warning.
+  log says *the crew went ahead without them*. It is the Ghost's answer, and it tells a
+  story instead of stalling silently (§13's invisible-gate rule).
 - **A ghost entry in a team list became a deadlock.** A member who proposed a project was
   signed onto it while still listed on their old team. Harmless while it only inflated a
   count; fatal once a kickoff needed everybody on the list to sit down. `addToTeam` now
@@ -855,8 +862,7 @@ applicants. **Who turns up in what order is shuffled every run**: the reputation
 rungs are fixed (`LADDER`), and `shuffleLadder` deals the applicants onto them when the run
 starts, keeping the order in the save. The pace stays the difficulty's to set; the faces do
 not repeat from run to run. People can be taken on one at a time or all at once — **Take all
-on** hires everybody waiting, full-time where they can be and part-time for anybody with a
-day job, each still paying their induction fee.
+on** hires everybody waiting, each still paying their induction fee.
 
 You are named too: the start screen asks for your name as well as the space's, and it is
 what the room labels you with (`Identity.player`; left empty, you are "You").
@@ -992,10 +998,21 @@ speed, reliability — because buying kit is an investment decision, not a puzzl
 
 | | Price | Holds | Speed | Fails | From |
 |---|---|---|---|---|---|
-| A1 Mini Combo | — | 1kg | 100% | ×1.00 | you start with it |
+| A1 Mini Combo | 4,500 | 1kg | 100% | ×1.00 | you start with one |
 | P2S | 9,000 | 4kg | 135% | ×0.85 | Era 1 |
 | X1C | 19,000 | 4kg | 160% | ×0.62 | Era 2 |
 | H2S | 33,000 | 8kg | 185% | ×0.55 | Era 3 |
+
+**The starting printer is on the shelf too.** A second A1 is the cheapest way to print two
+things at once, and leaving it out made "buy a slow one" a choice the game had quietly made
+for you. Past the A1 they are cabinets that grow with the price — P2S in black, X1C in
+silver, and the H2S in space grey, a clear size up from the X1C rather than a slightly taller
+one: nearly the whole tile, and a head over everything else on the wall.
+
+**The Machines panel is a table, one row per printer**: what it is printing (with the fail
+risk on the bar's colour), calibration, filament, and three icon buttons — fill, level, sell
+— with the price in the tooltip. It was a 700-pixel card per printer with three labelled
+boxes, two of them usually empty. A queue hangs under its printer only when there is one.
 
 The shop lists **every** model including the ones the era does not allow yet, greyed with the
 era they need. A machine you cannot see is a machine you cannot plan for, and the H2S is worth
@@ -1099,34 +1116,37 @@ model's one gift to the player and the reason rent has to be the thing with teet
 
 ## 7a. The books — BUILT (`src/utils/economy.ts`)
 
-A bill lands every **30 days**, three to an awards year, and it is a real profit and loss
-rather than a demand:
+A bill lands every **30 days**, and it is a real statement of the month rather than a demand.
+**It adds up: opening balance + income − costs = where you are now, to the lira.** It opens on
+that sum as one line — `Income − Costs = On the month` — and then lists each side as its own
+group with its own total, then the balance: opened on, the month, now.
 
-| Income | |
-|---|---|
-| Work shipped | payouts and sponsor money, already banked as it arrived |
-| Crew dues | **₺2,000 a month from every person on your books** |
-| Community dues | the wider public paying to use the place, scaling with reputation |
+That needs every lira to say where it went, so **`spend(amount, kind)` and `earn(amount,
+kind)` name a `LedgerKind`** and the store keeps the month's running totals (`ledger`,
+`monthOpen`). Income is crew dues, community dues, work shipped, sponsors and anything sold;
+costs are rent, power, comforts' upkeep, parts, design budgets, filament, kit and furniture,
+joining fees, training, bounties and moving. A refund books against its own kind, so a
+purchase that bounced cancels out rather than showing twice. Anything that moved cash
+without a kind — the dev console, a save from before the ledger — is listed as **Other**
+rather than left as a hole in the sum; when Other shows up in a normal run, a call site has
+lost its kind.
 
-| Costs | |
-|---|---|
-| Rent | monthly, by era |
-| Power and consumables | metered on machine-hours actually run |
+The previous statement listed only dues, rent and power, plus the shipped work "already
+banked" — so its bottom line never matched the change in the balance, because everything
+bought during the month was missing. That is exactly the confusion it was meant to prevent.
+
+**The top bar shows the balance and nothing else.** It carried a projection of the next bill
+under it, which read as a second balance; nobody could say which of the two they had.
 
 **Nobody is paid.** The people on your books are members, not staff, and a flat ₺2,000 a
 month each is the space's backbone — which is how a real hackerspace is funded and what §1's
 volunteer model always implied. Wages existed briefly and contradicted it.
 
-**Flat, regardless of contract.** A part-timer pays the same as a full-timer, because a
-subscription is not rent on somebody's time. The contract choice stays live anyway, from the
-other side: full-time buys twice the hours for the same dues, while the **induction fee scales
-with contracted hours**, so a part-timer is half the price to admit. Those two pull against
-each other, which is the decision.
-
-**Show the shipped work on the statement even though it is already banked.** Without it the
-month reads as "dues against rent" and looks like a disaster every single time, which is both
-wrong and demoralising. Only dues minus costs moves cash at the bill; the bottom line is the
-true month.
+**The induction fee was cut from 190 to 140 a contracted hour when part-time went.** Thirteen
+applicants used to join on half the fee; charging them the full one cost a run about
+₺45,000 — the Warehouse move, to the lira — and Era 3 stopped arriving on normal at all.
+140 puts the average fee back where it was. **When a cheaper variant of a cost is removed,
+the average cost went up; check what that average was paying for.**
 
 **Dues are meant to carry the rent** — so rent is sized against them rather than against
 cash in hand: at Era 3 a full roster plus a full community brings in roughly ₺55,000 against
@@ -1480,9 +1500,32 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   only touch it a few times a day. The clock sits alone in the top-left because it is the one
   thing glanced at constantly and it changes every frame.
 - **The top bar is four groups, not eight boxes**: who you are (badge, name, lease), money,
-  reputation, and what is on. **Cash and the bill are one column** — the balance, and under
-  it what the next bill will do to it, with the dues-against-costs breakdown in its tooltip.
-  Side by side as two numbers ("Kasa", "Fatura") nobody could tell which was about which.
+  reputation, and what is on. **Money is the balance and only the balance** (§7a) — the bill
+  preview under it read as a second balance, and the statement is where a month is explained.
+- **A project has its own screen** (Projects → any row). The table is for comparing builds;
+  the detail is for reading one: who made it and what share of the whole build each of them
+  put in (`ProjectData.effort`, kept on `ShippedRecord.crew` so it survives people leaving),
+  the three design choices, and for a shipped build how the payout was reached — the brief ×
+  market × design appeal × quality × novelty, then what it cost. The Crew column is gone from
+  the table: on a shipped row it had been printing how many days the build took, under a
+  heading that said Crew.
+- **People is a skill matrix, and a cell is the training button.** A column per skill with the
+  level and five pips, so "who is our best welder" is one column read down. Pressing a level
+  sends that person on the course for the next one (tooltip: cost and hours); a cell that
+  cannot be pressed says why. It replaced a Train button that unfolded six chips under the row
+  — two clicks and a second copy of numbers the row already showed. The contract column went
+  with part-time, and the four keyholder slots sit on one line.
+- **Whoever is on a course shows on the bench**, under the builds, with a bar like a project's.
+  **The block does not exist when nobody is training** — a heading over nothing is a permanent
+  advert for a feature, not information.
+- **The bench shows one rating per build, and only the stages it goes through.** The design's
+  three choices average to one star row (`designStars`); quality lives in its tooltip and on
+  the project's screen. The stage strip drops stages a build never visits: Fabrication for
+  anything with no printed parts (software's "Build Pipeline" never ran), Simulation when it
+  was skipped at the pitch, and Iterate until a test has actually failed.
+- **The trophy room is open before the first night.** It lists what is given out, what each
+  pays in reputation and the date of the first ceremony. Locked until day 90, the awards
+  arrived as a surprise, and the categories are the reason to care about the other columns.
   It has its own `tb-*` classes on purpose: the generic `.stat` picked up a bordered card
   style for the space screen, and every top-bar figure turned into a box overnight.
 - **A panel is a shell that stays, with insides that change.** Every panel used to be rebuilt
@@ -1703,6 +1746,15 @@ is visible rather than rediscovered:
   anything. Each is a Phase 5 job, and §13's rule applies: measure it against attendance.
 
 ## 14. Development Priority
+
+**Phase 1.15 — Books that add up, and a project you can read — BUILT.**
+A ledger behind every spend, so the monthly statement is income − costs = the month and the
+balance agrees with it (§7a); the top bar shows cash only. Projects open to their own screen
+(who made it, the design, how it was paid). People is a skill matrix you train from, with
+courses shown on the bench. The crew step's size meter is the picker and shows each person's
+stars. One design rating per build, and only the stages it visits. Printers: the A1 is
+buyable, the H2S a size up, and Machines is a table. Part-time is gone. The trophy room is
+open before the first ceremony. Sponsors no longer offer ₺0 for builds with no parts.
 
 **Phase 1.14 — Crews that can, a room you can shape, a shorter year — BUILT.**
 The wizard asks for the crew before the design, and the design's better options need crew who

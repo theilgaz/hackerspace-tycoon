@@ -33,12 +33,6 @@ export type TraitKey =
   | 'nightOwl'
   | 'documenter';
 
-/** How somebody is engaged. Full-time is 8h a day, part-time a 4h shift. */
-export type Employment = 'full-time' | 'part-time';
-
-/** Which half of the day a part-timer covers. */
-export type Shift = 'morning' | 'afternoon';
-
 export interface MemberData {
   id: string;
   name: string;
@@ -53,10 +47,6 @@ export interface MemberData {
    * contract decides the hours now — and it is what gates full-time availability.
    */
   commitment: number;
-  /** Some people have a day job; they can only ever take a part-time shift. */
-  partTimeOnly?: boolean;
-  /** Which shift a part-timer prefers. */
-  prefers?: Shift;
   traits: TraitKey[];
   /** Hour-of-day window they tend to appear in. */
   window: [number, number];
@@ -109,8 +99,6 @@ export interface MemberSnapshot {
   activity: MemberActivity;
   /** Project they are on the team of, if any. One project at a time. */
   team: string | null;
-  employment: Employment;
-  shift: Shift | null;
   /** Contracted hours a week. */
   weeklyHours: number;
   interest: number;
@@ -392,6 +380,11 @@ export interface ProjectData {
   /** Work each person has put into the current stage, for the bar over their head. */
   contrib: Record<string, number>;
   /**
+   * Work each person has put into the whole build, every stage — who actually made it, for
+   * the project's detail screen. `player` is you. Older saves have none.
+   */
+  effort?: Record<string, number>;
+  /**
    * Working days each crew member was missing while the rest of the crew waited to kick
    * off. At `KICKOFF.missLimit` the crew goes ahead without them.
    */
@@ -533,6 +526,15 @@ export interface ShippedRecord {
   spent: number;
   testAttempts: number;
   failedPrints: number;
+  /**
+   * Who made it and how much of it each of them made (§4e) — shares of the whole build's
+   * work, `player` being you. Absent on records from before the detail screen.
+   */
+  crew?: { id: string; name: string; share: number }[];
+  /** The three design choices, for the rating and the detail. */
+  design?: DesignChoice;
+  /** How the payout was reached: the brief's price and each multiplier on it. */
+  pay?: { base: number; market: number; appeal: number; quality: number; novelty: number };
 }
 
 /** What the player named and badged their space. */

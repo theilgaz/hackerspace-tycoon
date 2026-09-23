@@ -118,16 +118,14 @@ function run(style: Style, seed: number) {
       if (p.stage === 'fabrication' && p.parts.some((x) => x.status === 'pending')) sim.queueAllPending(p.id);
       if (p.team.length < p.teamSize) {
         const c = sim.members
-          .filter((m) => !m.team && !m.isCoolingOff(p.id) && sim.canMeet(p, m))
+          .filter((m) => !m.team && !m.isCoolingOff(p.id))
           .sort((a, b) => b.passionMatch(p.tags) - a.passionMatch(p.tags))[0];
         if (c) sim.inviteMember(p.id, c.id);
       }
     }
     if (sim.printer.consumable < FILAMENT.lowWarning && spendable() >= FILAMENT.spoolCost) sim.buyFilament();
     for (const id of [...store.getState().applicants]) {
-      const full = sim.canHireFullTime(id);
-      if (full && spendable() >= sim.hireCost(id, 'full-time')) sim.hire(id, 'full-time');
-      else if (spendable() >= sim.hireCost(id, 'part-time')) sim.hire(id, 'part-time');
+      if (spendable() >= sim.hireCost(id)) sim.hire(id);
     }
 
     // Post at most once a day, to the room that cares most about the best build going.

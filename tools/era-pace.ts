@@ -200,7 +200,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       if (!p.partsOrdered && spendable() >= p.bomCost) sim.orderParts(p.id);
       if (p.stage === 'fabrication' && p.parts.some((x) => x.status === 'pending')) sim.queueAllPending(p.id);
       if (p.team.length < p.teamSize) {
-        const c = sim.members.filter((m) => !m.team && !m.isCoolingOff(p.id) && sim.canMeet(p, m)).sort((a, b) => b.passionMatch(p.tags) - a.passionMatch(p.tags))[0];
+        const c = sim.members.filter((m) => !m.team && !m.isCoolingOff(p.id)).sort((a, b) => b.passionMatch(p.tags) - a.passionMatch(p.tags))[0];
         if (c) sim.inviteMember(p.id, c.id);
       }
     }
@@ -231,16 +231,10 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     }
     // Take on anybody who is interested and affordable — the roster is the constraint.
     for (const id of [...store.getState().applicants]) {
-      // Take the biggest contract that is comfortably affordable.
-      const full = sim.canHireFullTime(id);
       // Nobody is paid and every member pays dues, so taking somebody on *improves* the
       // month from here on. All that is left to ask is whether the induction fee is
       // affordable today — hence no wage check, which is the point of the volunteer model.
-      if (full && spendable() >= sim.hireCost(id, 'full-time')) {
-        sim.hire(id, 'full-time');
-      } else if (spendable() >= sim.hireCost(id, 'part-time')) {
-        sim.hire(id, 'part-time');
-      }
+      if (spendable() >= sim.hireCost(id)) sim.hire(id);
     }
     if (sim.day > lastPostDay && sim.player.hoursLeft >= VERB_HOURS.post + 2) {
       const target = [...sim.projects].filter((p) => !p.shipped).sort((a, b) => merit(b) - merit(a))[0];

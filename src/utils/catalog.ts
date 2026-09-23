@@ -104,7 +104,7 @@ const CATALOG_DATA: Draft[] = [
     tier: 'large',
     teamSize: 4,
     blurb: 'Six weeks of somebody else\'s business logic. Pays for an entire year of filament.',
-    work: { concept: 38, cad: 112, simulation: 63, assembly: 175, iterate: 54, release: 52 },
+    work: { concept: 38, cad: 150, simulation: 70, assembly: 240, iterate: 54, release: 52 },
     parts: [],
     bomCost: 1200,
     leadDays: 3,
@@ -721,7 +721,7 @@ const CATALOG_DATA: Draft[] = [
     tier: 'large',
     teamSize: 5,
     blurb: 'Dim until somebody walks past. The council wants the power bill, the street wants the dark sky.',
-    work: { concept: 30, cad: 92, simulation: 58, assembly: 96, iterate: 44, release: 62 },
+    work: { concept: 30, cad: 110, simulation: 58, assembly: 120, iterate: 44, release: 62 },
     parts: [
       fdm('Controller Case', 7, 130),
       fdm('Sensor Head', 5, 90),

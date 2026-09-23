@@ -1,8 +1,7 @@
 import { store } from '@/game/store';
-import { caseLocale, msg, t, type Message, type MessageKey } from '@/i18n';
+import { caseLocale, msg, t, type Message, type MessageKey, type Text } from '@/i18n';
 import type {
   BacklogEntry,
-  Employment,
   MemberData,
   RivalState,
   ScoreRow,
@@ -97,7 +96,7 @@ import {
   type EraDef,
   isLunch,
   isWorkingDay,
-  weeklyHoursFor,
+  WEEKLY_HOURS,
 } from '@/utils/constants';
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
 import { ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
@@ -105,7 +104,17 @@ import { RIVAL_MAP, RISING_FLOOR } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
 import type { SaveFile } from './SaveGame';
-import { ECONOMY, membershipFor, rentFor, type Bill, type BillLine } from '@/utils/economy';
+import {
+  ECONOMY,
+  INCOME_KINDS,
+  LEDGER_ORDER,
+  membershipFor,
+  rentFor,
+  type Bill,
+  type BillLine,
+  type Ledger,
+  type LedgerKind,
+} from '@/utils/economy';
 import { amenityDef, comfortsOf, NO_COMFORTS, type Comforts } from '@/utils/amenities';
 import {
   decayHype,
@@ -385,7 +394,7 @@ export class Simulation {
       this.log(msg('build.log.noFloor', { item: def.name }), 'warn');
       return false;
     }
-    if (!state.spend(def.price)) {
+    if (!state.spend(def.price, 'kit')) {
       this.log(msg('log.amenity.cantAfford', { item: def.name }), 'bad');
       return false;
     }
@@ -419,13 +428,13 @@ export class Simulation {
       this.log(msg('build.log.noRoom', { item: def.name }), 'warn');
       return false;
     }
-    if (!state.spend(def.price)) {
+    if (!state.spend(def.price, 'kit')) {
       this.log(msg('log.amenity.cantAfford', { item: def.name }), 'bad');
       return false;
     }
     const station = installFurniture(def.type, `${def.id}-${uid()}`, def.name, def.span);
     if (!station) {
-      state.earn(def.price);
+      state.earn(def.price, 'kit');
       this.log(msg('build.log.noRoom', { item: def.name }), 'warn');
       return false;
     }
@@ -505,20 +514,14 @@ export class Simulation {
       }
 
       const moodFactor = 0.85 + m.data.mood / 400;
-      const base =
-        m.employment === 'full-time' ? WORKDAY.attendanceBase : WORKDAY.partTimeAttendance;
+      const base = WORKDAY.attendanceBase;
       const attending = rng.chance(Math.min(0.99, Math.max(0.3, base * m.ghostFactor * moodFactor)));
 
-      // A bounty buys overtime rather than a better roll: a part-timer stays on for the
-      // rest of the day, a full-timer stays past six.
+      // A bounty buys overtime rather than a better roll: they stay past six.
       const tempted = bountied.some((p) => m.passionMatch(p.tags) >= BOUNTY.temptThreshold);
       const span = m.span;
       const overtime = tempted && rng.chance(BOUNTY.overtimeChance);
-      const leaveAt = overtime
-        ? m.employment === 'part-time'
-          ? WORKDAY.end
-          : WORKDAY.overtimeEnd
-        : span.end;
+      const leaveAt = overtime ? WORKDAY.overtimeEnd : span.end;
 
       this.plans.set(m.id, { attending, arriveAt: span.start, leaveAt });
       m.leaveAt = leaveAt;
@@ -566,8 +569,11 @@ export class Simulation {
     }
 
     // A sponsor wants something specific, with money attached and a deadline.
-    if (rng.chance(BACKLOG.sponsorChance * (1 + this.pressure * (HYPE.sponsorSpeedUp - 1)))) {
-      const def = rng.pick(options);
+    // Only builds with a bill of materials: sponsor money is sized against the parts, and a
+    // sponsor offering ₺0 for a cable tidy is a line in the log that reads as a bug.
+    const sponsorable = options.filter((d) => d.bomCost > 0);
+    if (sponsorable.length && rng.chance(BACKLOG.sponsorChance * (1 + this.pressure * (HYPE.sponsorSpeedUp - 1)))) {
+      const def = rng.pick(sponsorable);
       const [lo, hi] = BACKLOG.sponsorCashRatio;
       const cash = Math.round((def.bomCost * rng.range(lo, hi)) / 100) * 100;
       const [dlo, dhi] = BACKLOG.sponsorDeadlineDays;
@@ -695,8 +701,11 @@ export class Simulation {
         const rate = m.workRate(skill, project.tags) * factor * this.comforts.focus;
         total += rate * dt;
         rateSum += rate;
-        // Each person's own share of the stage, for the bar over their head.
+        // Each person's own share of the stage, for the bar over their head — and of the
+        // whole build, for the record of who made it.
         project.contrib[m.id] = (project.contrib[m.id] ?? 0) + rate * dt;
+        const effort = (project.effort ??= {});
+        effort[m.id] = (effort[m.id] ?? 0) + rate * dt;
         const level = skill ? m.data.skills[skill] : 2;
         craftSum += (level / 5) * rate;
       });
@@ -775,8 +784,6 @@ export class Simulation {
       let best: { project: ProjectData; appetite: number } | null = null;
       for (const project of this.joinableProjects()) {
         if (m.isCoolingOff(project.id)) continue;
-        // Nobody volunteers for a kickoff they could never sit in on.
-        if (!this.canMeet(project, m)) continue;
         const stage = STAGE_MAP[project.stage];
         const match = m.passionMatch(project.tags);
         const bounty = project.bounties.includes(project.stage);
@@ -829,8 +836,7 @@ export class Simulation {
   /**
    * Sit down at the project's table for the kickoff (§4d). **Nothing is planned until the
    * whole crew is sitting there at once**, so a kickoff is where attendance bites first: a
-   * morning part-timer and an afternoon part-timer never overlap at all, and a crew of ten
-   * all turning up on the same day is its own small miracle. Returns false when there is no
+   * crew of ten all turning up on the same day is its own small miracle. Returns false when there is no
    * table yet, so the caller lets them do something useful instead of standing about.
    */
   private attendKickoff(who: MemberEntity, project: ProjectData): boolean {
@@ -959,7 +965,7 @@ export class Simulation {
    * Book tables for kickoffs (§4d). **A table goes only to a crew that is all in the
    * building**, and the booking lapses the moment one of them leaves. The first version
    * held a table from the pitch until the kickoff was over, and one crew that could never
-   * meet — a morning part-timer and an afternoon one — kept the garage's only table for the
+   * meet — a Ghost on the crew — kept the garage's only table for the
    * rest of the run while every project behind it waited. Progress is pooled on the
    * project, so giving the table up costs nothing but the seat.
    */
@@ -1012,9 +1018,8 @@ export class Simulation {
   /**
    * **A crew does not wait for ever.** On a working day when a kickoff went nowhere, anybody
    * who was not in while most of the crew was gets a mark against them; two and the crew
-   * goes ahead without them. One rule covers the Ghost who never comes in and the morning
-   * part-timer who never overlaps an afternoon crew — both used to stop a project dead, and
-   * a stall the player cannot see the cause of reads as a bug (§13).
+   * goes ahead without them. That is the Ghost's answer: somebody who never comes in used to
+   * stop a project dead, and a stall the player cannot see the cause of reads as a bug (§13).
    */
   private goAheadWithout() {
     if (!isWorkingDay(this.day)) return;
@@ -1040,21 +1045,6 @@ export class Simulation {
   }
 
   /**
-   * Could this person ever be at the table with the rest of this crew? A morning part-timer
-   * and an afternoon one are never in the building together, so on a project that has not
-   * kicked off yet one of them is a guaranteed stall. Always true once the planning is done.
-   */
-  canMeet(project: ProjectData, member: MemberEntity): boolean {
-    if (project.kickedOff) return true;
-    const overlap = (a: MemberEntity, b: MemberEntity) =>
-      a.employment === 'full-time' || b.employment === 'full-time' || a.shift === b.shift;
-    return project.team.every((id) => {
-      const other = this.member(id);
-      return !other || other.id === member.id || overlap(other, member);
-    });
-  }
-
-  /**
    * Put somebody on a course at the learning station (§4c): one skill, one level. It is
    * paid for now and takes hours at the station — during which they are on nobody's crew,
    * which is the real price of it.
@@ -1073,7 +1063,7 @@ export class Simulation {
     const level = member.data.skills[skill];
     if (level >= TRAIN.maxLevel) return false;
     const cost = this.trainCost(memberId, skill);
-    if (!store.getState().spend(cost)) {
+    if (!store.getState().spend(cost, 'training')) {
       this.log(msg('log.amenity.cantAfford', { item: member.name }), 'bad');
       return false;
     }
@@ -1147,7 +1137,7 @@ export class Simulation {
     } else {
       store.getState().sellAmenity(id);
     }
-    store.getState().earn(value);
+    store.getState().earn(value, 'sales');
     this.log(msg('build.log.sold', { item: name, value }), 'info');
     this.publish();
     return true;
@@ -1618,7 +1608,7 @@ export class Simulation {
     const appeal = project.appeal ?? 1;
     const payout = Math.round(def.payout * novelty * demand * appeal * qualityPay(project.quality));
     if (payout > 0) {
-      store.getState().earn(payout);
+      store.getState().earn(payout, 'work');
       this.incomeThisMonth += payout;
       this.log(
         built
@@ -1652,11 +1642,31 @@ export class Simulation {
       spent: Math.round(project.spent),
       testAttempts: project.testAttempts,
       failedPrints: project.parts.reduce((sum, part) => sum + part.attempts, 0),
+      crew: this.crewShares(project),
+      design: { ...project.design },
+      pay: { base: def.payout, market: demand, appeal, quality: qualityPay(project.quality), novelty },
     });
     const after = store.getState().era;
     if (after > before) {
       this.log(msg('log.eraUp', { era: eraDef(after).name }), 'good');
     }
+  }
+
+  /**
+   * Who made a build, largest share first. Everybody still on the crew is listed even at
+   * nothing — being on the team and not turning up is part of the story too.
+   */
+  crewShares(project: ProjectData): { id: string; name: string; share: number }[] {
+    const effort = { ...(project.effort ?? {}) };
+    for (const id of project.team) effort[id] ??= 0;
+    const total = Object.values(effort).reduce((sum, v) => sum + v, 0);
+    const nameOf = (id: string) =>
+      id === this.player.id
+        ? (store.getState().identity?.player || t('ui.space.you'))
+        : (this.member(id)?.name ?? APPLICANTS.find((a) => a.id === id)?.name ?? ROSTER.find((r) => r.id === id)?.name ?? id);
+    return Object.entries(effort)
+      .map(([id, work]) => ({ id, name: nameOf(id), share: total > 0 ? work / total : 0 }))
+      .sort((a, b) => b.share - a.share);
   }
 
   /** A printer's physical character — capacity, speed, how often it lets you down. */
@@ -1671,7 +1681,7 @@ export class Simulation {
     if (!freeSlots()) return [];
     // Everything you could ever own, including what the era does not allow yet — a machine
     // you cannot see is a machine you cannot plan for, and the H2S is worth wanting.
-    return PRINTERS.filter((m) => m.price > 0);
+    return PRINTERS;
   }
 
   /**
@@ -1686,7 +1696,7 @@ export class Simulation {
       this.log(msg('log.printer.needsEra', { model: model.name }), 'warn');
       return false;
     }
-    if (!store.getState().spend(model.price)) {
+    if (!store.getState().spend(model.price, 'kit')) {
       this.log(msg('log.printer.cantAfford', { model: model.name }), 'bad');
       return false;
     }
@@ -1720,7 +1730,7 @@ export class Simulation {
   signLease(): boolean {
     const next = this.nextLease();
     if (!next || !next.ready) return false;
-    if (!store.getState().spend(next.def.moveCost)) {
+    if (!store.getState().spend(next.def.moveCost, 'lease')) {
       this.log(msg('log.lease.cantAfford', { space: next.def.name }), 'bad');
       return false;
     }
@@ -1822,7 +1832,7 @@ export class Simulation {
     this.machines.splice(index, 1);
     removeStation(machine.id);
     if (!this.machines.some((m) => m.type === 'fdm')) store.getState().disownMachine('fdm');
-    store.getState().earn(value);
+    store.getState().earn(value, 'sales');
     this.log(
       msg(this.machines.some((m) => m.type === 'fdm') ? 'log.machine.sold' : 'log.machine.soldLast', {
         machine: machine.label,
@@ -1877,8 +1887,6 @@ export class Simulation {
       installedStations: installedStations(),
       members: this.members.map((m) => ({
         id: m.id,
-        employment: m.employment,
-        shift: m.shift,
         role: m.role,
         team: m.team,
         interest: m.interest,
@@ -1963,8 +1971,6 @@ export class Simulation {
       const source = everyone.find((person) => person.id === saved.id);
       if (!source) continue;
       const member = this.joinMember(source);
-      member.employment = saved.employment;
-      member.shift = saved.shift;
       member.role = saved.role ?? null;
       member.team = saved.team;
       member.interest = saved.interest;
@@ -2107,12 +2113,7 @@ export class Simulation {
     const extra = [...APPLICANTS]
       .sort((a, b) => (a.repRequired ?? 0) - (b.repRequired ?? 0))
       .slice(0, Math.max(0, wanted - ROSTER.length));
-    this.members = [...ROSTER, ...extra].map((data) => {
-      const member = new MemberEntity({ ...data }, DOOR);
-      member.employment = data.partTimeOnly ? 'part-time' : 'full-time';
-      member.shift = member.employment === 'part-time' ? data.prefers ?? 'morning' : null;
-      return member;
-    });
+    this.members = [...ROSTER, ...extra].map((data) => new MemberEntity({ ...data }, DOOR));
     this.plans.clear();
     for (const m of this.members) {
       this.plans.set(m.id, { attending: false, arriveAt: 0, leaveAt: 0 });
@@ -2217,54 +2218,55 @@ export class Simulation {
 
     const crewDues = this.members.length * ECONOMY.crewDues;
     const communityDues = this.membership * ECONOMY.duesPerMember;
-    const dues = crewDues + communityDues;
-    // Project money is already banked; it is on the statement so the month reads as a real
-    // profit and loss rather than "dues against rent", which always looks like a disaster.
-    const income: BillLine[] = [
-      {
-        label: msg('bill.work'),
-        detail: msg('bill.workDetail'),
-        amount: Math.round(this.incomeThisMonth),
-      },
-      {
-        label: msg('bill.crewDues'),
-        detail: msg('bill.crewDuesDetail', { count: this.members.length, each: ECONOMY.crewDues }),
-        amount: crewDues,
-      },
-      {
-        label: msg('bill.communityDues'),
-        detail: msg('bill.communityDuesDetail', { count: this.membership, each: ECONOMY.duesPerMember }),
-        amount: communityDues,
-      },
-    ];
-
     const rent = rentFor(state.era);
     const utilities = Math.round(this.machineHoursThisMonth * ECONOMY.utilityPerMachineHour);
     const upkeep = this.comforts.upkeep;
-    const costs: BillLine[] = [
-      { label: msg('bill.rent'), detail: eraDef(state.era).name, amount: -rent },
-      {
-        label: msg('bill.power'),
-        detail: msg('bill.powerDetail', { hours: Math.round(this.machineHoursThisMonth) }),
-        amount: -utilities,
-      },
-    ];
-    // Only listed once there is something to list: a zero line on every statement for a
-    // shop the player has not opened yet is noise.
-    if (upkeep > 0) {
-      costs.push({
-        label: msg('bill.comforts'),
-        detail: msg('bill.comfortsDetail', { count: state.amenities.length }),
-        amount: -upkeep,
-      });
-    }
 
-    // The statement's bottom line is the true month; only dues and costs move cash now.
-    const total = Math.round(this.incomeThisMonth) + dues - rent - utilities - upkeep;
-    const cashDelta = dues - rent - utilities - upkeep;
+    // Only dues and the running costs move cash at the bill; everything else was banked or
+    // paid as it happened, and the ledger kept count of it.
     const balanceBefore = state.cash;
-    const shortfall = Math.max(0, -(balanceBefore + cashDelta));
-    const balanceAfter = balanceBefore + cashDelta;
+    const balanceAfter = balanceBefore + crewDues + communityDues - rent - utilities - upkeep;
+    const shortfall = Math.max(0, -balanceAfter);
+    const opening = state.monthOpen;
+    const ledger: Ledger = {
+      ...state.ledger,
+      crewDues,
+      communityDues,
+      rent: -rent,
+      power: -utilities,
+      comforts: -upkeep,
+    };
+    // **The statement has to add up** (§7a): opening + income − costs = closing, to the lira.
+    // Whatever moved cash without naming itself — the dev console, a save from before the
+    // ledger — is listed as "other" rather than left as a hole in the sum.
+    const named = Object.values(ledger).reduce<number>((sum, v) => sum + (v ?? 0), 0);
+    const gap = Math.round(balanceAfter - opening - named);
+    if (gap) ledger.other = (ledger.other ?? 0) + gap;
+
+    const detail: Partial<Record<LedgerKind, Text>> = {
+      crewDues: msg('bill.crewDuesDetail', { count: this.members.length, each: ECONOMY.crewDues }),
+      communityDues: msg('bill.communityDuesDetail', { count: this.membership, each: ECONOMY.duesPerMember }),
+      rent: eraDef(state.era).name,
+      power: msg('bill.powerDetail', { hours: Math.round(this.machineHoursThisMonth) }),
+      comforts: msg('bill.comfortsDetail', { count: state.amenities.length }),
+    };
+    // Rent and dues are listed even at zero — they are the month's fixed shape. Anything
+    // else only when it happened, so a quiet month is a short statement.
+    const always: LedgerKind[] = ['crewDues', 'rent'];
+    const income: BillLine[] = [];
+    const costs: BillLine[] = [];
+    for (const kind of LEDGER_ORDER) {
+      const amount = Math.round(ledger[kind] ?? 0);
+      if (!amount && !always.includes(kind)) continue;
+      const line: BillLine = {
+        label: msg(`bill.${kind}` as MessageKey),
+        detail: detail[kind] ?? msg(`bill.${kind}Detail` as MessageKey),
+        amount,
+      };
+      const isIncome = kind === 'other' ? amount > 0 : INCOME_KINDS.includes(kind);
+      (isIncome ? income : costs).push(line);
+    }
+    const total = balanceAfter - opening;
     const missesInARow = shortfall > 0 ? state.missedBills + 1 : 0;
     // Eviction is the overdraft clock's job now (§7a), not this line's: a bill you cannot
     // cover puts you under, and staying under is what ends the run.
@@ -2279,11 +2281,13 @@ export class Simulation {
       total,
       balanceBefore,
       balanceAfter,
+      opening,
       shortfall,
       missesInARow,
       evicted,
     };
     store.getState().setBill(bill);
+    store.getState().closeMonth();
     this.machineHoursThisMonth = 0;
     this.incomeThisMonth = 0;
 
@@ -2586,7 +2590,7 @@ export class Simulation {
           const dry = this.machines.find(
             (m) => m.consumableMax > 0 && m.consumable < FILAMENT.lowWarning,
           );
-          if (dry && store.getState().spend(this.refillCost(dry.id))) {
+          if (dry && store.getState().spend(this.refillCost(dry.id), 'filament')) {
             dry.refill(dry.consumableMax);
             this.log(msg('log.role.loaded', { member: member.name, machine: dry.label }), 'good');
           }
@@ -2639,18 +2643,11 @@ export class Simulation {
                 (d) => canBuild(d, state.ownedMachines) && !this.projects.some((p) => p.defId === d.id),
               );
           if (!def || state.cash - def.bomCost < -ECONOMY.overdraftLimit) break;
-          // Best matches first, but never a crew whose shifts cannot all be in the room at
-          // once — the manager plans a kickoff that can actually happen (§4d).
-          const crew: MemberEntity[] = [];
-          for (const m of this.members
+          // Best matches first, as many as the brief and the biggest table allow.
+          const crew = this.members
             .filter((x) => !x.team && !x.training)
-            .sort((a, b) => b.passionMatch(def.tags) - a.passionMatch(def.tags))) {
-            if (crew.length >= Math.min(def.teamSize, this.maxTableSeats())) break;
-            const clash = crew.some(
-              (c) => c.employment === 'part-time' && m.employment === 'part-time' && c.shift !== m.shift,
-            );
-            if (!clash) crew.push(m);
-          }
+            .sort((a, b) => b.passionMatch(def.tags) - a.passionMatch(def.tags))
+            .slice(0, Math.min(def.teamSize, this.maxTableSeats()));
           if (this.pitch(def.id, offer?.id, crew.map((m) => m.id))) {
             this.log(msg('log.role.started', { member: member.name, item: def.name }), 'good');
           }
@@ -2675,15 +2672,9 @@ export class Simulation {
   }
 
   /** What a contract costs to set up: induction, a key, a shelf, a tool briefing. */
-  hireCost(id: string, employment: Employment = 'full-time'): number {
-    const data = APPLICANTS.find((a) => a.id === id);
-    if (!data) return 0;
-    if (data.partTimeOnly && employment === 'full-time') return 0;
-    return Math.round(weeklyHoursFor(employment) * RECRUIT.hireCostPerWeeklyHour);
-  }
-
-  canHireFullTime(id: string): boolean {
-    return !APPLICANTS.find((a) => a.id === id)?.partTimeOnly;
+  hireCost(id: string): number {
+    if (!APPLICANTS.some((a) => a.id === id)) return 0;
+    return Math.round(WEEKLY_HOURS * RECRUIT.hireCostPerWeeklyHour);
   }
 
   /** Turn an applicant down. Free, and final: they do not come back round. */
@@ -2699,34 +2690,19 @@ export class Simulation {
   }
 
   /** Turn an applicant into a member on a contract. The one place the roster grows. */
-  hire(id: string, employment: Employment = 'full-time'): boolean {
+  hire(id: string): boolean {
     const data = APPLICANTS.find((a) => a.id === id);
     if (!data || this.members.some((m) => m.id === id)) return false;
     if (!store.getState().applicants.includes(id)) return false;
-    if (data.partTimeOnly && employment === 'full-time') {
-      this.log(msg('log.applicant.dayJob', { name: data.name }), 'warn');
-      return false;
-    }
-    const cost = this.hireCost(id, employment);
+    const cost = this.hireCost(id);
     if (!this.chargeHours('hire')) return false;
-    if (!store.getState().spend(cost)) {
+    if (!store.getState().spend(cost, 'hiring')) {
       this.log(msg('log.applicant.cantAfford', { name: data.name }), 'bad');
       return false;
     }
     store.getState().closeApplicant(id);
-    const member = this.joinMember(data);
-    member.employment = employment;
-    member.shift = employment === 'part-time' ? data.prefers ?? 'morning' : null;
-    this.log(
-      employment === 'full-time'
-        ? msg('log.hired.full', { name: data.name, hours: weeklyHoursFor(employment) })
-        : msg('log.hired.part', {
-            name: data.name,
-            shift: member.shift ?? 'morning',
-            hours: weeklyHoursFor(employment),
-          }),
-      'good',
-    );
+    this.joinMember(data);
+    this.log(msg('log.hired.full', { name: data.name, hours: WEEKLY_HOURS }), 'good');
     return true;
   }
 
@@ -2786,7 +2762,7 @@ export class Simulation {
     }
     if (!this.chargeHours('pitch')) return false;
     // Licences and tools are paid there and then, like the parts.
-    if (summary.tooling > 0 && !state.spend(summary.tooling)) {
+    if (summary.tooling > 0 && !state.spend(summary.tooling, 'design')) {
       this.log(msg('build.log.licencesOut', { item: def.name }), 'bad');
       return false;
     }
@@ -2806,7 +2782,7 @@ export class Simulation {
     if (offer) {
       store.getState().removeOffer(offer.id);
       if (offer.sponsorCash) {
-        store.getState().earn(offer.sponsorCash);
+        store.getState().earn(offer.sponsorCash, 'sponsor');
         this.incomeThisMonth += offer.sponsorCash;
         this.log(msg('log.pitch.sponsorPaid', { item: def.name, cash: offer.sponsorCash }), 'good');
       }
@@ -2865,7 +2841,6 @@ export class Simulation {
     for (const m of this.members) {
       if (m.team || !m.present || project.team.length >= project.teamSize) continue;
       if (m.isCoolingOff(projectId)) continue;
-      if (!this.canMeet(project, m)) continue;
       const match = m.passionMatch(project.tags) + DRIFT.repitchBonus;
       if (match * (0.45 + stage.appeal * 0.55) >= DRIFT.signupThreshold && rng.chance(0.6)) {
         this.addToTeam(project, m);
@@ -2892,7 +2867,7 @@ export class Simulation {
     if (!project || project.bounties.includes(project.stage)) return false;
     const cost = this.bountyCost(projectId);
     if (!this.chargeHours('bounty')) return false;
-    if (!store.getState().spend(cost)) {
+    if (!store.getState().spend(cost, 'bounties')) {
       this.log(msg('log.bounty.cantAfford'), 'bad');
       return false;
     }
@@ -2917,7 +2892,7 @@ export class Simulation {
     if (project.partsOrdered) return true;
     // No separate affordability test: `spend` refuses only below the overdraft floor, and
     // a project whose parts were never ordered is a project that can never be assembled.
-    if (!store.getState().spend(project.bomCost)) return false;
+    if (!store.getState().spend(project.bomCost, 'parts')) return false;
     project.spent += project.bomCost;
     project.partsOrdered = true;
     project.partsArriveAt = this.totalHours + project.leadDays * TIME.hoursPerDay;
@@ -2952,7 +2927,7 @@ export class Simulation {
     if (remaining <= 0) return false;
     const cost = expediteCost(project, this.totalHours);
     if (!this.chargeHours('expedite')) return false;
-    if (!store.getState().spend(cost)) {
+    if (!store.getState().spend(cost, 'parts')) {
       this.log(msg('log.parts.expediteCantAfford'), 'bad');
       return false;
     }
@@ -3032,7 +3007,7 @@ export class Simulation {
     const cost = this.refillCost(machine.id);
     if (cost <= 0) return false;
     if (!this.chargeHours('filament')) return false;
-    if (!store.getState().spend(cost)) {
+    if (!store.getState().spend(cost, 'filament')) {
       this.log(msg('log.filament.cantAfford', { machine: machine.label }), 'bad');
       return false;
     }

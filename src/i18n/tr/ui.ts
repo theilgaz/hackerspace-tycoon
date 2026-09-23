@@ -111,8 +111,6 @@ export const ui: typeof en = {
     'Katıldığın her ödül gecesi, kayıplar dahil. Seni hep geçen mekânı görmek için satırı soldan sağa oku.',
   'ui.rank.foot.table':
     'Tüm zamanların itibarına göre sıralı. Ödüller ise geçen yıla göre verilir, bu başka bir soru — burada öndeyken bile sessiz bir yıl sana kaybettirir.',
-  'ui.trophy.none':
-    'Henüz ödül gecesi olmadı — ilki 90. günde. Her kategori geçen yıla göre değerlendirilir, yani her zaman oynanacak bir ödül vardır.',
   'ui.trophy.scoped': (p) => `${p.nights} gecenin ${p.won} tanesi`,
   'ui.trophy.summary': (p) => `${p.nights} gecede ${p.won} kupa`,
   'ui.trophy.summaryRep': (p) => `${p.nights} gecede ${p.won} kupa, değeri ${num(p.reputation)} itibar`,
@@ -199,18 +197,11 @@ export const ui: typeof en = {
   // --- People -----------------------------------------------------------------------
   'ui.people.title': 'Ekip',
   'ui.people.nothingAllocated': 'görev yok',
-  'ui.people.perWeek': (p) => `haftada ${p.hours} saat`,
-  'ui.people.aboutPerWeek': (p) => `haftada ~${p.hours} saat`,
-  'ui.people.mornings': 'sabahları',
-  'ui.people.afternoons': 'öğleden sonraları',
-  'ui.people.fullTime': 'Tam zamanlı',
-  'ui.people.partTime': 'Yarı zamanlı',
   'ui.people.letGoHint': (p) => `${p.name} ayrılsın — mekân ayda ${money(p.dues)} aidat kaybeder`,
   'ui.people.hireHint': (p) => `haftada ${p.hours} saat · sonra ayda ${money(p.dues)} aidat öder`,
   'ui.people.noHours': (p) =>
     `Bugün saatin kalmadı — ${p.name} için mekânı gezdirmek senden ${p.hours} alır. Yarın.`,
   'ui.people.pastLimit': (p) => `Eksi bakiye sınırını ${money(p.amount)} aşıyor.`,
-  'ui.people.dayJob': 'gündüz başka işte, sadece yarı zamanlı',
   'ui.people.pass': 'Geç',
   'ui.people.passHint': (p) => `${p.name} reddedilsin. Bedava ama bir daha sormaz.`,
   'ui.people.tab.all': 'Tümü',
@@ -226,8 +217,6 @@ export const ui: typeof en = {
   'ui.people.review': 'Adaylara bak',
   'ui.people.col.person': 'Kişi',
   'ui.people.col.doing': 'Ne yapıyor',
-  'ui.people.col.contract': 'Sözleşme',
-  'ui.people.col.goodAt': 'İyi olduğu',
   'ui.people.col.trait': 'Özellik',
   'ui.people.empty': 'Burada kimse yok. Bir şey teslim et, adın duyulsun.',
   'ui.people.foot.idle': (p) => `${p.n} kişi boşta`,

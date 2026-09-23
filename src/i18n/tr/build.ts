@@ -32,17 +32,16 @@ export const build: typeof en = {
   'build.days': (p) => `${num(p.days)} gün`,
   'build.stars': (p) => `5 üzerinden ${num(p.value)}`,
 
-  'build.top.moneyHint': (p) =>
-    `${num(p.days)} gün sonra fatura: aidatlar +${money(p.income)}, kira ve işletme −${money(p.costs)}. ` +
-    `Proje ödemeleri, proje teslim edildiği gün kasaya girer.`,
-  'build.top.atBill': (p) => `faturada · ${num(p.days)} gün`,
+  'build.top.cashHint': (p) => `Kasadaki para. Hesaplar ${num(p.days)} gün sonra kapanıyor — aidat girer, kira çıkar.`,
+  'build.bill.income': 'Gelir',
+  'build.bill.costs': 'Gider',
+  'build.bill.opened': 'Ay başı',
+  'build.bill.now': 'Şimdi',
   'build.top.projects': (p) => `${num(p.count)} proje`,
   'build.top.busy': (p) => `${num(p.used)}/${num(p.total)} meşgul`,
   'build.top.shipped': (p) => `${num(p.count)} teslim`,
 
   'build.people.hireAll': (p) => `${num(p.count)} kişinin hepsini al · ${money(p.cost)}`,
-  'build.people.hireAllHint': 'Olabilen herkes tam zamanlı, günlük işi olanlar yarı zamanlı.',
-
   'build.skill.cad': 'CAD',
   'build.skill.electronics': 'elektronik',
   'build.skill.machining': 'talaşlı imalat',
@@ -61,8 +60,6 @@ export const build: typeof en = {
   'build.np.crewBest': (p) => `ekip ${p.skill}: ${num(p.level)}`,
   'build.np.crewBestHint': 'Seçtiğin ekipteki en iyi seviye. Üç yıldız için 2, beş yıldız için 4 gerekir.',
 
-  'build.people.train': 'Eğit',
-  'build.people.trainHint': 'Bir becerinin bir seviyesi için Öğrenme İstasyonuna gönder',
   'build.people.onCourse': (p) => `eğitimde: ${p.skill} · ${p.pct}`,
   'build.people.noStation': 'Önce bir Öğrenme İstasyonu al.',
   'build.people.onCrew': 'Bir ekipte — önce ekipten çıkar.',
@@ -150,23 +147,11 @@ export const build: typeof en = {
   'build.np.ask': (p) => `${num(p.seats)} kişiden ${num(p.picked)} kişiye sor`,
   'build.np.canSayNo': 'yine de hayır diyebilirler',
   'build.np.proposerLocked': 'Fikir onun — proje başlar başlamaz katılır',
-  'build.np.match': (p) => `${p.genre} uyumu ${p.match} · ${p.shift}`,
   'build.np.notIn': 'bugün yok',
   'build.np.everyoneBusy':
     'Herkes bir şeyle meşgul. Yine de başlatıp ekibini sonra tezgâhtan kurabilirsin — ya da ' +
     'kendin katılırsın.',
-  'build.np.clash': (p) =>
-    `${p.names} hiçbir zaman aynı anda burada olmuyor, yani ikisiyle birlikte açılış toplantısı ` +
-    `yapılamaz. Bir ödül, yarı zamanlıyı günün geri kalanında tutar — ya da birini ekipten çıkar.`,
-  'build.np.clashNames': (p) => `${p.mornings} (sabahları) ile ${p.afternoons} (öğleden sonraları)`,
   'build.np.largeHint': (p) => `Beş ve on kişilik ekipler için ${p.table} gerekir. ${ek(p.build, 'loc')} bulunur.`,
-
-  'build.shift.ftShort': 'TZ',
-  'build.shift.amShort': 'ÖÖ',
-  'build.shift.pmShort': 'ÖS',
-  'build.shift.ft': 'tam zamanlı, 9-18',
-  'build.shift.am': 'sabahları',
-  'build.shift.pm': 'öğleden sonraları',
 
   'build.review.quality': 'Kalite',
   'build.review.qualityHint': 'ekibin ustalığı + tasarım + ekip büyüklüğü',
@@ -209,7 +194,6 @@ export const build: typeof en = {
 
   // --- The bench -------------------------------------------------------------
   'build.bench.design': 'tasarım',
-  'build.kick.neverOverlap': 'ekip hiç denk gelmiyor',
   'build.kick.notIn': (p) => `açılış: ${p.names} burada değil`,
   'build.kick.noTable': 'açılış: boş masa yok',
   'build.kick.at': (p) => `açılış ${ek(p.table, 'loc')}`,
@@ -281,4 +265,50 @@ export const build: typeof en = {
   'build.note.kickoff': (p) => `${p.project}: açılış toplantısı`,
   'build.note.waitingFor': (p) => `${p.project}: ${ek(p.names, 'acc')} bekliyor`,
   'build.note.noFree': (p) => `${p.project}: boş ${p.station} yok`,
+
+  // --- Crew stars, people and training (round 4) -----------------------------
+  'build.np.match': (p) => `${p.genre} uyumu ${p.match}`,
+  'build.np.starsLegend': (p) => `açabildiği yıldızlar: ${p.axes}`,
+  'build.people.hireAllHint': 'Herkes tam zamanlı. Her biri kendi katılım ücretine ve senin bir saatine mal olur.',
+  'build.people.takeOn': 'Aramıza al',
+  'build.people.maxed': 'bir kursun götürebileceği en üst seviye',
+  'build.people.col.loves': 'Sevdiği',
+  'build.people.trainCell': (p) =>
+    `${p.skill} eğitimi ${num(p.from)} → ${num(p.to)} · ${money(p.cost)} · öğrenme istasyonunda ${num(p.hours)} saat`,
+  'build.people.trainHow': 'Bir sonraki seviye için bir beceriye bas. Eğitim bitene kadar ekiplere katılamaz.',
+  'build.people.trainNeedsStation': (p) => `Eğitim için Öğrenme İstasyonu gerekir — ${ek(p.build, 'loc')} bulunur.`,
+  'build.skillShort.software': 'YZL',
+  'build.skillShort.electronics': 'ELK',
+  'build.skillShort.cad': 'CAD',
+  'build.skillShort.machining': 'TİM',
+  'build.skillShort.welding': 'KYN',
+  'build.skillShort.docs': 'DOK',
+  'build.bench.training': 'Öğrenme istasyonunda',
+  'build.bench.trainingLine': (p) => `${p.skill} ${num(p.from)} → ${num(p.to)}`,
+  'build.bench.trainingHint': (p) => `${p.hours} kaldı`,
+  'build.bench.rating': 'Tasarım puanı — projeye başlarken seçilen üç tercihin ortalaması',
+
+  // --- A project's own screen (§4e) --------------------------------------------
+  'build.detail.foot': 'Paylar projenin tamamına göre — açılış toplantısından teslime kadar her aşama.',
+  'build.detail.whoMadeIt': 'Kim yaptı',
+  'build.detail.noCrew': 'Henüz kimse emek vermedi.',
+  'build.detail.left': 'ekipten ayrıldı',
+  'build.detail.leftHint': 'Projede çalıştı, sonra ekipten ayrıldı.',
+  'build.detail.design': 'Tasarım',
+  'build.detail.pay': 'Ne kazandırdı',
+  'build.detail.pay.base': 'Brif',
+  'build.detail.pay.market': 'O haftanın piyasası',
+  'build.detail.pay.appeal': 'Tasarımın cazibesi',
+  'build.detail.pay.quality': 'Kalite',
+  'build.detail.pay.novelty': 'Daha önce yapıldı mı',
+  'build.detail.pay.paid': 'Ödenen',
+  'build.detail.spent': 'Harcanan',
+  'build.detail.net': 'Net',
+  'build.detail.took': 'Süre',
+  'build.detail.tests': (p) => `${num(p.count)} test`,
+  'build.detail.failedPrints': (p) => `${num(p.count)} başarısız baskı`,
+  'build.machines.col.printer': 'Yazıcı',
+  'build.trophy.firstNight': (p) =>
+    `İlk ödül gecesi ${p.date} tarihinde — ${p.days} gün sonra. ${num(p.count)} kupa, yılın performansına göre.`,
+  'build.trophy.repHint': 'Kazananın aldığı itibar',
 };

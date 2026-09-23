@@ -129,16 +129,10 @@ function runOnce(seed: number, mode: Mode): Result {
     }
     // Take on anybody who is interested and affordable — the roster is the constraint.
     for (const id of [...store.getState().applicants]) {
-      // Take the biggest contract that is comfortably affordable.
-      const full = sim.canHireFullTime(id);
       // Nobody is paid and every member pays dues, so taking somebody on *improves* the
       // month from here on. All that is left to ask is whether the induction fee is
       // affordable today — hence no wage check, which is the point of the volunteer model.
-      if (full && spendable() >= sim.hireCost(id, 'full-time')) {
-        sim.hire(id, 'full-time');
-      } else if (spendable() >= sim.hireCost(id, 'part-time')) {
-        sim.hire(id, 'part-time');
-      }
+      if (spendable() >= sim.hireCost(id)) sim.hire(id);
     }
 
     if (mode === 'hands-off') continue;
@@ -147,7 +141,7 @@ function runOnce(seed: number, mode: Mode): Result {
     for (const project of sim.projects) {
       if (project.team.length >= project.teamSize) continue;
       const candidates = sim.members
-        .filter((m) => !m.team && !m.isCoolingOff(project.id) && sim.canMeet(project, m))
+        .filter((m) => !m.team && !m.isCoolingOff(project.id))
         .sort((a, b) => b.passionMatch(project.tags) - a.passionMatch(project.tags));
       if (candidates.length) sim.inviteMember(project.id, candidates[0].id);
     }

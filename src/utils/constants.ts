@@ -28,8 +28,9 @@ export const FILAMENT = {
 
 /**
  * The working day. Nine to six with an hour for lunch, Monday to Friday — the space is a
- * workplace now, not a rota of whoever happens to drop in. Full-time covers the whole day
- * (8h); part-time covers a half (4h), either side of lunch.
+ * workplace now, not a rota of whoever happens to drop in. **Everybody is full-time** (§3d):
+ * a part-time shift existed, and a morning crew that never met its afternoon half was a
+ * scheduling puzzle nobody enjoyed.
  *
  * You are the exception: the owner is there whenever they like, weekends included.
  */
@@ -41,22 +42,16 @@ export const WORKDAY = {
   /** Monday is day 1; days 6 and 7 of each week are the weekend. */
   daysPerWeek: 7,
   workingDays: 5,
-  shifts: {
-    'full-time': { start: 9, end: 18, hours: 8 },
-    morning: { start: 9, end: 14, hours: 4 },
-    afternoon: { start: 14, end: 18, hours: 4 },
-  },
+  /** Hours a day, net of lunch. */
+  hours: 8,
   /** They are employed, so they turn up — barring mood, and whatever a Ghost is doing. */
   attendanceBase: 0.97,
-  partTimeAttendance: 0.95,
   /** How late a bounty will keep somebody. */
   overtimeEnd: 20,
 };
 
-export function weeklyHoursFor(employment: 'full-time' | 'part-time'): number {
-  return (employment === 'full-time' ? WORKDAY.shifts['full-time'].hours : WORKDAY.shifts.morning.hours) *
-    WORKDAY.workingDays;
-}
+/** Contracted hours a week — the same for everybody. */
+export const WEEKLY_HOURS = WORKDAY.hours * WORKDAY.workingDays;
 
 export function isWorkingDay(day: number): boolean {
   return (day - 1) % WORKDAY.daysPerWeek < WORKDAY.workingDays;
@@ -509,7 +504,6 @@ export const ROSTER: MemberData[] = [
     commitment: 12,
     traits: ['documenter'],
     // Routine working hours — unlike you, Safa has a day job to get back to.
-    prefers: 'morning',
     window: [9, 18],
   },
   {
@@ -517,7 +511,6 @@ export const ROSTER: MemberData[] = [
     name: 'Abdullah',
     skills: skills({ software: 3, electronics: 3, docs: 3 }),
     passions: { radio: 0.7, software: 0.6, civic: 0.5 },
-    prefers: 'afternoon',
     energy: 82,
     mood: 70,
     commitment: 12,
@@ -548,174 +541,138 @@ export const APPLICANTS: MemberData[] = [
     id: 'mehmet', name: 'Mehmet Taha', repRequired: 0,
     skills: skills({ electronics: 3, machining: 3, docs: 2 }),
     passions: { iot: 0.7, electronics: 0.6, fpv: 0.45 },
-    prefers: 'morning',
     energy: 88, mood: 72, commitment: 15, traits: [], window: [9, 18],
   },
   {
     id: 'deniz', name: 'Deniz', repRequired: 40,
     skills: skills({ cad: 3, electronics: 4, software: 2 }),
     passions: { fpv: 0.9, electronics: 0.6, iot: 0.45, software: 0.35, retro: 0.35, radio: 0.3 },
-    prefers: 'afternoon',
     energy: 85, mood: 70, commitment: 14, traits: ['nightOwl'], window: [17, 24],
   },
   {
     id: 'bektas', name: 'Bektaş', repRequired: 90,
     skills: skills({ machining: 3, welding: 4, electronics: 2 }),
     passions: { fpv: 0.7, machining: 0.6, robotics: 0.45 },
-    prefers: 'morning',
     energy: 90, mood: 66, commitment: 14, traits: [], window: [12, 20],
   },
   {
     id: 'faruk', name: 'Faruk', repRequired: 150,
     skills: skills({ cad: 3, machining: 3, welding: 2 }),
     passions: { machining: 0.7, robotics: 0.55, fpv: 0.35 },
-    prefers: 'morning',
     energy: 86, mood: 70, commitment: 14, traits: [], window: [9, 18],
   },
   {
     id: 'kerem', name: 'Kerem', repRequired: 220,
     skills: skills({ machining: 3, welding: 2, electronics: 2, docs: 2 }),
     passions: { machining: 0.65, civic: 0.55, woodworking: 0.45, fpv: 0.4, food: 0.35 },
-    partTimeOnly: true,
-    prefers: 'afternoon',
     energy: 80, mood: 60, commitment: 8, traits: ['ghost'], window: [13, 21],
   },
   {
     id: 'ferit', name: 'Ferit', repRequired: 300,
     skills: skills({ software: 4, electronics: 2, docs: 2 }),
     passions: { software: 0.8, iot: 0.5, civic: 0.3 },
-    prefers: 'morning',
     energy: 84, mood: 72, commitment: 13, traits: ['perfectionist'], window: [9, 18],
   },
   {
     id: 'ibrahim', name: 'İbrahim', repRequired: 400,
     skills: skills({ cad: 4, machining: 2, docs: 2 }),
     passions: { cad: 0.8, design: 0.75, fpv: 0.3 },
-    partTimeOnly: true,
-    prefers: 'morning',
     energy: 82, mood: 78, commitment: 9, traits: ['mentor'], window: [10, 17],
   },
   {
     id: 'halil', name: 'Halil', repRequired: 510,
     skills: skills({ electronics: 4, software: 2 }),
     passions: { radio: 0.7, electronics: 0.6, retro: 0.4 },
-    partTimeOnly: true,
-    prefers: 'morning',
     energy: 83, mood: 68, commitment: 10, traits: [], window: [9, 14],
   },
   {
     id: 'fatih', name: 'Fatih', repRequired: 640,
     skills: skills({ electronics: 4, docs: 2, cad: 2 }),
     passions: { retro: 0.85, electronics: 0.65, design: 0.4 },
-    prefers: 'morning',
     energy: 84, mood: 70, commitment: 13, traits: ['perfectionist'], window: [11, 19],
   },
   {
     id: 'cagri', name: 'Çağrı', repRequired: 790,
     skills: skills({ cad: 4, software: 3 }),
     passions: { design: 0.8, cad: 0.6, robotics: 0.4 },
-    partTimeOnly: true,
-    prefers: 'afternoon',
     energy: 85, mood: 74, commitment: 10, traits: ['scopeCreeper'], window: [14, 18],
   },
   {
     id: 'zahid', name: 'Zahid', repRequired: 950,
     skills: skills({ machining: 4, welding: 3, cad: 2 }),
     passions: { machining: 0.85, woodworking: 0.5, robotics: 0.4 },
-    partTimeOnly: true,
-    prefers: 'morning',
     energy: 88, mood: 65, commitment: 10, traits: ['gatekeeper'], window: [12, 20],
   },
   {
     id: 'burak', name: 'Burak', repRequired: 1130,
     skills: skills({ electronics: 3, machining: 2, cad: 2 }),
     passions: { fpv: 0.85, electronics: 0.5, robotics: 0.45 },
-    prefers: 'afternoon',
     energy: 90, mood: 71, commitment: 15, traits: ['nightOwl'], window: [9, 18],
   },
   {
     id: 'omer', name: 'Ömer', repRequired: 1330,
     skills: skills({ electronics: 4, software: 3 }),
     passions: { radio: 0.85, electronics: 0.6, iot: 0.5 },
-    prefers: 'afternoon',
     energy: 80, mood: 68, commitment: 16, traits: ['nightOwl'], window: [19, 24],
   },
   {
     id: 'huseyin', name: 'Hüseyin', repRequired: 1550,
     skills: skills({ welding: 4, machining: 3 }),
     passions: { machining: 0.75, woodworking: 0.55, food: 0.4 },
-    partTimeOnly: true,
-    prefers: 'morning',
     energy: 87, mood: 66, commitment: 9, traits: [], window: [9, 14],
   },
   {
     id: 'arif', name: 'Arif', repRequired: 1790,
     skills: skills({ docs: 4, software: 2, electronics: 2 }),
     passions: { civic: 0.85, iot: 0.5, software: 0.35 },
-    partTimeOnly: true,
-    prefers: 'morning',
     energy: 80, mood: 76, commitment: 8, traits: ['documenter'], window: [10, 18],
   },
   {
     id: 'hasan', name: 'Hasan', repRequired: 2050,
     skills: skills({ docs: 3, electronics: 2, software: 2 }),
     passions: { civic: 0.8, iot: 0.45, food: 0.3 },
-    partTimeOnly: true,
-    prefers: 'afternoon',
     energy: 81, mood: 73, commitment: 9, traits: ['documenter'], window: [14, 18],
   },
   {
     id: 'furkan', name: 'Furkan', repRequired: 2330,
     skills: skills({ software: 4, cad: 3, electronics: 2 }),
     passions: { robotics: 0.8, software: 0.65, design: 0.35 },
-    partTimeOnly: true,
-    prefers: 'afternoon',
     energy: 86, mood: 74, commitment: 11, traits: ['scopeCreeper'], window: [13, 21],
   },
   {
     id: 'vedat', name: 'Vedat', repRequired: 2640,
     skills: skills({ machining: 3, electronics: 3 }),
     passions: { robotics: 0.75, machining: 0.5, software: 0.35 },
-    prefers: 'morning',
     energy: 84, mood: 75, commitment: 14, traits: ['mentor'], window: [9, 18],
   },
   {
     id: 'yakup', name: 'Yakup', repRequired: 2970,
     skills: skills({ machining: 3, welding: 2, cad: 2 }),
     passions: { woodworking: 0.8, food: 0.6, machining: 0.45 },
-    partTimeOnly: true,
-    prefers: 'afternoon',
     energy: 78, mood: 62, commitment: 7, traits: ['ghost'], window: [14, 21],
   },
   {
     id: 'enes', name: 'Enes', repRequired: 3330,
     skills: skills({ software: 3, cad: 2, docs: 2 }),
     passions: { retro: 0.7, software: 0.6, design: 0.45 },
-    partTimeOnly: true,
-    prefers: 'afternoon',
     energy: 83, mood: 69, commitment: 8, traits: ['ghost'], window: [14, 18],
   },
   {
     id: 'bilal', name: 'Bilal', repRequired: 3710,
     skills: skills({ cad: 3, welding: 2, machining: 2 }),
     passions: { woodworking: 0.75, design: 0.5, food: 0.45 },
-    partTimeOnly: true,
-    prefers: 'morning',
     energy: 85, mood: 70, commitment: 9, traits: [], window: [9, 14],
   },
   {
     id: 'muhammed', name: 'Muhammed', repRequired: 4120,
     skills: skills({ software: 4, electronics: 3 }),
     passions: { iot: 0.75, software: 0.6, radio: 0.4 },
-    prefers: 'morning',
     energy: 86, mood: 72, commitment: 15, traits: [], window: [9, 18],
   },
   {
     id: 'muhammed-safa', name: 'Muhammed Safa', repRequired: 4550,
     skills: skills({ cad: 5, software: 4 }),
     passions: { cad: 0.8, design: 0.7, robotics: 0.5 },
-    partTimeOnly: true,
-    prefers: 'afternoon',
     energy: 76, mood: 80, commitment: 6, traits: ['mentor'], window: [14, 18],
   },
 ];
@@ -767,8 +724,12 @@ export const RECRUIT = {
    * between you and the whole roster — so it is priced as an investment, not a formality:
    * about four months of that person's dues. It is what stops the space filling up by day
    * sixty, and it is the number to reach for if roster growth ever needs slowing again.
+   *
+   * 190 → 140 when part-time went: thirteen of the applicants used to join on a half fee,
+   * and charging all of them the full one cost a run ~₺45,000 — the Warehouse move, to the
+   * lira, and Era 3 stopped arriving at all. 140 keeps the average fee where it was.
    */
-  hireCostPerWeeklyHour: 190,
+  hireCostPerWeeklyHour: 140,
   /** Your own time, showing them round and doing the paperwork. */
   hireHours: 1,
   /** Candidates waiting on day one, so the first hire is a pick rather than a yes or no. */

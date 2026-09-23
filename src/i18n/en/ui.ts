@@ -115,8 +115,6 @@ export const ui = {
     'Every awards night you have sat through, losses included. Read across a row for the space that keeps beating you to one.',
   'ui.rank.foot.table':
     'Ranked on reputation, all time. The awards are judged on the year just gone, which is a different question — a quiet year costs you even while you are ahead here.',
-  'ui.trophy.none':
-    'No awards night yet — the first is on day 90. Every category is judged on the year just gone, so there is always one to play for.',
   'ui.trophy.scoped': (p: { won: string; nights: number }) =>
     `${p.won} of ${p.nights} ${p.nights === 1 ? 'night' : 'nights'}`,
   'ui.trophy.summary': (p: { won: string; count: number; nights: number }) =>
@@ -209,12 +207,6 @@ export const ui = {
   // --- People -----------------------------------------------------------------------
   'ui.people.title': 'People',
   'ui.people.nothingAllocated': 'nothing allocated',
-  'ui.people.perWeek': (p: { hours: number }) => `${p.hours}h a week`,
-  'ui.people.aboutPerWeek': (p: { hours: number }) => `~${p.hours}h a week`,
-  'ui.people.mornings': 'mornings',
-  'ui.people.afternoons': 'afternoons',
-  'ui.people.fullTime': 'Full-time',
-  'ui.people.partTime': 'Part-time',
   'ui.people.letGoHint': (p: { name: string; dues: number }) =>
     `Ask ${p.name} to leave — the space loses ${money(p.dues)} a month in dues`,
   'ui.people.hireHint': (p: { hours: number; dues: number }) =>
@@ -222,7 +214,6 @@ export const ui = {
   'ui.people.noHours': (p: { name: string; hours: string }) =>
     `No hours left today — showing ${p.name} round takes ${p.hours} of yours. Tomorrow.`,
   'ui.people.pastLimit': (p: { amount: number }) => `${money(p.amount)} past the overdraft limit.`,
-  'ui.people.dayJob': 'day job, part-time only',
   'ui.people.pass': 'Pass',
   'ui.people.passHint': (p: { name: string }) => `Turn ${p.name} down. Free, but they will not ask again.`,
   'ui.people.tab.all': 'All',
@@ -239,8 +230,6 @@ export const ui = {
   'ui.people.review': 'Review candidates',
   'ui.people.col.person': 'Person',
   'ui.people.col.doing': 'Doing',
-  'ui.people.col.contract': 'Contract',
-  'ui.people.col.goodAt': 'Good at',
   'ui.people.col.trait': 'Trait',
   'ui.people.empty': 'Nobody here. Ship something and word gets around.',
   'ui.people.foot.idle': (p: { n: string }) => `${p.n} with nothing to do`,

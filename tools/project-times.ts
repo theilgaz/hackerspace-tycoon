@@ -63,11 +63,7 @@ function runProject(def: ProjectDef, seed: number): number | null {
   for (let i = 0; i < 4; i += 1) sim.buyFurniture('hardware-station');
   for (let i = 0; i < 3; i += 1) sim.buyFurniture('assembly-table');
   // Best case means everyone on a full contract.
-  for (const data of APPLICANTS) {
-    const member = sim.joinMember(data);
-    member.employment = data.partTimeOnly ? 'part-time' : 'full-time';
-    member.shift = member.employment === 'part-time' ? data.prefers ?? 'morning' : null;
-  }
+  for (const data of APPLICANTS) sim.joinMember(data);
   if (!sim.pitch(def.id)) return null;
 
   const project = sim.projects[0];
@@ -85,7 +81,7 @@ function runProject(def: ProjectDef, seed: number): number | null {
     }
     if (project.team.length < project.teamSize) {
       const candidate = sim.members
-        .filter((m) => !m.team && !m.isCoolingOff(project.id) && sim.canMeet(project, m))
+        .filter((m) => !m.team && !m.isCoolingOff(project.id))
         .sort((a, b) => b.passionMatch(project.tags) - a.passionMatch(project.tags))[0];
       if (candidate) sim.inviteMember(project.id, candidate.id);
     }

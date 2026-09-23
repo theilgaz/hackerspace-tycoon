@@ -600,10 +600,13 @@ export class SpaceView {
    * of spending ₺33,000 on one.
    */
   private buildCabinetPrinter(id: string, model: string): THREE.Group {
-    const size = { p2s: [0.76, 0.92, 0.74], x1c: [0.82, 1.04, 0.8], h2s: [0.92, 1.2, 0.88] }[model] ??
-      [0.76, 0.92, 0.74];
+    // They grow with the price, and the H2S is a proper step up rather than a slightly
+    // taller X1C: nearly the whole tile, and a head taller than anything else on the wall.
+    const size = { p2s: [0.74, 0.9, 0.72], x1c: [0.8, 1.0, 0.78], h2s: [0.97, 1.4, 0.95] }[model] ??
+      [0.74, 0.9, 0.72];
     const [w, h, d] = size;
-    const trim = { p2s: '#3a414d', x1c: '#1d2229', h2s: '#e4e7eb' }[model] ?? '#3a414d';
+    // P2S black, X1C silver, H2S space grey.
+    const trim = { p2s: '#16191e', x1c: '#dfe3e8', h2s: '#5d636d' }[model] ?? '#16191e';
     const g = new THREE.Group();
     const frame = mat(trim);
     // The shell: a base, a lid and four corner posts, so the glass reads as panels in a frame.

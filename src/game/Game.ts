@@ -104,13 +104,12 @@ export class Game {
       nextLease: () => sim.nextLease(),
       resaleFor: (machineId) => sim.resaleFor(machineId),
       buyablePrinters: () => sim.buyablePrinters(),
-      hire: (memberId, employment) => act(() => sim.hire(memberId, employment)),
+      hire: (memberId) => act(() => sim.hire(memberId)),
       passApplicant: (memberId) => act(() => sim.passApplicant(memberId)),
       post: (projectId, subreddit, claim) => act(() => sim.post(projectId, subreddit, claim)),
       spaceSubject: () => sim.spaceSubject(),
       setRole: (memberId, role) => act(() => sim.setRole(memberId, role)),
-      hireCost: (memberId, employment) => sim.hireCost(memberId, employment),
-      canHireFullTime: (memberId) => sim.canHireFullTime(memberId),
+      hireCost: (memberId) => sim.hireCost(memberId),
       begin: (name, logo, difficulty, player) => {
         const badge = LOGOS[logo] ?? LOGOS[0];
         store
