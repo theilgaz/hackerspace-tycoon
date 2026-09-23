@@ -1563,7 +1563,7 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   — two clicks and a second copy of numbers the row already showed. The contract column went
   with part-time, and the four keyholder slots sit on one line.
 - **Whoever is on a course shows on the bench**, under the builds, with a bar like a project's —
-  and over their head in the room, in the `--learning` violet rather than the work teal or the
+  and over their head in the room once they are sat at the station, in the `--learning` violet rather than the work teal or the
   kickoff gold, so a trainee's bar is never read as a share of somebody's build.
   **The block does not exist when nobody is training** — a heading over nothing is a permanent
   advert for a feature, not information.

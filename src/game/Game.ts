@@ -378,8 +378,9 @@ export class Game {
     for (const member of runtime.members) {
       if (!member.present) continue;
       // On a course, the bar is the course: how far through the level they are, in its own
-      // colour so it never reads as a share of somebody's build.
-      if (member.training) {
+      // colour so it never reads as a share of somebody's build. Only once they are sat at
+      // the Learning Station — a bar on somebody walking to lunch says nothing.
+      if (member.training && member.activity === 'working') {
         const done = 1 - member.training.hoursLeft / Math.max(1, member.training.total);
         personLabel(member.id, member.name, Math.max(0, Math.min(1, done)), 'learning');
       } else {
