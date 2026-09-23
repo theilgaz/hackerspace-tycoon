@@ -261,14 +261,86 @@ export function amenityRoom(): boolean {
   return false;
 }
 
+// --- The back wall -----------------------------------------------------------------
+
 /**
- * Called whenever the owned list or the player's arrangement changes. Wall-mounted items
- * are not passed in — they take no floor and cannot be moved.
+ * Something hung on the back wall: how wide it is in tiles, and where it goes if the player
+ * has not chosen. A width of 0 is a backdrop — the acoustic panels run behind everything else
+ * and clash with nothing.
  */
-export function setAmenityLayout(floorIds: string[], custom: Record<string, Placement>) {
+export interface WallItem {
+  id: string;
+  width: number;
+  /** Where it hangs by default, as a tile column along the back wall; may be fractional. */
+  prefer?: number;
+}
+
+let wallItems: WallItem[] = [];
+const wallPlaces = new Map<string, number>();
+
+/** Where along the back wall a hung comfort is, as a tile column. */
+export function wallColumn(id: string): number | undefined {
+  return wallPlaces.get(id);
+}
+
+/**
+ * Can this item hang at this column? Inside the wall, and clear of everything else hung
+ * there — two things on one nail was the one rule the old fixed spots existed to keep.
+ */
+export function wallColumnFree(column: number, id: string): boolean {
+  const item = wallItems.find((w) => w.id === id);
+  if (!item) return false;
+  const half = Math.max(1, item.width) / 2;
+  if (column - half < -0.5 || column + half > GRID.width - 0.5) return false;
+  if (!item.width) return true;
+  for (const other of wallItems) {
+    if (other.id === id || !other.width) continue;
+    const at = wallPlaces.get(other.id);
+    if (at === undefined) continue;
+    if (Math.abs(at - column) < (other.width + item.width) / 2) return false;
+  }
+  return true;
+}
+
+function rebuildWall(custom: Record<string, Placement>) {
+  wallPlaces.clear();
+  const tryHang = (id: string, column: number): boolean => {
+    if (!wallColumnFree(column, id)) return false;
+    wallPlaces.set(id, column);
+    return true;
+  };
+  // Chosen spots first, so a default can never take one; then the defaults; then the first
+  // free column, so something paid for always hangs somewhere.
+  for (const item of wallItems) {
+    const place = custom[item.id];
+    if (place && place.y < 0) tryHang(item.id, place.x);
+  }
+  const spots = [0.6, 2.6, 4.6, 1.6, 3.6, 6.6, 8.6, 10.6, 12.6];
+  let next = 0;
+  for (const item of wallItems) {
+    if (wallPlaces.has(item.id)) continue;
+    if (item.prefer !== undefined && tryHang(item.id, Math.min(GRID.width - 1.4, item.prefer))) continue;
+    while (next < spots.length && !tryHang(item.id, Math.min(GRID.width - 2, spots[next]))) next += 1;
+    next += 1;
+    if (wallPlaces.has(item.id)) continue;
+    for (let column = 0; column < GRID.width; column += 1) if (tryHang(item.id, column)) break;
+  }
+}
+
+/**
+ * Called whenever the owned list or the player's arrangement changes. Wall-hung items take
+ * no floor, so they are laid out on their own row: the back wall.
+ */
+export function setAmenityLayout(
+  floorIds: string[],
+  custom: Record<string, Placement>,
+  wall: WallItem[] = [],
+) {
   amenityFloorIds = floorIds;
   amenityCustom = custom;
+  wallItems = wall;
   rebuildProps();
+  rebuildWall(custom);
 }
 
 export const MACHINE_LABEL: Record<MachineType, string> = {

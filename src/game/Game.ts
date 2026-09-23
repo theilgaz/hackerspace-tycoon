@@ -261,7 +261,8 @@ export class Game {
   /** Anything on the floor can be picked up: a station, or a floor-standing comfort you own. */
   private movable(id: string): boolean {
     if (STATION_MAP[id]) return true;
-    return amenityDef(id)?.mount === 'floor' && store.getState().amenities.includes(id);
+    // Wall-hung things too — they move along the back wall rather than across the floor.
+    return !!amenityDef(id) && store.getState().amenities.includes(id);
   }
 
   /** Put whatever is being carried on a tile, keeping the way it faces. */
@@ -270,6 +271,8 @@ export class Game {
     if (!id) return false;
     const station = STATION_MAP[id];
     if (station) return this.sim.placeStation(id, x, y, yawOf(station) + turn);
+    // A hung thing takes the column of whatever tile was clicked; it has nothing to turn.
+    if (amenityDef(id)?.mount === 'wall') return turn ? false : this.sim.placeAmenity(id, x, 0, 0);
     const place = amenityPlacement(id);
     return place ? this.sim.placeAmenity(id, x, y, place.yaw + turn) : false;
   }
@@ -279,6 +282,7 @@ export class Game {
     const id = store.getState().moving;
     if (!id) return;
     const station = STATION_MAP[id];
+    if (!station && amenityDef(id)?.mount === 'wall') return;
     const at = station ? station.tile : amenityPlacement(id);
     if (!at) return;
     this.moveHeld(at.x, at.y, 1);

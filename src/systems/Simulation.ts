@@ -36,6 +36,9 @@ import {
   STATION_MAP,
   amenityMoveSafe,
   amenityTileFree,
+  GRID,
+  wallColumnFree,
+  wallColumn,
   placeStation,
   setAmenityLayout,
   setStationLayout,
@@ -118,7 +121,7 @@ import {
   type Ledger,
   type LedgerKind,
 } from '@/utils/economy';
-import { amenityDef, comfortsOf, NO_COMFORTS, type Comforts } from '@/utils/amenities';
+import { amenityDef, comfortsOf, NO_COMFORTS, wallPrefer, wallWidth, type Comforts } from '@/utils/amenities';
 import {
   decayHype,
   hypePressure,
@@ -354,6 +357,10 @@ export class Simulation {
       setAmenityLayout(
         owned.filter((id) => amenityDef(id)?.mount === 'floor'),
         state.amenityPlacements,
+        owned
+          .map((id) => amenityDef(id))
+          .filter((def): def is NonNullable<typeof def> => def?.mount === 'wall')
+          .map((def) => ({ id: def.id, width: wallWidth(def), prefer: wallPrefer(def, GRID.width) })),
       );
       setStationLayout(state.stationPlacements);
     }
@@ -380,7 +387,20 @@ export class Simulation {
   placeAmenity(id: string, x: number, y: number, yaw: number): boolean {
     const def = amenityDef(id);
     const state = store.getState();
-    if (!def || def.mount !== 'floor' || !state.amenities.includes(id)) return false;
+    if (!def || !state.amenities.includes(id)) return false;
+    // Hung things move along the back wall: the column is what the click chose.
+    if (def.mount === 'wall') {
+      if (!wallColumnFree(x, id)) return false;
+      // Pin everything else where it hangs now. Unpinned items take the next default spot
+      // in order, so moving one used to shuffle the rest into the gap it left.
+      for (const other of state.amenities) {
+        if (other === id || amenityDef(other)?.mount !== 'wall' || state.amenityPlacements[other]) continue;
+        const at = wallColumn(other);
+        if (at !== undefined) state.placeAmenity(other, { x: at, y: -1, yaw: 0 });
+      }
+      state.placeAmenity(id, { x, y: -1, yaw: 0 });
+      return true;
+    }
     if (!amenityTileFree({ x, y }, id) || !amenityMoveSafe(id, { x, y })) return false;
     state.placeAmenity(id, { x, y, yaw: ((yaw % 4) + 4) % 4 });
     return true;

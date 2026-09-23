@@ -8,6 +8,8 @@ import {
   STATION_MAP,
   amenityPlacement,
   amenityTileFree,
+  wallColumn,
+  wallColumnFree,
   footprint,
   stationFits,
   type StationDef,
@@ -1005,6 +1007,29 @@ export class SpaceView {
     }
     this.placingMarks = [];
     if (!this.placing) return;
+    // Something hung on the wall moves along the wall: a mark per free column, on the
+    // floor right under the back wall, which is where the eye already is.
+    if (amenityDef(this.placing)?.mount === 'wall') {
+      const geo = new THREE.BoxGeometry(TILE * 0.5, 0.02, TILE * 0.12);
+      for (let x = 0; x < GRID.width; x += 1) {
+        if (!wallColumnFree(x, this.placing)) continue;
+        const mark = new THREE.Mesh(
+          geo.clone(),
+          new THREE.MeshStandardMaterial({
+            color: '#5ecfc0',
+            flatShading: true,
+            transparent: true,
+            opacity: 0.6,
+            emissive: new THREE.Color('#2f8f84'),
+            emissiveIntensity: 0.6,
+          }),
+        );
+        mark.position.copy(toWorld(x, -0.35, 0.014));
+        this.group.add(mark);
+        this.placingMarks.push(mark);
+      }
+      return;
+    }
     // A dot per tile, not a plate. Filling every legal tile with a translucent square
     // washed the whole floor teal — which says "the room is highlighted", not "these are
     // the tiles". A small marker reads as a placement grid and leaves the floor alone.
@@ -1089,24 +1114,10 @@ export class SpaceView {
   private placeOnWall(node: THREE.Object3D, def: AmenityDef) {
     const back = toWorld((GRID.width - 1) / 2, -0.6);
     node.position.z = back.z + 0.1;
-    if (def.shape === 'ac') {
-      node.position.x = toWorld(GRID.width - 1.4, 0).x;
-      node.position.y = 1.34;
-      return;
-    }
-    if (def.shape === 'acoustics') {
-      node.position.x = back.x;
-      node.position.y = 1.16;
-      return;
-    }
-    const hung = this.amenityIds.filter((id) => {
-      const other = amenityDef(id);
-      return other?.mount === 'wall' && other.shape !== 'ac' && other.shape !== 'acoustics';
-    });
-    const index = Math.max(0, hung.indexOf(def.id));
-    const spots = [0.6, 2.6, 4.6, 1.6, 3.6];
-    node.position.x = toWorld(Math.min(GRID.width - 2, spots[index % spots.length]), 0).x;
-    node.position.y = 1.42;
+    // Where along the wall is the layout's call now (`wallColumn`) — the player can move it,
+    // and the layout keeps two things off one nail. Only the height is the item's own.
+    node.position.x = toWorld(wallColumn(def.id) ?? (GRID.width - 1) / 2, 0).x;
+    node.position.y = def.shape === 'ac' ? 1.34 : def.shape === 'acoustics' ? 1.16 : 1.42;
   }
 
   private buildProp(def: AmenityDef): THREE.Object3D {
@@ -1157,6 +1168,8 @@ export class SpaceView {
         return this.propEspresso(def.tone);
       case 'nappod':
         return this.propNapPod(def.tone);
+      case 'mate':
+        return this.propMate(def.tone);
       case 'lava':
         return this.propLava(def.tone);
       default:
@@ -1297,6 +1310,72 @@ export class SpaceView {
       g.add(cup);
     }
     return g;
+  }
+
+  /**
+   * The Club-Mate fridge: half the drinks fridge, bottles behind the glass, and MATE across
+   * the top. **The lettering is a canvas texture** — the second one in the game after the
+   * wall sign (§11), for the same reason: letters are the one thing boxes cannot draw, and
+   * a Mate fridge without the word on it is just a small yellow fridge.
+   */
+  private propMate(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const w = 0.46;
+    const h = 0.86;
+    const d = 0.42;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat('#24282f'));
+    body.position.y = h / 2;
+    body.castShadow = true;
+    g.add(body);
+    const door = new THREE.Mesh(
+      new THREE.BoxGeometry(w - 0.08, h - 0.26, 0.04),
+      new THREE.MeshStandardMaterial({
+        color: '#9fd8c8',
+        flatShading: true,
+        transparent: true,
+        opacity: 0.45,
+        emissive: new THREE.Color('#6fb8a2'),
+        emissiveIntensity: 0.35,
+      }),
+    );
+    door.position.set(0, 0.35, d / 2 + 0.01);
+    g.add(door);
+    // Rows of amber bottles behind the glass.
+    for (const y of [0.16, 0.36, 0.56]) {
+      for (const x of [-0.12, -0.04, 0.04, 0.12]) {
+        const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.028, 0.15, 6), mat('#c98a1c'));
+        bottle.position.set(x, y + 0.075, 0.06);
+        g.add(bottle);
+      }
+    }
+    const sign = new THREE.Mesh(
+      new THREE.BoxGeometry(w + 0.02, 0.22, 0.03),
+      [mat(tone), mat(tone), mat(tone), mat(tone), new THREE.MeshStandardMaterial({ map: this.mateTexture(tone), emissive: new THREE.Color(tone), emissiveIntensity: 0.25, emissiveMap: this.mateTexture(tone) }), mat(tone)],
+    );
+    sign.position.set(0, h - 0.12, d / 2 + 0.02);
+    g.add(sign);
+    return g;
+  }
+
+  private mateCanvas: THREE.CanvasTexture | null = null;
+
+  /** MATE, dark on the brand yellow. Drawn once and shared by every Mate fridge. */
+  private mateTexture(tone: string): THREE.CanvasTexture {
+    if (this.mateCanvas) return this.mateCanvas;
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 88;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = tone;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#1b1e24';
+    ctx.font = "900 76px \"Arial Black\", Helvetica, sans-serif";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('MATE', canvas.width / 2, canvas.height / 2 + 3);
+    this.mateCanvas = new THREE.CanvasTexture(canvas);
+    this.mateCanvas.colorSpace = THREE.SRGBColorSpace;
+    return this.mateCanvas;
   }
 
   /** A white egg on a plinth with a dark mouth, which is all a nap pod is. */

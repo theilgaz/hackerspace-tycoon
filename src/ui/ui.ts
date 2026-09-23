@@ -1116,7 +1116,8 @@ export class UI {
     const glyph = comfort?.icon ?? 'printer';
     // Turning a station moves the tile somebody stands on, which is a different sentence
     // from turning a sofa — and it is the only thing about it the player has to know.
-    const how = station ? t('ui.moving.howStation') : t('ui.moving.howComfort');
+    const hung = !station && comfort?.mount === 'wall';
+    const how = station ? t('ui.moving.howStation') : hung ? t('build.moving.howWall') : t('ui.moving.howComfort');
     this.movingEl.classList.add('on');
     this.setHTML(
       this.movingEl,
@@ -1126,7 +1127,7 @@ export class UI {
          <b class="ui-title">${esc(t('ui.moving.title', { name }))}</b>
          <span class="ui-desc">${how}</span>
        </div>
-       <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="turn-amenity">${icon('shuffle')}${t('ui.moving.turn')}</button>
+       ${hung ? '' : `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="turn-amenity">${icon('shuffle')}${t('ui.moving.turn')}</button>`}
        ${(() => {
          // Sell straight from the room — the only place you can see how full it has got.
          const sale = this.handlers.resaleOf(id);

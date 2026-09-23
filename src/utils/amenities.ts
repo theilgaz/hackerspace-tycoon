@@ -75,7 +75,8 @@ export interface AmenityDef {
     | 'console'
     | 'tv'
     | 'espresso'
-    | 'nappod';
+    | 'nappod'
+    | 'mate';
   mount: 'floor' | 'wall';
   /** The prop's own colour; the room is otherwise deliberately grey. */
   tone: string;
@@ -120,6 +121,20 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'couch',
     mount: 'floor',
     tone: '#4f6f52',
+  },
+  {
+    // The one drink every hackerspace runs on, in a fridge half the size of the real one.
+    id: 'mate-fridge',
+    name: 'Club-Mate Fridge',
+    blurb: 'A small fridge of yerba-mate soda. Nobody likes the first bottle; everybody orders a crate.',
+    icon: 'package',
+    era: 1,
+    price: 2400,
+    upkeep: 350,
+    effect: { mood: 2, fatigue: 0.94, drift: 0.97 },
+    shape: 'mate',
+    mount: 'floor',
+    tone: '#f2b705',
   },
   {
     id: 'fridge',
@@ -428,6 +443,22 @@ export const AMENITIES: AmenityDef[] = [
 
 export const amenityDef = (id: string): AmenityDef | undefined =>
   AMENITIES.find((a) => a.id === id);
+
+/**
+ * How much back wall a hung comfort takes, in tiles. The acoustic panels are a backdrop
+ * behind everything else, so they take none; the TV and the whiteboard take two.
+ */
+export function wallWidth(def: AmenityDef): number {
+  if (def.shape === 'acoustics') return 0;
+  return def.shape === 'tv' || def.shape === 'whiteboard' ? 2 : 1;
+}
+
+/** Where a hung comfort goes before anybody moves it — the old fixed spots. */
+export function wallPrefer(def: AmenityDef, gridWidth: number): number | undefined {
+  if (def.shape === 'ac') return gridWidth - 1.4;
+  if (def.shape === 'acoustics') return (gridWidth - 1) / 2;
+  return undefined;
+}
 
 /** Everything the comforts add up to. The sim reads this and nothing else from the shop. */
 export interface Comforts {

@@ -1338,6 +1338,19 @@ it cannot go: the kit the garage came with and machines built by tool projects s
 does a table a crew is holding its kickoff at. A room that can only fill up eventually
 becomes unplayable, and the room is the only place you can see how full it has got.
 
+**Hung things move too, along the back wall** (`WallItem`, `wallColumn`, `wallColumnFree`).
+Air conditioning, the TV, the whiteboard, the neon, the print and the acoustic panels used to
+hang on fixed nails and could not be picked up. Holding one lights the free columns under the
+back wall; a click hangs it there. Each takes its width of wall (the TV and whiteboard two
+columns, the rest one) and nothing overlaps — except the acoustic panels, a backdrop that runs
+behind everything and clashes with nothing. **Moving one pins the rest**: unpinned items took
+the next default spot in order, so the first version shuffled the whiteboard into the gap the
+TV had just left. A placement on the wall is stored like a floor one, with `y: -1`.
+
+**The Club-Mate Fridge** is on the garage's shelf from day one (₺2,400, ₺350/mo, a little
+mood, less fatigue and drift): half the drinks fridge, bottles behind the glass, and MATE
+across the top — the game's second canvas texture after the wall sign, for the same reason.
+
 Where they start is derived — the open edges, the bottom row and the odd rows of the
 right-hand column, spaced a tile apart for the same reason the printer wall is — and a tile
 the player picks simply overrides it. They block their tile either way, so people walk round

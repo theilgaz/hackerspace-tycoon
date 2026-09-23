@@ -364,4 +364,5 @@ export const build: typeof en = {
   'build.fx.setUp': (p) => `${money(p.cost)} · bir kez kurulur`,
   'build.fx.inPlace': (p) => `${money(p.cost)} · zaten kurulu`,
   'build.log.infraBuilt': (p) => `${p.item} ${money(p.cost)} ile kuruldu — bundan sonraki her projede hazır.`,
+  'build.moving.howWall': 'Asmak için arka duvarın altındaki yanan yerlerden birine tıkla. Esc geri koyar.',
 };

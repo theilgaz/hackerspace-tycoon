@@ -384,4 +384,5 @@ export const build = {
   'build.fx.inPlace': (p: { cost: number }) => `${money(p.cost)} · already in place`,
   'build.log.infraBuilt': (p: { item: string; cost: number }) =>
     `${p.item} set up for ${money(p.cost)} — it stays for every project after this one.`,
+  'build.moving.howWall': 'Click a lit spot under the back wall to hang it there. Escape puts it back.',
 };
