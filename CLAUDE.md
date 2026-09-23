@@ -150,9 +150,21 @@ per-seat option — Full IDE, Fusion Pro — is bought once per seat and kept, s
 pays only for chairs nobody holds a licence for; the card says `licensed ×N` and the log
 records each purchase. Licences used to be charged afresh on every project, which made the
 five-star tool a tax on shipping rather than an investment. **Infrastructure is kept the same
-way** (`DesignOption.keeps`): Services + CI is set up once, and every later build finds it
-"already in place". A one-off `cost` that is work for *that* build — a design system's round
-of user testing, a workshop kit — is still charged per project.
+way** (`DesignOption.keeps`), in every genre that has any:
+
+| Kept | Genres | Once |
+|---|---|---|
+| Services + CI | software | ₺500 |
+| Design system (a component library) | software | ₺600 |
+| RTOS + OTA (the update server) | electronics, IoT, radio, retro, robotics, civic | ₺450 |
+| Full simulation (a solver licence) | robotics, mechanical | ₺600 |
+
+Every later build finds them "already in place". The rule for what is kept: **is it still
+there after the project ships?** A component library, a CI pipeline, an update server and a
+solver are; a workshop kit's Saturday workshop, a custom PCB run and an aluminium frame are
+that build's own, and stay per project. RTOS + OTA and Full simulation had no one-off cost
+before; giving them a kept one makes the first five-star build dearer and every one after
+it cheaper, which is what an investment is.
 
 **A design the space cannot pay for is not offered.** The design budget is paid at the pitch
 and refused past the overdraft, and the wizard used to find that out only afterwards — a Start

@@ -133,11 +133,13 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
       {
         label: 'Design system',
         stars: 5,
-        blurb: 'Components, tokens and a round of user testing. People notice.',
+        blurb: 'A component library built once and reused on every job. People notice.',
         appeal: 1.3,
         quality: 0.03,
         work: 1.25,
+        // The library is the space's: the next client gets the same components for free.
         cost: 600,
+        keeps: true,
       },
     ],
   },
@@ -231,11 +233,14 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
       {
         label: 'RTOS + OTA',
         stars: 5,
-        blurb: 'Tasks, watchdogs and updates over the air. Nobody climbs a ladder to reflash it.',
+        blurb: 'Tasks, watchdogs and an update server that stays up. Nobody climbs a ladder to reflash it.',
         quality: 0.06,
         work: 1.22,
         testRisk: 0.72,
         appeal: 1.08,
+        // The OTA server is set up once and every device after it reports home to the same one.
+        cost: 450,
+        keeps: true,
       },
     ],
   },
@@ -360,10 +365,13 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
       {
         label: 'Full simulation',
         stars: 5,
-        blurb: 'Stress, thermal and motion, run properly. The test rarely surprises anyone.',
+        blurb: 'Stress, thermal and motion on a solver the space owns. The test rarely surprises anyone.',
         work: 1.6,
         quality: 0.05,
         testRisk: 0.55,
+        // A solver licence and a workstation that can run it: bought once, used by every build.
+        cost: 600,
+        keeps: true,
       },
     ],
   },
