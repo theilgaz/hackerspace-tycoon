@@ -22,6 +22,21 @@ export interface FurnitureDef {
   span: number;
   /** What it is for, in a word, for the card's badge. */
   use: string;
+  /**
+   * The variants (§4d) — the same kind of station done differently. Each one is a trade:
+   * **a reward with no matching cost is not a choice** (§13), so the faster desk is dear,
+   * the cheaper seat is slower, and the kickoff corner takes two tiles.
+   */
+  /** Seats, when not the kind's usual number. */
+  seats?: number;
+  /** Work rate of whoever sits here, against a plain station of the same kind. */
+  rate?: number;
+  /** Energy burned working here, against a plain station. Lower is better. */
+  fatigue?: number;
+  /** A kickoff held here goes this much faster. */
+  kickoff?: number;
+  /** Owning one multiplies the test risk of electronics builds — the scope finds it first. */
+  testRisk?: number;
 }
 
 export const FURNITURE: FurnitureDef[] = [
@@ -91,13 +106,101 @@ export const FURNITURE: FurnitureDef[] = [
     span: 1,
     use: 'mechanical assembly',
   },
+  // A machine, not a seat: it cuts parts on the clock like a printer. The CNC Router project
+  // builds one for the price of its parts and six weeks of a crew; this is the cheque instead.
+  {
+    id: 'cnc-router',
+    type: 'cnc',
+    name: 'CNC Router',
+    blurb: 'Aluminium and hardwood, cut to the tenth of a millimetre. The e-bike and the motorcycle need one.',
+    icon: 'cog',
+    era: 2,
+    price: 26000,
+    span: 1,
+    use: 'cuts CNC parts',
+  },
+  // --- Variants: the same jobs, done differently -------------------------------------
+  {
+    id: 'pro-workstation',
+    type: 'cad-desk',
+    name: 'Pro Workstation',
+    blurb: 'Three screens, a chair that costs more than the desk, and a lamp. Everything here goes a little faster.',
+    icon: 'code',
+    era: 1,
+    price: 4500,
+    span: 1,
+    use: 'code · CAD · faster',
+    rate: 1.15,
+    fatigue: 0.85,
+  },
+  {
+    id: 'long-bench',
+    type: 'cad-desk',
+    name: 'Long Hacker Bench',
+    blurb: 'One long desk, three chairs, a tangle of cables. Cheaper seats, and elbows.',
+    icon: 'users',
+    era: 1,
+    price: 3900,
+    span: 2,
+    use: 'code · CAD · 3 seats',
+    seats: 3,
+    rate: 0.92,
+  },
+  {
+    id: 'pair-desk',
+    type: 'cad-desk',
+    name: 'Pair Programming Desk',
+    blurb: 'One big screen, two keyboards, one argument about tabs. Two people, one desk.',
+    icon: 'users',
+    era: 1,
+    price: 2600,
+    span: 1,
+    use: 'code · CAD · 2 seats',
+    seats: 2,
+    rate: 0.85,
+  },
+  {
+    id: 'solder-bench',
+    type: 'bench',
+    name: 'Soldering & Measurement Bench',
+    blurb: 'A proper iron, a four-channel scope and a fume arm. Boards go together faster, and fewer come back.',
+    icon: 'cpu',
+    era: 1,
+    price: 5200,
+    span: 1,
+    use: 'electronics · fewer failed tests',
+    rate: 1.2,
+    testRisk: 0.75,
+  },
+  {
+    id: 'meeting-corner',
+    type: 'table-small',
+    name: 'Meeting Corner',
+    blurb: 'A sofa, two armchairs, a low table and a whiteboard on wheels. Kickoffs get agreed faster here.',
+    icon: 'users',
+    era: 1,
+    price: 3600,
+    span: 2,
+    use: 'kickoffs up to 6 · faster',
+    seats: 6,
+    kickoff: 1.35,
+  },
 ];
 
 export const FURNITURE_MAP: Record<string, FurnitureDef> = Object.fromEntries(
   FURNITURE.map((def) => [def.id, def]),
 );
 
-export const furnitureSeats = (def: FurnitureDef): number => SEATS[def.type] ?? 1;
+export const furnitureSeats = (def: FurnitureDef): number => def.seats ?? SEATS[def.type] ?? 1;
+
+/**
+ * Which piece of furniture a station on the floor is. A bought one carries its catalogue id
+ * as its model; the kit the garage came with, and anything saved before variants, is the
+ * plain one of its kind — the first entry of that type.
+ */
+export function furnitureOf(station: { type: MachineType; model?: string }): FurnitureDef | undefined {
+  return (station.model ? FURNITURE_MAP[station.model] : undefined) ?? furnitureFor(station.type);
+}
 
 /** What to buy when people are queueing for a kind of seat. */
 export function furnitureFor(type: MachineType): FurnitureDef | undefined {

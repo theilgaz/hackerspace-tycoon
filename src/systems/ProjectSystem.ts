@@ -8,7 +8,7 @@ import type {
 } from '@/game/types';
 import { STAGE_ORDER, SOURCING, TEST } from '@/utils/constants';
 import { CATALOG_MAP } from '@/utils/catalog';
-import { defaultPlan, planProject } from '@/utils/design';
+import { defaultPlan, planProject, wishesFor } from '@/utils/design';
 import { uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
 
@@ -47,7 +47,9 @@ export function startProject(
     name: def.name,
     category: def.category,
     tags: [...def.tags],
-    stage: 'concept',
+    // A build with nothing to agree (a print order) starts at the files: a stage needing no
+    // hand work never counts as done (`stageComplete`), so it must not start in one.
+    stage: required.concept === 0 ? 'cad' : 'concept',
     progress: emptyProgress(),
     required,
     quality: 0.5,
@@ -72,6 +74,8 @@ export function startProject(
     startedOnDay: day,
     idleDays: 0,
     design: { ...chosen.design },
+    ceiling: summary.ceiling,
+    wishes: wishesFor(def),
     craft: 0.5,
     // The design's share of quality is known at the pitch; the crew's is added at the end
     // of the kickoff, from whoever actually sat down (see `Simulation.finishKickoff`).
@@ -79,14 +83,16 @@ export function startProject(
     appeal: summary.appeal,
     testRisk: summary.testRisk,
     tableId: null,
-    kickedOff: false,
+    // Nothing to agree round a table — a print order starts at the files.
+    kickedOff: required.concept === 0,
     contrib: {},
   };
 }
 
 /** Quality is craft plus what the design and the crew added, and never quite zero. */
 export function refreshQuality(project: ProjectData) {
-  project.quality = Math.max(0.05, Math.min(1, project.craft + project.bonus));
+  // Never past what the best of the crew can reach (design §4.2).
+  project.quality = Math.max(0.05, Math.min(project.ceiling ?? 1, project.craft + project.bonus));
 }
 
 /** Parts appear once CAD is done — you cannot print what nobody has modelled. */
@@ -202,13 +208,15 @@ export interface TestOutcome {
 }
 
 /** §13.6 — does it work, or does it become a lesson? */
-export function resolveTest(project: ProjectData): TestOutcome {
+export function resolveTest(project: ProjectData, kit = 1): TestOutcome {
   const pass = TEST.basePass + (project.quality - 0.5) * 2 * TEST.qualityWeight;
   let fail = Math.max(0.02, 1 - pass);
   // Every risk the build carries lives in one multiplier: the design's (eyeballing it
   // instead of simulating is one of them) and the Skip button's, which multiplies itself in
   // when pressed. Two places deciding the same penalty is how it gets applied twice.
   fail *= project.testRisk ?? 1;
+  // What the space owns that finds faults first — a measurement bench, for electronics.
+  fail *= kit;
   fail = Math.max(0.02, fail - project.testAttempts * TEST.attemptBonus);
   fail = Math.min(0.95, fail);
 

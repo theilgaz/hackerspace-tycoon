@@ -1,6 +1,8 @@
 import type { GameState } from '@/game/store';
 import type {
   BacklogEntry,
+  BuyItem,
+  Wish,
   ProjectCategory,
   ScoreRow,
   MemberSnapshot,
@@ -19,13 +21,13 @@ import type {
 } from '@/game/types';
 import type { Ceremony, CeremonyAward, YearStanding } from '@/systems/RivalSystem';
 import { ROLE_BLURB, ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
-import { CATALOG_MAP, catalogForEra, missingMachines } from '@/utils/catalog';
+import { CATALOG_MAP, catalogForEra, customDefId, missingMachines } from '@/utils/catalog';
 import {
   CATEGORY_ORDER,
+  CATEGORY_PROFILES,
   categoryAffinity,
   profileOf,
   stageLabel,
-  stageSkill,
   topCategories,
 } from '@/utils/categories';
 import {
@@ -40,6 +42,8 @@ import {
   TIME,
   TRAIT_BLURB,
   TRAIN,
+  DESIGN,
+  SEATS,
   TRAIT_LABEL,
   VERB_HOURS,
   eraDef,
@@ -47,17 +51,18 @@ import {
   WEEKLY_HOURS,
 } from '@/utils/constants';
 import { TOUR, hasToured, rememberToured } from './tour';
-import { awardsDay, clock, dayName, hours, money, pct, shortDate } from '@/utils/format';
+import { awardsDay, clock, dayName, hours, money, pct, shortDate, span, workSpan } from '@/utils/format';
 import { LOCALES, getLocale, num, say, t, type Locale, type MessageKey, type Text } from '@/i18n';
 import {
   AMENITIES,
-  comfortsOf,
+  BUILD_SHELVES,
+  amenityShelf,
   effectLines,
-  type AmenityDef,
+  type BuildShelf,
 } from '@/utils/amenities';
 import { CLAIMS, SUBREDDITS, SUBREDDIT_MAP, tasteMatch } from '@/utils/subreddits';
 import { merit, projectSubject, react, type Subject } from '@/systems/HypeSystem';
-import { PRINTERS, type PrinterModel } from '@/utils/printers';
+import { PRINTERS, PRINTER_MAP, type PrinterModel } from '@/utils/printers';
 import {
   AXES,
   CATEGORY_AXES,
@@ -65,14 +70,24 @@ import {
   defaultDesign,
   optionOf,
   planProject,
-  optionAvailable,
+  crewHours,
+  defaultPlan,
   genreStars,
   designStars,
   licenceCost,
   type Licences,
   optionCost,
-  optionNeeds,
-  crewBest,
+  crewLevels,
+  forecastDays,
+  isMulti,
+  optionLevel,
+  picked,
+  presetDesign,
+  shortBy,
+  TECH_LABELS,
+  wishesFor,
+  wishPlanned,
+  type Preset,
   qualityHype,
   qualityPay,
   qualityStars,
@@ -80,18 +95,18 @@ import {
   type DesignOption,
 } from '@/utils/design';
 import { demandLabel } from '@/utils/market';
-import { FURNITURE, FURNITURE_MAP, furnitureSeats, type FurnitureDef } from '@/utils/furniture';
+import { FURNITURE, FURNITURE_MAP, furnitureOf, furnitureSeats, type FurnitureDef } from '@/utils/furniture';
 import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { AWARDS, LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
-import { DIFFICULTIES, type DifficultyKey } from '@/utils/difficulty';
+import type { DifficultyKey } from '@/utils/difficulty';
 import { ECONOMY } from '@/utils/economy';
-import { MACHINE_LABEL, STATION_MAP } from '@/machines/layout';
+import { MACHINE_LABEL, STATIONS, STATION_MAP } from '@/machines/layout';
 import { partsEta, partsPending, projectProgress } from '@/systems/ProjectSystem';
 import { SHELVE } from '@/utils/constants';
 
 export interface UIHandlers {
   setSpeed(speed: number): void;
-  pitch(defId: string, offerId: string | undefined, team: string[], plan: ProjectPlan): void;
+  pitch(defId: string, offerId: string | undefined, team: string[], plan: ProjectPlan, name?: string): void;
   buyFurniture(id: string): void;
   train(memberId: string, skill: SkillKey): void;
   resaleOf(id: string): { value: number; reason: MessageKey | null };
@@ -119,6 +134,19 @@ export interface UIHandlers {
   cancelJob(machineId: string, jobId: string): void;
   buyFilament(machineId?: string): void;
   refillCost(machineId?: string): number;
+  buyAllFilament(): void;
+  setBuildMode(on: boolean): void;
+  pickBuy(item: BuyItem | null): void;
+  buyQuote(item: BuyItem): { name: string; price: number; upkeep: number } | null;
+  confirmBuy(): void;
+  cancelBuy(): void;
+  treatDrink(memberId: string, amenityId: string): void;
+  refillAllCost(): number;
+  buySpools(count: number): void;
+  shelfCapacity(): number;
+  maintainAll(): void;
+  acceptOrder(offerId: string): void;
+  declineOrder(offerId: string): void;
   buyPrinter(modelId: string): void;
   buyAmenity(id: string): void;
   turnAmenity(): void;
@@ -190,11 +218,22 @@ type RankKey =
 
 /** Narrow enough to keep six numeric columns comparable at a glance. */
 
+/**
+ * A name for a build when the player wants one (design §6.2): two words, the way makers
+ * name things — a codename rather than a description.
+ */
+const NAME_A = ['Project', 'Operation', 'Little', 'Big', 'Midnight', 'Copper', 'Neon', 'Quiet', 'Rusty', 'Solar', 'Tiny', 'Lazy', 'Brave', 'Night'];
+const NAME_B = ['Kestrel', 'Pigeon', 'Otter', 'Lighthouse', 'Teapot', 'Anvil', 'Comet', 'Lantern', 'Marmot', 'Heron', 'Beacon', 'Kettle', 'Walrus', 'Falcon'];
+function suggestName(): string {
+  const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
+  return `${pick(NAME_A)} ${pick(NAME_B)}`;
+}
+
 /** The promise each tier makes about length (CLAUDE.md §4). */
 const TIER_DAYS: Record<ProjectDef['tier'], string> = {
-  small: '1-5',
-  medium: '5-10',
-  large: '10-30',
+  small: '1-2',
+  medium: '4-7',
+  large: '6-10',
 };
 
 /** Genre badge: the genre's icon and name, tinted by its own colour and nothing more. */
@@ -292,19 +331,29 @@ function optionEffects(
  * picker in the corner plus this meter under it, and the meter looked like the thing to
  * press — so people pressed it and nothing happened. Now it is the picker.
  */
-function fitMeter(ideal: number, seats: number, max: number): string {
+function fitMeter(ideal: number, seats: number, max: number, free = Infinity): string {
   const marks = SEAT_OPTIONS.map((n) => {
     const q = teamFit(n, ideal).quality;
     const tone = q >= 0.04 ? 'good' : q <= -0.04 ? 'bad' : 'flat';
-    const blocked = n > max;
-    const tip = blocked
+    // Too big for any table, or more people than there are free to pick.
+    const blocked = n > max || n > free;
+    const tip = n > max
       ? t('build.np.seatBlocked', { count: n, table: FURNITURE_MAP['table-large'].name })
-      : `${t('build.people', { count: n })}: ${fitLabel(n, ideal)}`;
+      : n > free
+        ? t('build.np.seatNoPeople', { count: n, free })
+        : `${t('build.people', { count: n })}: ${fitLabel(n, ideal)}`;
     return `<button class="fit-cell fit-cell--${tone}" data-action="np-seats" data-value="${n}"
       aria-pressed="${n === seats}" ${blocked ? 'disabled' : ''} title="${esc(tip)}">
       ${icon('users')}<b>${n}</b></button>`;
   }).join('');
   return `<div class="fit-meter" role="group">${marks}</div>`;
+}
+
+/** One design choice in words: its option and stars, or for the platforms, which ones. */
+function designLabel(axis: DesignAxisId, design: DesignChoice): string {
+  if (isMulti(axis)) return ['Web', ...picked(axis, design).map((i) => AXES[axis].options[i].label)].join(' · ');
+  const option = optionOf(axis, design);
+  return `${option.label} ${'★'.repeat(option.stars)}`;
 }
 
 /** A crew size's place on the curve, in words. */
@@ -313,14 +362,13 @@ function fitLabel(seats: number, ideal: number): string {
 }
 
 /** The six skills, in the order every table lists them. */
-const SKILL_KEYS: SkillKey[] = ['software', 'electronics', 'cad', 'machining', 'welding', 'docs'];
+const SKILL_KEYS: SkillKey[] = ['software', 'electronics', 'comms', 'mechanical'];
 
 /** How many of a piece of furniture the space owns, from the runtime's own counts. */
-function ownedFurniture(state: GameState, def: FurnitureDef): number {
-  if (def.type === 'table-small' || def.type === 'table-large') {
-    return state.runtime.tables.filter((t) => t.type === def.type).length;
-  }
-  return Math.round((state.runtime.seats[def.type] ?? 0) / furnitureSeats(def));
+function ownedFurniture(_state: GameState, def: FurnitureDef): number {
+  // By piece, not by kind: a Meeting Corner is not a Small Project Table, and a Long Bench's
+  // three seats are one bench.
+  return STATIONS.filter((s) => furnitureOf(s)?.id === def.id).length;
 }
 
 function bar(value: number, max: number, tone = ''): string {
@@ -350,10 +398,31 @@ export class UI {
 
   /** Which build-menu panel is open, if any. */
   private openModal:
-    | 'new' | 'people' | 'ranking' | 'machines' | 'projects' | 'reddit' | 'build' | null = null;
+    | 'new' | 'people' | 'ranking' | 'machines' | 'projects' | 'reddit' | 'training' | null = null;
+
+  /** The Learning Station's panel: which skill is being taught, and who is signed up for it. */
+  private trainSkill: SkillKey | null = null;
+  private trainPick = new Set<string>();
+
+  /**
+   * Notifications (§11): warnings pop up beside the bench, level with the clock, for five
+   * seconds each. Transient on purpose — they are added and removed one element at a time
+   * rather than rendered, so a paused game still lets them go.
+   */
+  private toastEl!: HTMLElement;
+  private toastSeen = new Set<string>();
+  private toastPrimed = false;
+  private seatWaits: Partial<Record<string, number>> = {};
 
   /** Which shelf of the Build panel is open. */
-  private buildTab: 'workspace' | 'printers' | 'comfort' | 'decor' = 'workspace';
+  private buildShelf: BuildShelf = 'work';
+  /** The tile under the cursor on the Build shelves, so the info column can read it out. */
+  private buildHover: string | null = null;
+  private buildEl!: HTMLElement;
+  /** A drink comfort clicked in the room: who is being sent for one (§7b). */
+  private treatAmenity: string | null = null;
+  private treatEl!: HTMLElement;
+  private buyConfirmEl!: HTMLElement;
 
   /** Which group of projects is on screen. Falls through when the chosen one is empty. */
   private projectsTab: 'all' | 'on' | 'done' = 'all';
@@ -369,7 +438,7 @@ export class UI {
   private revealTimer = 0;
 
   /** Standings, or the shelf of everything you have won. */
-  private rankTab: 'table' | 'trophies' = 'table';
+  private rankTab: 'table' | 'trophies' | 'projects' = 'table';
 
   /** Which slice of the record is open: every category at once, or one of them. */
   private trophyScope: string | null = null;
@@ -452,6 +521,8 @@ export class UI {
     crew: Set<string>;
     /** A crew the player has edited is never re-suggested over (§4c). */
     crewTouched: boolean;
+    /** What the build will be called — required, and what the projects table ranks by. */
+    name: string;
   } = this.freshWizard();
 
   private freshWizard() {
@@ -464,6 +535,7 @@ export class UI {
       seats: 1,
       crew: new Set<string>(),
       crewTouched: false,
+      name: '',
     };
   }
 
@@ -484,7 +556,24 @@ export class UI {
   private setHTML(el: HTMLElement, key: string, html: string) {
     if (this.htmlCache.get(key) === html) return;
     this.htmlCache.set(key, html);
+    // **A text box being typed in survives the redraw.** The sim redraws panels several
+    // times a second, and a panel whose markup mentions what is being typed (a build's
+    // name on its Start button) replaced the input under the caret on every keystroke. The
+    // new input with the same id takes the focus, the value and the caret back.
+    const active = document.activeElement as HTMLInputElement | null;
+    const typing =
+      active && el.contains(active) && active.id && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
+        ? { id: active.id, value: active.value, start: active.selectionStart, end: active.selectionEnd }
+        : null;
     el.innerHTML = html;
+    if (typing) {
+      const again = el.querySelector<HTMLInputElement>(`#${CSS.escape(typing.id)}`);
+      if (again) {
+        again.value = typing.value;
+        again.focus();
+        if (typing.start !== null && typing.end !== null) again.setSelectionRange(typing.start, typing.end);
+      }
+    }
   }
   private topbar!: HTMLElement;
   private clockPanel!: HTMLElement;
@@ -528,6 +617,10 @@ export class UI {
       </div>
 
       <div class="panel" id="moving"></div>
+      <div id="toasts" aria-live="polite"></div>
+      <div class="panel" id="buildpanel"></div>
+      <div class="panel" id="buyconfirm"></div>
+      <div class="panel" id="treat"></div>
       <div class="panel" id="devconsole"></div>
       <div id="bottombar"></div>
       <div id="modal"></div>
@@ -543,6 +636,14 @@ export class UI {
     this.clockPanel = this.root.querySelector('#clockpanel')!;
     this.bottombar = this.root.querySelector('#bottombar')!;
     this.movingEl = this.root.querySelector('#moving')!;
+    this.buildEl = this.root.querySelector('#buildpanel')!;
+    this.toastEl = this.root.querySelector('#toasts')!;
+    // A toast goes when it is pressed, as well as after its five seconds.
+    this.toastEl.addEventListener('pointerdown', (event) => {
+      (event.target as HTMLElement).closest('.toast')?.remove();
+    });
+    this.buyConfirmEl = this.root.querySelector('#buyconfirm')!;
+    this.treatEl = this.root.querySelector('#treat')!;
     this.devEl = this.root.querySelector('#devconsole')!;
     this.modal = this.root.querySelector('#modal')!;
     this.startEl = this.root.querySelector('#start')!;
@@ -612,6 +713,13 @@ export class UI {
       const state = this.lastState;
       if (state?.bill) this.handlers.dismissBill();
       else if (state?.ceremony) this.handlers.dismissCeremony();
+      // Build mode unwinds one layer a press: the question, then the item in hand, then the
+      // mode itself. Something picked up from the room is Game's to put down.
+      else if (state?.buyConfirm) this.handlers.cancelBuy();
+      else if (this.treatAmenity) this.treatAmenity = null;
+      else if (state?.buildMode && state.placingBuy) this.handlers.pickBuy(null);
+      else if (state?.buildMode && state.moving) return;
+      else if (state?.buildMode && !this.openModal) this.handlers.setBuildMode(false);
       else if (this.roleOpen) this.roleOpen = null;
       else if (this.rankSpace) this.rankSpace = null;
       else if (this.openModal) this.openModal = null;
@@ -620,9 +728,26 @@ export class UI {
       this.rerender();
     });
 
+    // Hovering a tile on the Build shelves reads it out in the info column, the way the
+    // Sims does — the name under the picture is only a label, the column is the card.
+    this.root.addEventListener('pointerover', (event) => {
+      const tile = (event.target as HTMLElement).closest<HTMLElement>('.build-tile');
+      const next = tile?.dataset.value ?? null;
+      if (next === this.buildHover) return;
+      this.buildHover = next;
+      this.rerender();
+    });
+
     this.root.addEventListener('input', (event) => {
       const target = event.target as HTMLElement;
       if (target.id === 'space-name') this.onNameTyped(target as HTMLInputElement);
+      // The build's name: kept as typed, and the Start button follows it without a redraw
+      // that would take the input from under the caret.
+      if (target.id === 'np-name') {
+        this.np.name = (target as HTMLInputElement).value;
+        const go = this.root.querySelector<HTMLButtonElement>('[data-action="np-start"]');
+        if (go) go.disabled = !this.np.name.trim() || go.dataset.blocked === '1';
+      }
     });
 
     // Enter in the name box opens the doors: the field and the button are the whole form.
@@ -664,7 +789,7 @@ export class UI {
           this.rerender();
           break;
         case 'rank-view':
-          this.rankTab = (value as 'table' | 'trophies') ?? 'table';
+          this.rankTab = (value as 'table' | 'trophies' | 'projects') ?? 'table';
           this.rankSpace = null;
           this.rerender();
           break;
@@ -773,12 +898,6 @@ export class UI {
           this.start.logo = Number(value);
           this.rerender();
           break;
-        case 'difficulty':
-          this.start.name = this.nameField();
-          this.start.player = this.playerField();
-          this.start.difficulty = value as DifficultyKey;
-          this.rerender();
-          break;
         case 'continue':
           h.continueRun();
           break;
@@ -857,6 +976,42 @@ export class UI {
           if (id) h.hire(id);
           this.rerender();
           break;
+        case 'train-open':
+          // From the People matrix: the course with this person and this skill already
+          // picked, so a second person for the other chair is one click away.
+          this.openTraining(value as SkillKey | undefined, id);
+          break;
+        case 'train-skill':
+          this.trainSkill = (value as SkillKey) ?? null;
+          // Anybody picked who cannot take this skill drops off the list.
+          for (const pick of [...this.trainPick]) if (this.trainBlocked(pick, this.trainSkill)) this.trainPick.delete(pick);
+          {
+            const course = this.trainLevel(this.trainSkill);
+            const members = this.lastState?.runtime.members ?? [];
+            for (const pick of [...this.trainPick]) {
+              if ((members.find((x) => x.id === pick)?.skills[this.trainSkill!] ?? 0) !== course) this.trainPick.delete(pick);
+            }
+          }
+          this.rerender();
+          break;
+        case 'train-pick':
+          if (id) {
+            // One course, one level. Picking somebody from another level is not refused — it
+            // switches the course to theirs, which is what the click meant.
+            const level = this.lastState?.runtime.members.find((x) => x.id === id)?.skills[this.trainSkill!] ?? 0;
+            const course = this.trainLevel(this.trainSkill);
+            if (this.trainPick.has(id)) this.trainPick.delete(id);
+            else if (this.trainBlocked(id, this.trainSkill)) break;
+            else if (course !== null && course !== level) this.trainPick = new Set([id]);
+            else if (this.trainPick.size < this.trainSeats()) this.trainPick.add(id);
+          }
+          this.rerender();
+          break;
+        case 'train-start':
+          if (this.trainSkill) for (const pick of this.trainPick) h.train(pick, this.trainSkill);
+          this.trainPick.clear();
+          this.rerender();
+          break;
         case 'train':
           if (id && value) h.train(id, value as SkillKey);
           this.rerender();
@@ -885,6 +1040,10 @@ export class UI {
           this.np.step = 'brief';
           this.rerender();
           break;
+        case 'np-name-suggest':
+          this.np.name = suggestName();
+          this.rerender();
+          break;
         case 'np-brief':
           if (id && this.lastState) this.npChooseBrief(id, id2 || null, this.lastState);
           // The crew comes before the design (§4c): what they can do decides what is on offer.
@@ -895,6 +1054,20 @@ export class UI {
           if (value) this.np.design = { ...this.np.design, [value]: Number(id) };
           this.rerender();
           break;
+        case 'np-toggle':
+          // A platform switched on or off: a bit per option on top of the web (§5.4).
+          if (value) this.np.design = { ...this.np.design, [value]: (this.np.design[value as DesignAxisId] ?? 0) ^ (1 << Number(id)) };
+          this.rerender();
+          break;
+        case 'np-preset': {
+          const def = this.npDef();
+          if (def && this.lastState) {
+            this.np.design = presetDesign(def, value as Preset, this.npPlanWithCrew(this.lastState), this.lastState.ownedMachines, this.lastState.licences);
+            this.npFitDesign(this.lastState);
+          }
+          this.rerender();
+          break;
+        }
         case 'np-seats':
           this.np.seats = Number(value) || 1;
           if (this.lastState) this.npSuggestCrew(this.lastState);
@@ -912,6 +1085,7 @@ export class UI {
           break;
         }
         case 'np-next':
+          if (this.np.step === 'crew' && this.np.crew.size < this.np.seats) break;
           if (this.np.step === 'crew') {
             this.np.step = 'design';
             if (this.lastState) this.npFitDesign(this.lastState);
@@ -923,7 +1097,8 @@ export class UI {
         case 'np-start': {
           const def = this.npDef();
           if (!def) break;
-          h.pitch(def.id, this.np.offerId ?? undefined, [...this.np.crew], this.npPlan());
+          if (!this.np.name.trim()) break;
+          h.pitch(def.id, this.np.offerId ?? undefined, [...this.np.crew], this.npPlan(), this.np.name.trim());
           this.openModal = null;
           this.np = this.freshWizard();
           this.rerender();
@@ -978,8 +1153,24 @@ export class UI {
           h.buyFilament(id || undefined);
           this.rerender();
           break;
-        case 'buy-printer':
-          if (value) h.buyPrinter(value);
+        case 'filament-all':
+          h.buyAllFilament();
+          this.rerender();
+          break;
+        case 'spools':
+          h.buySpools(Number(value) || 1);
+          this.rerender();
+          break;
+        case 'maintain-all':
+          h.maintainAll();
+          this.rerender();
+          break;
+        case 'order-accept':
+          if (id) h.acceptOrder(id);
+          this.rerender();
+          break;
+        case 'order-decline':
+          if (id) h.declineOrder(id);
           this.rerender();
           break;
         case 'dev-close':
@@ -997,19 +1188,42 @@ export class UI {
           this.rerender();
           break;
         case 'build-open':
-          this.openModal = 'build';
+          // Build is a mode, not a panel: the catalogue along the bottom, the room above it.
+          this.openModal = null;
+          h.setBuildMode(!this.lastState?.buildMode);
           this.rerender();
           break;
-        case 'build-tab':
-          this.buildTab = (value as 'workspace' | 'printers' | 'comfort' | 'decor') ?? 'workspace';
+        case 'treat':
+          if (id && this.treatAmenity) h.treatDrink(id, this.treatAmenity);
+          this.treatAmenity = null;
           this.rerender();
           break;
-        case 'buy-furniture':
-          if (value) h.buyFurniture(value);
+        case 'treat-close':
+          this.treatAmenity = null;
           this.rerender();
           break;
-        case 'buy-amenity':
-          if (value) h.buyAmenity(value);
+        case 'build-exit':
+          h.setBuildMode(false);
+          this.rerender();
+          break;
+        case 'build-shelf':
+          this.buildShelf = (value as BuildShelf) ?? 'work';
+          this.rerender();
+          break;
+        case 'build-pick': {
+          const [kind, pick] = (value ?? '').split(':');
+          const held = this.lastState?.placingBuy;
+          // A second press on the item in hand puts it back.
+          h.pickBuy(held && held.kind === kind && held.id === pick ? null : { kind: kind as BuyItem['kind'], id: pick });
+          this.rerender();
+          break;
+        }
+        case 'buy-yes':
+          h.confirmBuy();
+          this.rerender();
+          break;
+        case 'buy-no':
+          h.cancelBuy();
           this.rerender();
           break;
         case 'sign-lease':
@@ -1058,6 +1272,9 @@ export class UI {
     this.root.querySelector('#log')?.classList.toggle('folded', this.folded.log);
     this.renderLog(state);
     this.renderBottomBar(state);
+    this.collectToasts(state);
+    this.renderBuildPanel(state);
+    this.renderTreat(state);
     this.renderMoving(state);
     this.renderDev();
     this.renderModal(state);
@@ -1102,8 +1319,267 @@ export class UI {
    * menu rather than a modal on purpose: **the thing you are deciding about is the room**,
    * and a dialog over it would cover the tiles you are choosing between.
    */
+  /**
+   * What is worth a notification: every new warning or bad news in the log, and somebody
+   * standing about because there is no seat of the kind they need — the thing the Build
+   * button used to only turn orange about. History is not news: whatever is in the log when
+   * the game first renders is marked seen, not shown.
+   */
+  private collectToasts(state: GameState) {
+    const recent = state.log.slice(0, 12);
+    if (!this.toastPrimed) {
+      this.toastPrimed = true;
+      for (const entry of state.log) this.toastSeen.add(entry.id);
+      this.seatWaits = { ...state.runtime.waitingFor };
+      return;
+    }
+    for (const entry of [...recent].reverse()) {
+      if (this.toastSeen.has(entry.id)) continue;
+      this.toastSeen.add(entry.id);
+      if (entry.kind === 'warn' || entry.kind === 'bad') this.toast(say(entry.text), entry.kind);
+    }
+    // A kind of seat newly short, or more people waiting for one than a moment ago.
+    for (const [type, count] of Object.entries(state.runtime.waitingFor)) {
+      if (!count || count <= (this.seatWaits[type] ?? 0)) continue;
+      this.toast(t('build.toast.needSeat', { count, station: MACHINE_LABEL[type as MachineType] }), 'warn', 'hammer');
+    }
+    this.seatWaits = { ...state.runtime.waitingFor };
+  }
+
+  private toast(text: string, kind: 'warn' | 'bad', glyph: IconName = kind === 'bad' ? 'x' : 'clock') {
+    // Four at most; the oldest makes room.
+    while (this.toastEl.children.length >= 4) this.toastEl.firstElementChild?.remove();
+    const el = document.createElement('div');
+    el.className = `toast toast--${kind}`;
+    el.innerHTML = `${icon(glyph)}<span>${esc(text)}</span>`;
+    this.toastEl.appendChild(el);
+    window.setTimeout(() => el.remove(), 5000);
+  }
+
+  /**
+   * Build mode (§7b) — the catalogue along the bottom, the way the Sims does its Buy mode:
+   * shelves on the left, a wall of pictures on the right, and what the picked one is and
+   * does above them. **Picking an item buys nothing.** The room lights the tiles it could go
+   * on, a see-through copy follows the cursor, and the click on a tile is what asks "buy
+   * it?" — the money moves only on yes.
+   */
+  private renderBuildPanel(state: GameState) {
+    this.bottombar.classList.toggle('hidden', state.buildMode);
+    this.movingEl.classList.toggle('above-build', state.buildMode);
+    this.renderBuyConfirm(state);
+    if (!state.buildMode) {
+      this.buildEl.classList.remove('on');
+      this.buildHover = null;
+      return;
+    }
+    this.buildEl.classList.add('on');
+    const held = state.placingBuy;
+    const items = this.shelfItems(this.buildShelf, state);
+    // **One strip of tabs, not a wall of boxes.** The shelves were a two-column grid of
+    // big bordered buttons that took a quarter of the panel to say seven words; as the same
+    // segmented control every other panel uses, they fit on one line with Done at its end.
+    const shelves = `<div class="ui-segmented build-shelf-tabs">${BUILD_SHELVES.map(
+      (shelf) => `<button class="build-shelf" data-action="build-shelf" data-value="${shelf.key}"
+        aria-pressed="${shelf.key === this.buildShelf}">
+        ${icon(shelf.icon, 'ui-icon')}<span>${t(`build.mode.shelf.${shelf.key}` as MessageKey)}</span>
+      </button>`,
+    ).join('')}</div>`;
+    const tiles = items
+      .map((it) => {
+        const on = held?.kind === it.item.kind && held.id === it.item.id;
+        return `<button class="build-tile ${on ? 'on' : ''} ${it.owned ? 'owned' : ''}" data-action="build-pick"
+          data-value="${it.item.kind}:${it.item.id}" ${it.blocked ? 'disabled' : ''}>
+          ${this.thumb(`${it.item.kind}:${it.item.id}`, it.icon)}
+          <span class="build-tile__name">${esc(it.name)}</span>
+          <span class="build-tile__price ${this.affordable(state, it.price) ? '' : 'bad'}">
+            ${it.locked ? icon('clock') : it.owned ? icon('check') : ''}${it.owned && it.once ? t('build.card.owned') : money(it.price)}
+          </span>
+        </button>`;
+      })
+      .join('');
+    // What the info column reads out: the tile under the cursor, else the one in hand.
+    const hover = this.buildHover ? items.find((it) => `${it.item.kind}:${it.item.id}` === this.buildHover) : null;
+    const inHand = held ? items.find((it) => it.item.kind === held.kind && it.item.id === held.id) : null;
+    const picked = hover ?? inHand;
+    const info = picked
+      ? // Name, then price and upkeep as one quiet line: as badges beside the name they
+        // wrapped onto a second row and pushed the description off the bottom.
+        `<div class="build-info__head"><b>${esc(picked.name)}</b></div>
+         <span class="build-info__price">${money(picked.price)}${
+           picked.upkeep ? ` · ${t('build.card.perMonth', { upkeep: picked.upkeep })}` : ''
+         }</span>
+         <p class="ui-desc ui-clamp-2">${esc(picked.blurb)}</p>
+         <div class="ui-row__meta build-info__badges">${picked.badges.join('')}</div>
+         ${picked.blocked ? `<p class="build-info__why">${esc(picked.blocked)}</p>` : ''}
+         ${
+           // What to do next only matters once it is in hand; on a hover it is the same
+           // sentence every time, and the column has no room to spare for it.
+           picked === inHand ? `<p class="build-info__hint">${icon('hammer')}${t('build.mode.placeHint')}</p>` : ''
+         }`
+      : `<div class="build-info__head"><b>${t(`build.mode.shelf.${this.buildShelf}` as MessageKey)}</b></div>
+         <p class="ui-desc">${t(`build.mode.about.${this.buildShelf}` as MessageKey)}</p>
+         ${this.buildShelf === 'work' ? this.seatLine(state) : ''}
+         <p class="build-info__hint">${icon('shuffle')}${t('build.mode.moveHint')}</p>`;
+    // **Three boxes, written separately.** Hovering a tile rewrites the info column and
+    // nothing else: rebuilding the whole panel on every hover replaced the tile under the
+    // cursor between press and release, which is the bug §13 says killed every button once.
+    if (!this.buildEl.querySelector('.build-tiles')) {
+      this.buildEl.innerHTML = '<div class="build-shelves"></div><div class="build-info"></div><div class="build-tiles"></div>';
+      for (const part of ['shelves', 'info', 'tiles']) this.htmlCache.delete(`build-${part}`);
+    }
+    this.setHTML(
+      this.buildEl.querySelector<HTMLElement>('.build-shelves')!,
+      'build-shelves',
+      `${shelves}<button class="ui-btn ui-btn--primary ui-btn--sm build-exit" data-action="build-exit">${icon('check')}${t('ui.done')}</button>`,
+    );
+    this.setHTML(this.buildEl.querySelector<HTMLElement>('.build-info')!, 'build-info', info);
+    this.setHTML(this.buildEl.querySelector<HTMLElement>('.build-tiles')!, 'build-tiles', tiles);
+  }
+
+  /** Seats per kind of workstation, and how many people are queueing for one. */
+  private seatLine(state: GameState): string {
+    const seats = state.runtime.seats;
+    const wait = state.runtime.waitingFor;
+    const one = (type: MachineType, label: MessageKey) => {
+      const queue = wait[type] ?? 0;
+      return `<span class="ui-badge ${queue ? 'ui-badge--tone' : ''}" ${queue ? 'style="--tone:var(--warning)"' : ''}>
+        ${t(label as 'build.seats.software', { count: seats[type] ?? 0 })}${queue ? ` · ${t('build.seats.waiting', { count: queue })}` : ''}
+      </span>`;
+    };
+    return `<div class="ui-row__meta">${one('cad-desk', 'build.seats.software')}${one('bench', 'build.seats.hardware')}${one('assembly', 'build.seats.assembly')}</div>`;
+  }
+
+  /** Everything on one shelf, with what stands in the way of each: the lease, the money, the room. */
+  private shelfItems(shelf: BuildShelf, state: GameState) {
+    type Item = {
+      item: BuyItem;
+      name: string;
+      blurb: string;
+      price: number;
+      upkeep: number;
+      icon: IconName;
+      owned: boolean;
+      /** One per space: once it is in, the card says so instead of a price. */
+      once?: boolean;
+      locked: boolean;
+      blocked: string | null;
+      badges: string[];
+    };
+    const why = (locked: number | null, afford: boolean, room: boolean, owned = false): string | null =>
+      owned
+        ? t('build.card.alreadyIn')
+        : locked
+          ? t('build.card.comesWith', { era: eraDef(locked).name })
+          : !room
+            ? t('build.card.noRoomHint')
+            : !afford
+              ? t('build.card.notEnough')
+              : null;
+    const badge = (text: string, tone = '') =>
+      `<span class="ui-badge ${tone ? 'ui-badge--tone' : ''}" ${tone ? `style="--tone:var(--${tone})"` : ''}>${text}</span>`;
+    if (shelf === 'work') {
+      return FURNITURE.map((def): Item => {
+        const locked = def.era > state.era;
+        const room = this.handlers.furnitureFits(def.type, def.span);
+        const owned = ownedFurniture(state, def);
+        // A machine is one per space, and it is operated rather than sat at.
+        const machine = def.type === 'cnc';
+        return {
+          item: { kind: 'furniture', id: def.id },
+          name: def.name,
+          blurb: def.blurb,
+          price: def.price,
+          upkeep: 0,
+          icon: def.icon,
+          owned: owned > 0,
+          once: machine,
+          locked,
+          blocked: why(locked ? def.era : null, this.affordable(state, def.price), room, machine && owned > 0),
+          badges: [
+            ...(machine ? [] : [badge(`${icon('users')}${t('build.card.seats', { count: furnitureSeats(def) })}`)]),
+            badge(esc(def.use)),
+            ...(owned ? [badge(`${icon('check')}${t('build.card.ownedN', { count: owned })}`, 'success')] : []),
+          ],
+        };
+      });
+    }
+    // Comforts and storage on this shelf, as their own tiles.
+    const amenityItems = (): Item[] =>
+      AMENITIES.filter((def) => amenityShelf(def) === shelf).map((def): Item => {
+        const locked = def.era > state.era;
+        const owned = state.amenities.includes(def.id);
+        return {
+          item: { kind: 'amenity', id: def.id },
+          name: def.name,
+          blurb: def.blurb,
+          price: def.price,
+          upkeep: def.upkeep,
+          icon: def.icon,
+          owned,
+          once: true,
+          locked,
+          blocked: why(locked ? def.era : null, this.affordable(state, def.price), true, owned),
+          badges: effectLines(def.effect).map((line) => badge(esc(line.label), line.good ? 'success' : 'destructive')),
+        };
+      });
+    if (shelf === 'printers') {
+      const room = this.handlers.buyablePrinters().length > 0;
+      return [...PRINTERS.filter((model) => model.price > 0).map((model): Item => {
+        const locked = model.era > state.era;
+        const owned = state.runtime.machines.filter((m) => m.label === model.name).length;
+        return {
+          item: { kind: 'printer', id: model.id },
+          name: model.name,
+          blurb: model.blurb,
+          price: model.price,
+          upkeep: 0,
+          icon: 'printer',
+          owned: owned > 0,
+          locked,
+          blocked: why(locked ? model.era : null, this.affordable(state, model.price), room),
+          badges: [
+            badge(`${icon('effort')}${Math.round(PRINTER_MAP[model.id].speed * 100)}%`),
+            badge(`${icon('package')}${t('ui.machines.kg', { kg: model.capacity / 1000 })}`),
+            badge(t('build.printer.fails', { pct: `×${model.reliability.toFixed(2)}` })),
+            ...(owned ? [badge(`${icon('check')}${t('build.card.ownedN', { count: owned })}`, 'success')] : []),
+          ],
+        };
+      }), ...amenityItems()];
+    }
+    return amenityItems();
+  }
+
+  /** "Buy it?" — asked once a tile is chosen, over the room rather than in front of it. */
+  private renderBuyConfirm(state: GameState) {
+    const ask = state.buildMode ? state.buyConfirm : null;
+    const quote = ask ? this.handlers.buyQuote(ask) : null;
+    if (!ask || !quote) {
+      this.setHTML(this.buyConfirmEl, 'buyconfirm', '');
+      this.buyConfirmEl.classList.remove('on');
+      return;
+    }
+    const afford = this.affordable(state, quote.price);
+    this.buyConfirmEl.classList.add('on');
+    this.setHTML(
+      this.buyConfirmEl,
+      'buyconfirm',
+      `<div class="ui-row__main">
+         <b class="ui-title">${esc(t('build.mode.confirm', { name: quote.name }))}</b>
+         <span class="ui-desc">${
+           quote.upkeep
+             ? t('build.card.priceUpkeep', { price: quote.price, upkeep: quote.upkeep })
+             : t('build.card.price', { price: quote.price })
+         } · ${t('build.mode.leaves', { cash: state.cash - quote.price })}</span>
+       </div>
+       <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="buy-no">${icon('x')}${t('build.mode.no')}</button>
+       <button class="ui-btn ui-btn--primary ui-btn--sm" data-action="buy-yes" ${afford ? '' : 'disabled'}>
+         ${icon('coins')}${t('build.mode.yes', { price: quote.price })}
+       </button>`,
+    );
+  }
+
   private renderMoving(state: GameState) {
-    const id = state.moving;
+    const id = state.buildMode ? state.moving : null;
     const comfort = id ? AMENITIES.find((a) => a.id === id) : null;
     const station = id ? STATION_MAP[id] : undefined;
     if (!id || (!comfort && !station)) {
@@ -1241,7 +1717,6 @@ export class UI {
     const name = this.start.name;
     const badge = LOGOS[this.start.logo];
     const saved = this.handlers.savedRun();
-    const level = DIFFICULTIES.find((d) => d.key === this.start.difficulty) ?? DIFFICULTIES[1];
     // A saved run is the likelier reason to be here, so it leads and the new form folds.
     const formOpen = !saved || this.start.newOpen;
     this.setHTML(
@@ -1280,7 +1755,7 @@ export class UI {
               placeholder="${esc(t('ui.you'))}" autocomplete="off" spellcheck="false"
               value="${esc(this.start.player)}" />
           </div>
-          <p class="ui-desc start-intro">${esc(level.intro)}</p>
+          <p class="ui-desc start-intro">${t('ui.start.intro')}</p>
 
           <section class="start-section">
             <div class="ui-label">${t('ui.start.badge')}</div>
@@ -1296,43 +1771,7 @@ export class UI {
             </div>
           </section>
 
-          <section class="start-section">
-            <div class="ui-label">${t('ui.start.difficulty')}</div>
-            <div class="ui-grid ui-grid--3" role="radiogroup" aria-label="${esc(t('ui.start.difficultyAria'))}">
-              ${DIFFICULTIES.map((level) => {
-                const on = level.key === this.start.difficulty;
-                // Three bars, not three adjectives: the setting is one quantity and it
-                // deserves one visual. Colour arrives as --tone (§11), never a raw hex here.
-                const meter = [1, 2, 3]
-                  .map((step) => `<i class="${step <= level.pressure ? 'lit' : ''}"></i>`)
-                  .join('');
-                // Terms as a ruled list, not a heap of pills: the same three rows in the
-                // same place on every card, so the eye compares across rather than hunts.
-                return `<button class="ui-option diff-pick ${on ? 'on' : ''}" role="radio"
-                  aria-checked="${on}" style="--tone:${level.accent}"
-                  data-action="difficulty" data-value="${level.key}">
-                  <div class="ui-option__head">
-                    <span class="icon-chip pace">${meter}</span>
-                    <span class="ui-title">${level.label}</span>
-                    ${on ? `<span class="diff-tick">${icon('check')}</span>` : ''}
-                  </div>
-                  <span class="ui-option__desc ui-clamp-3">${esc(level.blurb)}</span>
-                  <dl class="diff-terms">
-                    <div title="${esc(t('ui.start.crewHint'))}">
-                      <dt>${icon('users')}${t('ui.start.crew')}</dt><dd>${level.startMembers}</dd>
-                    </div>
-                    <div title="${esc(t('ui.start.newFaceHint'))}">
-                      <dt>${icon('clock')}${t('ui.start.newFace')}</dt><dd>${t('ui.days.short', { days: level.recruitEvery })}</dd>
-                    </div>
-                    <div title="${esc(t('ui.start.cashHint'))}">
-                      <dt>${icon('coins')}${t('ui.start.cash')}</dt><dd>${money(level.startCash)}</dd>
-                    </div>
-                  </dl>
-                </button>`;
-              }).join('')}
-            </div>
-            <p class="ui-desc start-note">${t('ui.start.difficultyNote')}</p>
-          </section>
+
 
           <button id="start-go" class="ui-btn ui-btn--primary ui-btn--lg ui-btn--block"
             data-action="begin" ${name.trim() ? '' : 'disabled'}>
@@ -1473,7 +1912,8 @@ export class UI {
       return hide();
     }
     const last = this.tour.step === TOUR.length - 1;
-    const name = state.identity?.name ?? t('ui.top.yourSpace');
+    // The player typed it, and it goes into markup.
+    const name = esc(state.identity?.name ?? t('ui.top.yourSpace'));
     this.setHTML(
       this.tourCard,
       'tour',
@@ -1684,7 +2124,7 @@ export class UI {
          <span class="bar-label">${t('build.bar.people')}</span>
          ${state.applicants.length ? `<i class="pip">${state.applicants.length}</i>` : ''}
        </button>
-       <button class="bar-item ${this.openModal === 'build' ? 'active' : ''} ${seatQueue ? 'bar-item--alert' : ''}"
+       <button class="bar-item ${state.buildMode ? 'active' : ''} ${seatQueue ? 'bar-item--alert' : ''}"
          data-action="build-open"
          title="${esc(seatQueue ? t('build.bar.buildQueue', { count: seatQueue }) : t('build.bar.buildHint'))}">
          ${icon('hammer', 'ui-icon bar-icon')}
@@ -1872,12 +2312,30 @@ export class UI {
       )
       .join('');
 
+    // **Where everybody stood when the month closed** (§3c): an arrow for each place gained or
+    // lost since then. Always measured on the standings — reputation — whatever the table is
+    // sorted by, because that is the order the month was photographed in.
+    const standing = new Map(
+      [...rows].sort((a, b) => b.reputation - a.reputation).map((row, index) => [row.id, index + 1]),
+    );
+    const move = (id: string): string => {
+      const was = state.rankPrev[id];
+      const is = standing.get(id);
+      if (!was || !is || was === is) {
+        return `<td class="move-cell" title="${esc(was ? t('ui.rank.moveSame', { rank: was }) : t('ui.rank.moveNew'))}"></td>`;
+      }
+      const up = is < was;
+      return `<td class="move-cell ${up ? 'up' : 'down'}" title="${esc(t('ui.rank.moveHint', { from: was, to: is }))}">
+        ${up ? '▲' : '▼'}${Math.abs(was - is)}</td>`;
+    };
+
     const body = rows
       .map((row, index) => {
         const blurb = row.isPlayer ? t('ui.top.yourSpace') : RIVAL_MAP[row.id]?.blurb ?? '';
         return `<tr class="${row.isPlayer ? 'me' : ''} clickable" title="${esc(t('ui.rank.openRecordOf', { what: blurb }))}"
           data-action="rank-space" data-value="${esc(row.id)}">
           <td class="rank-cell">${index + 1}</td>
+          ${move(row.id)}
           <td class="space-cell">
             <span class="space-dot" style="--tone:${row.colour}">${icon(row.icon as IconName)}</span>
             <span class="space-name">${esc(row.name)}</span>
@@ -1912,6 +2370,8 @@ export class UI {
         : `<div class="ui-segmented" style="margin-bottom:11px">
             <button data-action="rank-view" data-value="table"
               aria-pressed="${this.rankTab === 'table'}">${t('ui.rank.standings')}</button>
+            <button data-action="rank-view" data-value="projects"
+              aria-pressed="${this.rankTab === 'projects'}">${t('ui.rank.projects')}</button>
             <button data-action="rank-view" data-value="trophies"
               aria-pressed="${this.rankTab === 'trophies'}">
               ${t('ui.rank.trophyRoom')}<span class="seg-count">${state.ceremonies.reduce(
@@ -1922,8 +2382,10 @@ export class UI {
           </div>` +
           (this.rankTab === 'trophies'
             ? this.trophyRoom(state)
-            : `<table class="rank-table standings-table">
-                <thead><tr><th></th><th class="space-head">${t('ui.rank.space')}</th>${head}</tr></thead>
+            : this.rankTab === 'projects'
+              ? this.projectsLeague(state)
+              : `<table class="rank-table standings-table">
+                <thead><tr><th></th><th class="move-head" title="${esc(t('ui.rank.moveHead'))}"></th><th class="space-head">${t('ui.rank.space')}</th>${head}</tr></thead>
                 <tbody>${body}</tbody>
               </table>`),
       foot: `<span class="ui-desc" style="font-size:10.5px">${
@@ -1931,9 +2393,48 @@ export class UI {
           ? t('ui.rank.foot.space')
           : this.rankTab === 'trophies'
           ? t('ui.rank.foot.trophies')
+          : this.rankTab === 'projects'
+            ? t('ui.rank.foot.projects')
             : t('ui.rank.foot.table')
       }</span>`,
     };
+  }
+
+  /**
+   * The projects table (design §6.2): not who is ahead, but **what made the most noise** —
+   * every space's loudest builds side by side, yours among them by the names you gave them.
+   * A comparison, so a table (§11); yours are picked out in gold.
+   */
+  private projectsLeague(state: GameState): string {
+    const me = state.identity?.name ?? t('ui.space.you');
+    const rows = [
+      ...state.shipped.map((r) => ({ name: r.name, space: me, hype: r.hype, mine: true, wing: r.category })),
+      ...state.runtime.rivals.flatMap((rival) =>
+        (rival.hits ?? []).map((h) => ({
+          name: h.name,
+          space: RIVAL_MAP[rival.id]?.name ?? rival.id,
+          hype: h.score,
+          mine: false,
+          wing: null as ProjectCategory | null,
+        })),
+      ),
+    ]
+      .sort((a, b) => b.hype - a.hype)
+      .slice(0, 20);
+    if (!rows.length) return `<p class="ui-desc">${t('ui.rank.noProjects')}</p>`;
+    return `<table class="rank-table standings-table">
+      <thead><tr><th></th><th class="space-head">${t('ui.rank.project')}</th><th class="space-head">${t('ui.rank.space')}</th><th>${t('ui.rank.hype')}</th></tr></thead>
+      <tbody>${rows
+        .map(
+          (r, i) => `<tr class="${r.mine ? 'me' : ''}">
+            <td class="num">${i + 1}</td>
+            <td class="space-cell">${r.wing ? `<span class="wing" style="color:${CATEGORY_PROFILES[r.wing].accent}">${icon(CATEGORY_ICON[r.wing])}</span> ` : ''}<b>${esc(r.name)}</b></td>
+            <td class="space-cell">${esc(r.space)}</td>
+            <td class="num mono">${num(r.hype)}</td>
+          </tr>`,
+        )
+        .join('')}</tbody>
+    </table>`;
   }
 
   /**
@@ -2530,17 +3031,14 @@ export class UI {
               ? this.projectsBody(state)
               : this.openModal === 'reddit'
                 ? this.redditBody(state)
-                : this.openModal === 'build'
-                  ? this.buildBody(state)
+                : this.openModal === 'training'
+                  ? this.trainingBody(state)
                   : this.newProjectBody(state);
     const classes = [
-      this.openModal === 'machines' ||
-      this.openModal === 'projects' ||
-      this.openModal === 'people' ||
-      this.openModal === 'build'
+      this.openModal === 'machines' || this.openModal === 'projects' || this.openModal === 'people' || this.openModal === 'training'
         ? 'modal--fit'
         : '',
-      this.openModal === 'projects' || this.openModal === 'people' || this.openModal === 'build'
+      this.openModal === 'projects' || this.openModal === 'people'
         ? 'modal--wide'
         : this.openModal === 'new'
           ? 'modal--wizard'
@@ -2582,7 +3080,7 @@ export class UI {
     const section = [
       this.openModal,
       this.np.step,
-      this.buildTab,
+      this.trainSkill,
       this.projectsTab,
       this.projectDetail,
       this.peopleTab,
@@ -2776,9 +3274,9 @@ export class UI {
         const label = t(`build.skill.${skill}` as MessageKey);
         const tip = why
           ? `${label} ${level} · ${why}`
-          : t('build.people.trainCell', { skill: label, from: level, to: level + 1, cost, hours: TRAIN.hoursPerLevel * (level + 1) });
+          : t('build.people.trainCell', { skill: label, from: level, to: level + 1, cost, span: workSpan(TRAIN.hoursPerLevel * (level + 1)) });
         return `<td class="skill-cell">
-          <button class="skill-btn ${training ? 'skill-btn--training' : ''}" data-action="train" data-id="${m.id}"
+          <button class="skill-btn ${training ? 'skill-btn--training' : ''}" data-action="train-open" data-id="${m.id}"
             data-value="${skill}" ${why ? 'disabled' : ''} title="${esc(tip)}">
             <b>${level}</b>${pips}${why ? '' : `<span class="skill-btn__up">${icon('plus')}</span>`}
           </button>
@@ -2906,18 +3404,18 @@ export class UI {
       if (role === 'host') {
         // Somebody who talks about the place well: broad taste, and the docs to show.
         const breadth = Math.min(1, Object.keys(data.passions ?? {}).length / 4);
-        score = breadth * 0.55 + skill('docs') * 0.45;
+        score = breadth * 0.55 + skill('comms') * 0.45;
         why = has('mentor') ? t('ui.fit.mentor') : breadth > 0.7 ? t('ui.fit.broad') : t('ui.fit.goodEye');
       } else if (role === 'printer') {
-        score = skill('machining') * 0.8 + 0.2;
-        why = has('nightOwl') ? t('ui.fit.nightOwl') : t('ui.fit.machining', { level: data.skills.machining ?? 0 });
+        score = skill('mechanical') * 0.8 + 0.2;
+        why = has('nightOwl') ? t('ui.fit.nightOwl') : t('ui.fit.machining', { level: data.skills.mechanical ?? 0 });
       } else if (role === 'quartermaster') {
-        score = skill('docs') * 0.7 + skill('electronics') * 0.3;
-        why = has('documenter') ? t('ui.fit.documenter') : t('ui.fit.docs', { level: data.skills.docs ?? 0 });
+        score = skill('electronics') * 0.6 + skill('mechanical') * 0.4;
+        why = has('documenter') ? t('ui.fit.documenter') : t('ui.fit.goodEye');
       } else {
         // Knowing what reads well is taste and writing, not a bench skill.
         const breadth = Math.min(1, Object.keys(data.passions ?? {}).length / 4);
-        score = skill('docs') * 0.45 + skill('software') * 0.2 + breadth * 0.35;
+        score = skill('software') * 0.65 + breadth * 0.35;
         why = has('documenter') ? t('ui.fit.writesItDown') : breadth > 0.7 ? t('ui.fit.broad') : t('ui.fit.goodEye');
       }
       if (has('mentor') && role === 'host') score *= 1.25;
@@ -3024,7 +3522,8 @@ export class UI {
               <thead><tr>
                 <th class="space-head">${t('ui.people.col.person')}</th><th>${t('ui.people.col.doing')}</th>
                 <th>${t('build.people.col.loves')}</th>
-                ${SKILL_KEYS.map((skill) => `<th class="skill-head" title="${esc(t(`build.skill.${skill}` as MessageKey))}">${t(`build.skillShort.${skill}` as MessageKey)}</th>`).join('')}
+                ${SKILL_KEYS.map((skill) => `<th class="skill-head" title="${esc(t(`build.role.${skill}` as MessageKey))}">
+                  <span class="wing" style="color:${CATEGORY_PROFILES[skill].accent}">${icon(CATEGORY_ICON[skill])}</span>${t(`build.skillShort.${skill}` as MessageKey)}</th>`).join('')}
                 <th>${t('ui.people.col.trait')}</th><th></th>
               </tr></thead>
               <tbody>${rows.join('')}</tbody>
@@ -3110,9 +3609,12 @@ export class UI {
               ? this.npCrewStep(state)
               : this.npReviewStep(state);
 
+    // The crew step moves on only with a full crew: as many people as the size says.
+    const crewShort = this.np.step === 'crew' && this.np.crew.size < this.np.seats;
     const next =
       this.np.step === 'design' || this.np.step === 'crew'
-        ? `<button class="ui-btn ui-btn--primary ui-btn--sm" data-action="np-next" style="margin-left:auto">
+        ? `<button class="ui-btn ui-btn--primary ui-btn--sm" data-action="np-next" style="margin-left:auto" ${crewShort ? 'disabled' : ''}
+             ${crewShort ? `title="${esc(t('build.np.pickCrew', { count: this.np.seats - this.np.crew.size }))}"` : ''}>
              ${t(this.np.step === 'crew' ? 'build.np.step.design' : 'build.np.step.review')}${icon('chevronRight')}
            </button>`
         : '';
@@ -3193,12 +3695,8 @@ export class UI {
     const crew = new Set([...this.np.crew].filter((id) => free.has(id)));
     const proposer = this.npProposer(state);
     if (proposer && free.has(proposer)) crew.add(proposer);
-    if (!this.np.crewTouched) {
-      for (const { m } of this.rankedFree(def, state)) {
-        if (crew.size >= this.np.seats) break;
-        crew.add(m.id);
-      }
-    }
+    // **No suggestions.** The crew is picked by hand, every one of them: an auto-picked
+    // crew that the player then edited was the bug that ran builds with people nobody chose.
     // Fewer seats than people ticked: the weakest matches give theirs up first.
     const order = this.rankedFree(def, state).map((r) => r.m.id);
     while (crew.size > this.np.seats) {
@@ -3219,18 +3717,32 @@ export class UI {
   /** Step 1: what kind of work — and what the market thinks of it this week. */
   private npGenreStep(state: GameState): string {
     const available = this.availableDefs(state);
+    // Four wings, four big cards (design §6.2): what the wing is, who in the space is best
+    // at it, what the market pays for it this week, and a taste of what is on offer.
     const tiles = CATEGORY_ORDER.map((category) => {
-      const count = available.filter((def) => def.category === category).length;
+      const briefs = available.filter((def) => def.category === category);
       const profile = profileOf(category);
-      return `<button class="ui-option" data-action="np-genre" data-value="${category}"
-        ${count ? '' : 'disabled'}>
-        <div class="ui-option__head">
-          <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[category], 'ui-icon ui-icon--lg')}</span>
-          <span class="ui-title">${profileOf(category).label}</span>
-          <span class="ui-badge">${count || '—'}</span>
+      const best = [...state.runtime.members].sort((a, b) => (b.skills[category] ?? 0) - (a.skills[category] ?? 0))[0];
+      const level = best?.skills[category] ?? 0;
+      const who = best && level > 0
+        ? `${esc(best.name)} · ${t(`build.rank.${Math.min(5, level)}` as MessageKey)}`
+        : t('build.np.wingNobody');
+      return `<button class="ui-option wing-card" data-action="np-genre" data-value="${category}"
+        style="--wing:${profile.accent}" ${briefs.length ? '' : 'disabled'}>
+        <div class="wing-card__head">
+          <span class="wing-card__icon">${icon(CATEGORY_ICON[category], 'ui-icon')}</span>
+          <div>
+            <span class="ui-title">${profile.label}</span>
+            <span class="wing-card__role">${t(`build.role.${category}` as MessageKey)}</span>
+          </div>
+          <span class="ui-badge" style="margin-left:auto">${t('build.np.wingBriefs', { count: briefs.length })}</span>
         </div>
-        <span class="ui-option__desc ui-clamp-2">${esc(profileOf(category).blurb)}</span>
-        ${demandBadge(state.market[category] ?? 1)}
+        <span class="ui-option__desc">${esc(profile.blurb)}</span>
+        <div class="wing-card__facts">
+          <span class="ui-badge" title="${esc(t('build.np.wingBestHint'))}">${icon('users')}${who}</span>
+          ${demandBadge(state.market[category] ?? 1)}
+        </div>
+        <span class="wing-card__taste">${briefs.slice(0, 3).map((def) => esc(def.name)).join(' · ')}</span>
       </button>`;
     }).join('');
 
@@ -3250,7 +3762,7 @@ export class UI {
             <hr class="ui-sep" />`
           : ''
       }
-      <div class="ui-grid ui-grid--3">${tiles}</div>
+      <div class="ui-grid ui-grid--2 wing-grid">${tiles}</div>
     `;
   }
 
@@ -3269,14 +3781,42 @@ export class UI {
         <span class="ui-label">${t('build.np.asking')}</span>
         <span class="row" style="gap:6px">${categoryChip(category)}${demandBadge(state.market[category] ?? 1)}</span>
       </div>
+      ${this.ownProjectRow(category, state)}
       ${defs.length ? defs.map((def) => this.briefRow(def, state)).join('') : `<p class="ui-desc">${t('build.np.nothingInGenre')}</p>`}`;
+  }
+
+  /**
+   * "My own project" (design §6.2): not a brief somebody wrote but an idea of the player's.
+   * They say how big it is here and name it at the end; the numbers are the wing's own.
+   */
+  private ownProjectRow(category: ProjectCategory, state: GameState): string {
+    const profile = profileOf(category);
+    const sizes = (['small', 'medium', 'large'] as const)
+      .map((tier) => {
+        const def = CATALOG_MAP[customDefId(category, tier)];
+        const locked = !def || def.era > state.era || missingMachines(def, state.ownedMachines).length > 0;
+        return `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="np-brief" data-id="${def?.id ?? ''}" ${locked ? 'disabled' : ''}
+          title="${esc(locked ? t('build.np.ownLocked') : `${t(`ui.tier.${tier}`)} · ${money(def.payout)}`)}">
+          ${t(`ui.tier.${tier}`)} · ${t('ui.days.short', { days: TIER_DAYS[tier] })}</button>`;
+      })
+      .join('');
+    return `<div class="ui-row own-row" style="--tone:${profile.accent}">
+      <span class="icon-chip" style="--tone:${profile.accent}">${icon('lightbulb', 'ui-icon ui-icon--lg')}</span>
+      <span class="ui-row__main">
+        <span class="ui-title">${t('build.np.ownTitle')}</span>
+        <p class="ui-desc" style="margin:3px 0 6px">${t('build.np.ownHint')}</p>
+        <span class="row" style="gap:6px;flex-wrap:wrap">${sizes}</span>
+      </span>
+    </div>`;
   }
 
   private briefRow(def: ProjectDef, state: GameState, entry?: BacklogEntry): string {
     const badge = entry ? SOURCE_BADGE[entry.source] : null;
     const missing = missingMachines(def, state.ownedMachines);
     const profile = profileOf(def.category);
-    const printHours = def.parts.reduce((sum, part) => sum + part.hours, 0);
+    // The brief as written — the default design — so the card and the review agree (§4c).
+    const brief = planProject(def, defaultPlan(def), state.ownedMachines, state.licences);
+    const printHours = brief.parts.reduce((sum, part) => sum + part.hours, 0);
     return `<button class="ui-row" data-action="np-brief"
       data-id="${def.id}" data-id2="${entry?.id ?? ''}" ${missing.length ? 'disabled' : ''}>
       <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[def.category], 'ui-icon ui-icon--lg')}</span>
@@ -3297,11 +3837,12 @@ export class UI {
               : `<span class="ui-badge">${icon('coins')}${t('build.np.keepIt')}</span>`
           }
           <span class="ui-badge" title="${esc(t('build.np.hypeHint'))}">${icon('flame')}${num(def.hype)}</span>
-          <span class="ui-badge" title="${esc(t('build.np.machineTimeHint'))}">${icon('printer')}${printHours ? hours(printHours) : t('build.np.none')}</span>
+          <span class="ui-badge" title="${esc(t('build.np.machineTimeHint'))}">${icon('printer')}${printHours ? span(printHours) : t('build.np.none')}</span>
           <span class="ui-badge" title="${esc(t('build.np.bomHint'))}">
-            ${icon('package')}${def.bomCost ? `${money(def.bomCost)} · ${t('build.days', { days: def.leadDays })}` : t('build.np.none')}
+            ${icon('package')}${def.bomCost ? `${money(def.bomCost)} · ${t('build.days', { days: brief.leadDays })}` : t('build.np.none')}
           </span>
         </span>
+        ${wishesFor(def).length ? `<span class="ui-row__meta brief-wishes">${wishesFor(def).map((w) => this.wishChip(w, null)).join('')}</span>` : ''}
         ${entry ? this.offerMeta(entry, state) : ''}
         ${
           missing.length
@@ -3325,22 +3866,22 @@ export class UI {
       .map((m) => ({ skills: m.skills }));
   }
 
-  /** Drop any choice the crew can no longer back to the best it can (§4c). */
+  /**
+   * Keep the plan to what the space can pay for (§7a): the design budget is spent at the
+   * pitch, so a plan the overdraft cannot cover is not a plan. Nothing is dropped for the
+   * crew's sake any more — reaching past them is priced, not locked (design §5.4).
+   */
   private npFitDesign(state: GameState) {
     const def = this.npDef();
     if (!def) return;
-    const crew = this.npCrewSkills(state);
     const design = { ...this.np.design };
-    for (const axis of CATEGORY_AXES[def.category]) {
-      let index = Math.round(design[axis] ?? 1);
-      while (index > 0 && !optionAvailable(axis, index, crew)) index -= 1;
-      design[axis] = index;
-    }
-    // Then what the space can pay for: the design budget is spent at the pitch, so a plan
-    // the overdraft cannot cover is not a plan (§7a). Cheapen the dearest axis first.
     const tooling = () => planProject(def, { design, seats: this.np.seats }, state.ownedMachines, state.licences).tooling;
     for (const axis of CATEGORY_AXES[def.category]) {
-      while ((design[axis] ?? 1) > 0 && !this.affordable(state, tooling())) design[axis] = (design[axis] ?? 1) - 1;
+      if (isMulti(axis)) {
+        while ((design[axis] ?? 0) > 0 && !this.affordable(state, tooling())) design[axis] = (design[axis] ?? 0) >> 1;
+      } else {
+        while ((design[axis] ?? 1) > 0 && !this.affordable(state, tooling())) design[axis] = (design[axis] ?? 1) - 1;
+      }
     }
     this.np.design = design;
   }
@@ -3351,66 +3892,156 @@ export class UI {
     return planProject(def, { design, seats: this.np.seats }, state.ownedMachines, state.licences).tooling;
   }
 
-  /** Step 4: how it gets built — three decisions, and the crew decides what is on offer. */
+  /** The plan with the picked crew's levels in it — what the forecast reads. */
+  private npPlanWithCrew(state: GameState): ProjectPlan {
+    const crew = this.npCrewSkills(state);
+    return { ...this.npPlan(), levels: crew.length ? crewLevels(crew) : undefined };
+  }
+
+  /**
+   * Everything the design step and the review promise, worked out once (design §5.4): the
+   * plan through `planProject`, quality from the crew's craft and the design **under the
+   * crew's ceiling**, the days, the pay with the wishes it would meet, and the hype.
+   */
+  private npForecast(state: GameState) {
+    const def = this.npDef()!;
+    const entry = this.np.offerId ? state.backlog.find((e) => e.id === this.np.offerId) : undefined;
+    const plan = this.npPlanWithCrew(state);
+    const summary = planProject(def, plan, state.ownedMachines, state.licences);
+    const crew = [...this.np.crew]
+      .map((id) => state.runtime.members.find((m) => m.id === id))
+      .filter((m): m is MemberSnapshot => !!m);
+    const craft = crew.length
+      ? crew.reduce((sum, m) => sum + (m.skills[def.category] ?? 2), 0) / crew.length / 5
+      : 0.5;
+    const team = teamFit(Math.max(1, crew.length || plan.seats), def.teamSize);
+    const quality = Math.max(0.05, Math.min(summary.ceiling, craft + summary.designQuality + team.quality));
+    const days = forecastDays(summary, plan.seats);
+    const wishes = wishesFor(def).map((wish) => ({ wish, ok: wishPlanned(wish, plan, quality, days) }));
+    const met = wishes.filter((w) => w.ok).length;
+    const demand = state.market[def.category] ?? 1;
+    const built = state.shipped.filter((r) => r.defId === def.id).length;
+    const novelty = Math.max(REPEAT.floor, REPEAT.falloff ** built);
+    const payout = Math.round(def.payout * novelty * demand * summary.appeal * qualityPay(quality) * (1 + DESIGN.wishPay * met));
+    const hype = Math.round(
+      def.hype * (entry?.hypeMultiplier ?? 1) * novelty * Math.sqrt(summary.appeal) * qualityHype(quality) * (1 + DESIGN.wishHype * met),
+    );
+    return { def, entry, plan, summary, crew, quality, days, wishes, payout, hype, demand };
+  }
+
+  /** A client wish, in words, ticked when the plan would meet it. */
+  private wishChip(wish: Wish, ok: boolean | null): string {
+    const label =
+      wish.kind === 'stars'
+        ? t('build.wish.stars', { min: wish.min })
+        : wish.kind === 'platform'
+          ? t('build.wish.platform', { name: AXES.platforms.options[wish.bit].label })
+          : wish.kind === 'scope'
+            ? t('build.wish.scope', { name: AXES[wish.axis].options[wish.min].label })
+            : t('build.wish.days', { days: wish.within });
+    const tone = ok === null ? '' : ok ? 'ui-badge--tone" style="--tone:var(--success)' : 'ui-badge--tone" style="--tone:var(--muted-foreground)';
+    return `<span class="ui-badge ${tone}" title="${esc(t('build.wish.hint'))}">${ok ? icon('check') : icon('star')}${esc(label)}</span>`;
+  }
+
+  /**
+   * Step 4 (design §5.4): **three questions, not a menu.** The approach — quick or good; the
+   * scope, in the wing's own words; and the technology, which is not asked but read off the
+   * crew. Nothing is locked for the crew's sake: reaching past them is allowed and priced on
+   * the card. A forecast strip on top moves with every choice, the client's wishes tick as
+   * the plan meets them, and three ready plans do it in one press.
+   */
   private npDesignStep(state: GameState): string {
     const def = this.npDef();
     if (!def) return `<p class="empty">${t('build.np.pickBrief')}</p>`;
-    const crew = this.npCrewSkills(state);
-    const axes = CATEGORY_AXES[def.category];
-    const sections = axes
+    const f = this.npForecast(state);
+    const levels = f.plan.levels;
+    const level = levels?.[def.category] ?? 0;
+    const best = [...f.crew].sort((a, b) => (b.skills[def.category] ?? 0) - (a.skills[def.category] ?? 0))[0];
+    const rank = (n: number) => (n > 0 ? t(`build.rank.${Math.min(5, n)}` as MessageKey) : t('build.np.rankNone'));
+
+    const strip = `<div class="forecast">
+      <div class="forecast__item" title="${esc(t('build.np.fDaysHint'))}"><span class="ui-label">${t('build.np.fDays')}</span><b>≈ ${esc(span(f.days * 24))}</b></div>
+      <div class="forecast__item" title="${esc(t('build.np.fQualityHint'))}"><span class="ui-label">${t('build.np.fQuality')}</span>
+        <span class="row" style="gap:6px">${starRow(qualityStars(f.quality))}<span class="ui-desc">${t('build.np.fCeiling', { stars: qualityStars(f.summary.ceiling) })}</span></span></div>
+      <div class="forecast__item"><span class="ui-label">${t('build.np.fPays')}</span><b class="mono">~${money(f.payout)}</b></div>
+      <div class="forecast__item"><span class="ui-label">${t('build.np.fHype')}</span><b class="mono">~${num(f.hype)}</b></div>
+    </div>`;
+
+    const wishes = f.wishes.length
+      ? `<div class="design-wishes"><span class="ui-label">${t('build.np.wishes')}</span>${f.wishes.map((w) => this.wishChip(w.wish, w.ok)).join('')}</div>`
+      : '';
+
+    const presets = `<div class="design-presets">
+      ${(['fast', 'best', 'profit'] as Preset[])
+        .map((p) => `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="np-preset" data-value="${p}" title="${esc(t(`build.np.preset.${p}Hint` as MessageKey))}">
+          ${icon(p === 'fast' ? 'clock' : p === 'best' ? 'star' : 'coins')}${t(`build.np.preset.${p}` as MessageKey)}</button>`)
+        .join('')}
+    </div>`;
+
+    const card = (axisId: DesignAxisId, index: number, on: boolean, action: string) => {
+      const option = AXES[axisId].options[index];
+      const missing = (option.requires ?? []).filter((m) => !state.ownedMachines.includes(m));
+      const tooling = this.npToolingWith(def, state, axisId, isMulti(axisId) ? (this.np.design[axisId] ?? 0) | (1 << index) : index);
+      const pricey = !on && !this.affordable(state, tooling);
+      const locked = missing.length > 0 || pricey;
+      const gap = shortBy(option, def.category, levels);
+      const why = missing.length
+        ? t('build.np.needsMachine', { machines: missing.map((m) => MACHINE_LABEL[m]).join(' + ') })
+        : pricey
+          ? t('build.np.cantAfford', { cost: tooling })
+          : '';
+      const reach = gap
+        ? `<span class="design-reach">${esc(
+            t('build.np.reach', {
+              have: rank(level),
+              need: rank(optionLevel(option)),
+              work: Math.round((Math.pow(DESIGN.shortWork, gap) - 1) * 100),
+              risk: num(Number(Math.pow(DESIGN.shortRisk, gap).toFixed(2))),
+            }),
+          )}</span>`
+        : '';
+      return `<button class="ui-option design-option ${on ? 'ui-option--on' : ''} ${locked ? 'design-option--locked' : ''}"
+        data-action="${action}" data-value="${axisId}" data-id="${index}" aria-pressed="${on}" ${locked ? 'disabled' : ''} title="${esc(why)}">
+        <span class="row between" style="width:100%">
+          <span class="ui-title">${esc(option.label)}</span>
+          ${isMulti(axisId) ? '' : starRow(option.stars)}
+        </span>
+        <span class="ui-option__desc ui-clamp-2">${esc(option.blurb)}</span>
+        <span class="ui-row__meta" style="margin:0">${optionEffects(option, this.np.seats, def, axisId, index, state.licences)}</span>
+        ${reach}
+        ${locked ? `<span class="design-lock">${icon('x')}${esc(why)}</span>` : ''}
+      </button>`;
+    };
+
+    const sections = CATEGORY_AXES[def.category]
       .map((axisId) => {
         const axis = AXES[axisId];
-        const chosen = Math.round(this.np.design[axisId] ?? 1);
-        const best = crewBest(crew, axis.skill);
-        const skillName = t(`build.skill.${axis.skill}` as MessageKey);
-        const cards = axis.options
-          .map((option, index) => {
-            const missing = (option.requires ?? []).filter((m) => !state.ownedMachines.includes(m));
-            const skilled = optionAvailable(axisId, index, crew);
-            const on = index === chosen;
-            // Unaffordable is locked too, and says so here rather than at the pitch: the
-            // wizard used to let a plan through that the overdraft could not pay for, and the
-            // refusal arrived afterwards as a log line (§7a).
-            const tooling = this.npToolingWith(def, state, axisId, index);
-            const pricey = !this.affordable(state, tooling);
-            const locked = missing.length > 0 || !skilled || pricey;
-            const why = missing.length
-              ? t('build.np.needsMachine', { machines: missing.map((m) => MACHINE_LABEL[m]).join(' + ') })
-              : !skilled
-                ? t('build.np.needsSkill', { skill: skillName, level: optionNeeds(option) })
-                : pricey
-                  ? t('build.np.cantAfford', { cost: tooling })
-                  : '';
-            return `<button class="ui-option design-option ${on ? 'ui-option--on' : ''} ${locked ? 'design-option--locked' : ''}"
-              data-action="np-option" data-value="${axisId}" data-id="${index}"
-              aria-pressed="${on}" ${locked ? 'disabled' : ''} title="${esc(why)}">
-              <span class="row between" style="width:100%">
-                <span class="ui-title">${esc(option.label)}</span>
-                ${starRow(option.stars)}
-              </span>
-              <span class="ui-option__desc ui-clamp-3">${esc(option.blurb)}</span>
-              <span class="ui-row__meta" style="margin:0">${optionEffects(option, this.np.seats, def, axisId, index, state.licences)}</span>
-              ${
-                locked
-                  ? `<span class="design-lock">${icon('x')}${esc(why)}</span>`
-                  : ''
-              }
-            </button>`;
-          })
-          .join('');
+        const cards = isMulti(axisId)
+          ? `<div class="design-fixed">${icon('check')}${t('build.np.webAlways')}</div>` +
+            axis.options.map((_, i) => card(axisId, i, !!((this.np.design[axisId] ?? 0) & (1 << i)), 'np-toggle')).join('')
+          : axis.options.map((_, i) => card(axisId, i, Math.round(this.np.design[axisId] ?? 1) === i, 'np-option')).join('');
         return `<div class="design-axis">
           <div class="design-axis__head">
-            <span class="ui-label">${esc(axis.label)}</span>
+            <span class="ui-label">${esc(axisId === 'approach' ? t('build.np.qApproach') : axis.label)}</span>
             <span class="ui-desc">${esc(axis.question)}</span>
-            <span class="ui-badge" style="margin-left:auto" title="${esc(t('build.np.crewBestHint'))}">
-              ${t('build.np.crewBest', { skill: skillName, level: best })}
-            </span>
           </div>
-          <div class="ui-grid ui-grid--3">${cards}</div>
+          <div class="ui-grid ${isMulti(axisId) ? 'ui-grid--4' : 'ui-grid--3'}">${cards}</div>
         </div>`;
       })
       .join('');
-    return `${this.npHeader(def)}${sections}`;
+
+    const tech = TECH_LABELS[def.category][f.summary.tech];
+    const techRow = `<div class="design-axis">
+      <div class="design-axis__head"><span class="ui-label">${t('build.np.qTech')}</span>
+        <span class="ui-desc">${t('build.np.techHint')}</span></div>
+      <div class="design-tech">
+        <span class="wing" style="color:${CATEGORY_PROFILES[def.category].accent}">${icon(CATEGORY_ICON[def.category])}</span>
+        <b>${esc(tech)}</b>
+        <span class="ui-desc">${best ? esc(t('build.np.techFrom', { name: best.name, rank: rank(level) })) : t('build.np.techNobody')}</span>
+      </div>
+    </div>`;
+
+    return `${this.npHeader(def)}${strip}${wishes}${presets}${sections}${techRow}`;
   }
 
   /** The brief being designed, as a line at the top of each step after it. */
@@ -3445,7 +4076,7 @@ export class UI {
           ${icon('star')}${t('build.np.fitQuality', { value: `${fit.quality >= 0 ? '+' : '−'}${Math.round(Math.abs(fit.quality) * 100)}` })}
         </span>
       </div>
-      ${fitMeter(def.teamSize, this.np.seats, max)}
+      ${fitMeter(def.teamSize, this.np.seats, max, state.runtime.members.filter((m) => !m.team).length)}
       <p class="ui-desc" style="margin:8px 0 0"><b>${t('build.people', { count: this.np.seats })} · ${fitLabel(this.np.seats, def.teamSize)}.</b>
         ${t('build.np.fitExplain', { count: def.teamSize })}</p>
     </div>`;
@@ -3511,25 +4142,8 @@ export class UI {
   private npReviewStep(state: GameState): string {
     const def = this.npDef();
     if (!def) return `<p class="empty">${t('build.np.pickBrief')}</p>`;
-    const entry = this.np.offerId ? state.backlog.find((e) => e.id === this.np.offerId) : undefined;
-    const plan = this.npPlan();
-    const summary = planProject(def, plan, state.ownedMachines, state.licences);
-    const crew = [...this.np.crew]
-      .map((id) => state.runtime.members.find((m) => m.id === id))
-      .filter((m): m is MemberSnapshot => !!m);
-
-    // What the crew's craft is likely to be, from the skill the design stage leans on.
-    const skill = stageSkill(def.category, 'cad');
-    const craft = crew.length && skill
-      ? crew.reduce((sum, m) => sum + (MEMBER_DATA[m.id]?.skills[skill] ?? 2), 0) / crew.length / 5
-      : 0.5;
-    const team = teamFit(Math.max(1, crew.length || plan.seats), def.teamSize);
-    const quality = Math.max(0.05, Math.min(1, craft + summary.designQuality + team.quality));
-    const demand = state.market[def.category] ?? 1;
-    const built = state.shipped.filter((r) => r.defId === def.id).length;
-    const novelty = Math.max(REPEAT.floor, REPEAT.falloff ** built);
-    const payout = Math.round(def.payout * novelty * demand * summary.appeal * qualityPay(quality));
-    const hype = Math.round(def.hype * (entry?.hypeMultiplier ?? 1) * novelty * Math.sqrt(summary.appeal) * qualityHype(quality));
+    // The same forecast the design step showed (§5.4): one sum, two screens.
+    const { entry, plan, summary, crew, quality, payout, hype, demand, wishes } = this.npForecast(state);
     const cost = summary.bomCost + summary.tooling;
     const handWork = STAGE_ORDER.reduce((sum, key) => sum + summary.work[key], 0);
     const machineHours = summary.parts.reduce((sum, part) => sum + part.hours, 0);
@@ -3546,13 +4160,22 @@ export class UI {
     const stat = (label: string, value: string, hint = '') =>
       `<div class="review-stat" title="${esc(hint)}"><span class="ui-label">${label}</span><span class="review-stat__value">${value}</span></div>`;
 
-    const designLines = CATEGORY_AXES[def.category]
-      .map((axisId) => {
-        const option = optionOf(axisId, plan.design);
-        return `<div class="breakdown-row"><span>${esc(AXES[axisId].label)}</span>
-          <span class="row" style="gap:6px"><span class="mono">${esc(option.label)}</span>${starRow(option.stars)}</span></div>`;
-      })
-      .join('');
+    const designLines =
+      CATEGORY_AXES[def.category]
+        .map((axisId) => {
+          if (isMulti(axisId)) {
+            const names = ['Web', ...picked(axisId, plan.design).map((i) => AXES[axisId].options[i].label)];
+            return `<div class="breakdown-row"><span>${esc(AXES[axisId].label)}</span><span class="mono">${esc(names.join(' · '))}</span></div>`;
+          }
+          const option = optionOf(axisId, plan.design);
+          return `<div class="breakdown-row"><span>${esc(AXES[axisId].label)}</span>
+            <span class="row" style="gap:6px"><span class="mono">${esc(option.label)}</span>${starRow(option.stars)}</span></div>`;
+        })
+        .join('') +
+      `<div class="breakdown-row"><span>${t('build.np.qTech')}</span><span class="mono">${esc(TECH_LABELS[def.category][summary.tech])}</span></div>` +
+      (wishes.length
+        ? `<div class="breakdown-row"><span>${t('build.np.wishes')}</span><span class="row" style="gap:4px;flex-wrap:wrap;justify-content:flex-end">${wishes.map((w) => this.wishChip(w.wish, w.ok)).join('')}</span></div>`
+        : '');
 
     // The design budget is paid at the pitch and refused past the overdraft, so a plan it
     // cannot cover must not reach a Start button that looks like it will work.
@@ -3575,8 +4198,8 @@ export class UI {
         </div>
         <div>
           <div class="ui-label" style="margin-bottom:6px">${t('build.review.commitment')}</div>
-          <div class="breakdown-row"><span>${t('build.review.handWork')}</span><span class="mono">${num(handWork)}</span></div>
-          <div class="breakdown-row"><span>${t('build.review.machineTime')}</span><span class="mono">${machineHours ? hours(machineHours) : t('build.np.none')}</span></div>
+          <div class="breakdown-row"><span>${t('build.review.handWork')}</span><span class="mono">${workSpan(crewHours(handWork, plan.seats))}</span></div>
+          <div class="breakdown-row"><span>${t('build.review.machineTime')}</span><span class="mono">${machineHours ? span(machineHours) : t('build.np.none')}</span></div>
           <div class="breakdown-row"><span>${t('build.review.parts')}</span><span class="mono">${summary.bomCost ? `${money(summary.bomCost)} · ${t('build.days', { days: summary.leadDays })}` : t('build.np.none')}</span></div>
           <div class="breakdown-row"><span>${t('build.review.licences')}</span><span class="mono">${summary.tooling ? money(summary.tooling) : t('build.np.none')}</span></div>
           <div class="breakdown-row"><span>${t('build.review.testRisk')}</span><span class="mono">×${num(Number(summary.testRisk.toFixed(2)))}${summary.skipSim ? ` · ${t('build.review.noSim')}` : ''}</span></div>
@@ -3586,8 +4209,18 @@ export class UI {
         ${esc(crew.length ? t('build.review.asking', { names: crew.map((m) => m.name).join(', ') }) : t('build.review.nobodyAsked'))}
         ${this.npProposer(state) ? esc(t('build.review.proposerSigns')) : ''}
       </p>
-      <button class="ui-btn ui-btn--primary ui-btn--lg pitch-cta" data-action="np-start" ${blocked ? 'disabled' : ''}>
-        ${esc(t('build.review.start', { project: def.name }))}${cost ? ` · ${money(cost)}` : ''}
+      <div class="np-name">
+        <label class="ui-label" for="np-name">${t('build.np.nameLabel')}</label>
+        <div class="row" style="gap:6px">
+          <input id="np-name" class="ui-input" maxlength="40" autocomplete="off" value="${esc(this.np.name)}"
+            placeholder="${esc(def.custom ? t('build.np.namePlaceholder') : def.name)}" />
+          <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="np-name-suggest" title="${esc(t('build.np.nameSuggestHint'))}">${icon('shuffle')}${t('build.np.nameSuggest')}</button>
+        </div>
+        <p class="ui-desc" style="margin:4px 0 0;font-size:11px">${t('build.np.nameHint')}</p>
+      </div>
+      <button class="ui-btn ui-btn--primary ui-btn--lg pitch-cta" data-action="np-start" data-blocked="${blocked ? 1 : 0}"
+        ${blocked || !this.np.name.trim() ? 'disabled' : ''}>
+        ${esc(t('build.review.start', { project: this.np.name.trim() || def.name }))}${cost ? ` · ${money(cost)}` : ''}
       </button>
       ${
         broke
@@ -3678,7 +4311,7 @@ export class UI {
           const course = m.training!;
           const share = 1 - course.hoursLeft / Math.max(1, course.total);
           const level = m.skills[course.skill] ?? 0;
-          return `<div class="trainee" title="${esc(t('build.bench.trainingHint', { hours: hours(course.hoursLeft) }))}${m.present ? '' : ` · ${esc(t('ui.bench.notInToday'))}`}">
+          return `<div class="trainee" title="${esc(t('build.bench.trainingHint', { hours: workSpan(course.hoursLeft) }))}${m.present ? '' : ` · ${esc(t('ui.bench.notInToday'))}`}">
             <span class="row between" style="gap:8px">
               <span class="trainee__name ${m.present ? '' : 'off'}">${esc(m.name)}</span>
               <span class="trainee__what">${t('build.bench.trainingLine', {
@@ -3759,8 +4392,10 @@ export class UI {
             ? project.testAttempts > 0
             : project.progress[key] > 0;
       const done = index < currentIndex && resolved;
-      return `<span class="pipe-stage ${isNow ? 'now' : done ? 'done' : ''}">${label}</span>`;
-    }).join('<span class="pipe-dot">·</span>');
+      // A segment per stage; the name is on hover and the current one is named on the line
+      // above. Eight names in a row wrapped to two lines on every build.
+      return `<i class="pipe-seg ${isNow ? 'now' : done ? 'done' : ''}" title="${esc(label)}"></i>`;
+    }).join('');
 
     // What the current stage is waiting on, in one line.
     const waitingParts = project.stage === 'assembly' && partsEta(project, nowHours) > 0;
@@ -3771,7 +4406,10 @@ export class UI {
     } else if (waitingParts) {
       statusLine = t('ui.bench.waitingOnParts');
     } else if (project.required[project.stage] > 0) {
-      statusLine = `${Math.floor(project.progress[project.stage])}/${project.required[project.stage]}`;
+      // In days, for the crew it has (design §2): "13/24" was a spreadsheet.
+      const left = Math.max(0, project.required[project.stage] - project.progress[project.stage]);
+      const crew = project.team.length + (player?.project === project.id ? 1 : 0);
+      statusLine = t('ui.bench.leftInStage', { span: workSpan(crewHours(left, Math.max(1, crew))) });
     } else {
       statusLine = t('ui.bench.resolving');
     }
@@ -3785,44 +4423,41 @@ export class UI {
       .sort((a, b) => (b.affinity[project.id] ?? 0) - (a.affinity[project.id] ?? 0));
     const room = project.teamSize - project.team.length;
 
-    const teamBlock = `<div class="team">
-      <div class="row between" style="margin-bottom:5px">
-        <span class="section" style="margin:0">${t('ui.bench.team', { on: project.team.length, size: project.teamSize })}</span>
-        ${playerOn ? `<span class="chip you-chip">${t('ui.space.you')}</span>` : ''}
-      </div>
-      <div class="row wrap" style="gap:4px">
-        ${
-          team.length
-            ? team
-                .map(
-                  (m) => `<span class="person ${m.present ? '' : 'off'}" title="${m.present ? esc(m.note) : esc(t('ui.bench.notInToday'))}">
-                    ${m.name}
-                    <button class="x" data-action="release" data-id="${project.id}" data-id2="${m.id}" title="${esc(t('ui.bench.takeOff'))}">×</button>
-                  </span>`,
-                )
-                .join('')
-            : `<span class="muted" style="font-size:11px">${t('ui.bench.nobody')}</span>`
-        }
-      </div>
+    // One flat row: who is on it, and whether you are. It was a box with its own heading.
+    const teamBlock = `<div class="crew-row">
+      <span class="crew-row__label">${t('ui.bench.team', { on: project.team.length, size: project.teamSize })}</span>
       ${
-        room > 0 && free.length
-          ? `<div class="candidates">
-              <span class="muted" style="font-size:10px">${room === 1 ? t('ui.bench.askOne') : t('ui.bench.askUpTo', { n: room })}</span>
-              ${free
-                .slice(0, 6)
-                .map((m) => {
-                  const match = m.affinity[project.id] ?? 0;
-                  const tone = match >= 0.6 ? 'keen' : match >= 0.3 ? '' : 'cold';
-                  return `<button class="person ask ${tone}" data-action="invite" data-id="${project.id}" data-id2="${m.id}"
-                            title="${esc(t('ui.bench.match', { match: pct(match) }))}${m.present ? '' : ` · ${esc(t('ui.bench.notInToday'))}`}">
-                            + ${m.name} <i>${pct(match)}</i>
-                          </button>`;
-                })
-                .join('')}
-            </div>`
-          : ''
+        team.length
+          ? team
+              .map(
+                (m) => `<span class="person ${m.present ? '' : 'off'}" title="${m.present ? esc(m.note) : esc(t('ui.bench.notInToday'))}">
+                  ${m.name}
+                  <button class="x" data-action="release" data-id="${project.id}" data-id2="${m.id}" title="${esc(t('ui.bench.takeOff'))}">×</button>
+                </span>`,
+              )
+              .join('')
+          : `<span class="muted" style="font-size:11px">${t('ui.bench.nobody')}</span>`
       }
-    </div>`;
+      ${playerOn ? `<span class="person person--you">${t('ui.space.you')}</span>` : ''}
+    </div>
+    ${
+      room > 0 && free.length
+        ? `<div class="candidates">
+            <span class="muted" style="font-size:10px">${room === 1 ? t('ui.bench.askOne') : t('ui.bench.askUpTo', { n: room })}</span>
+            ${free
+              .slice(0, 6)
+              .map((m) => {
+                const match = m.affinity[project.id] ?? 0;
+                const tone = match >= 0.6 ? 'keen' : match >= 0.3 ? '' : 'cold';
+                return `<button class="person ask ${tone}" data-action="invite" data-id="${project.id}" data-id2="${m.id}"
+                          title="${esc(t('ui.bench.match', { match: pct(match) }))}${m.present ? '' : ` · ${esc(t('ui.bench.notInToday'))}`}">
+                          + ${m.name} <i>${pct(match)}</i>
+                        </button>`;
+              })
+              .join('')}
+          </div>`
+        : ''
+    }`;
 
     // --- sourcing -----------------------------------------------------------
     const waiting = partsEta(project, nowHours);
@@ -3836,12 +4471,19 @@ export class UI {
         </button>
       </div>`;
     } else if (waiting > 0) {
+      // Whole days, rounded up: "1.4d" is a spreadsheet, "2 days" is a delivery.
+      const days = Math.ceil(waiting / 24);
       const cost = this.handlers.expediteCost(project.id);
       sourcing = `<div class="sourcing ${project.stage === 'assembly' ? 'urgent' : ''}">
-        <span>${t('ui.bench.arriveIn', { days: waiting / 24 })}</span>
-        <button class="tiny" data-action="expedite" data-id="${project.id}" ${this.affordable(state, cost) ? '' : 'disabled'}>
-          ${t('ui.bench.expedite', { cost })}
-        </button>
+        <span>${t('ui.bench.arriveIn', { days })}</span>
+        ${
+          project.expedited
+            ? `<span class="ui-badge">${t('ui.bench.expedited')}</span>`
+            : `<button class="tiny" data-action="expedite" data-id="${project.id}" ${this.affordable(state, cost) ? '' : 'disabled'}
+                title="${esc(t('ui.bench.expediteHint', { from: days, to: Math.ceil(waiting / 2 / 24) }))}">
+                ${t('ui.bench.expedite', { cost })}
+              </button>`
+        }
       </div>`;
     }
 
@@ -3882,7 +4524,7 @@ export class UI {
               (p) => `<div class="part ${p.status}">
                 <span class="pname">${esc(p.name)}</span>
                 ${p.attempts > 0 ? `<span class="tag" title="${esc(t('ui.bench.failedAttempts'))}">×${p.attempts}</span>` : ''}
-                <span class="tag">${p.status === 'done' ? t('ui.bench.partDone') : p.status === 'queued' ? t('ui.bench.partQueued') : hours(p.hours)}</span>
+                <span class="tag">${p.status === 'done' ? t('ui.bench.partDone') : p.status === 'queued' ? t('ui.bench.partQueued') : span(p.hours)}</span>
                 ${p.status === 'pending' ? `<button class="tiny" data-action="queue-part" data-id="${project.id}" data-id2="${p.id}">${t('ui.bench.queue')}</button>` : ''}
               </div>`,
             )
@@ -3907,9 +4549,25 @@ export class UI {
           ? { text: t('ui.stop.nobody'), tone: 'warn' }
           : null;
 
+    // One rating for the build: the design choices, averaged (§4c). Quality — what the crew
+    // is actually making of it — is in the tooltip and on the detail.
+    const rating =
+      project.design && Object.keys(project.design).length
+        ? `<span class="proj-rating" title="${esc(
+            `${t('build.bench.rating')}\n${CATEGORY_AXES[project.category]
+              .map((axis) => `${AXES[axis].label}: ${designLabel(axis, project.design)}`)
+              .join('\n')}\n${t('ui.bench.qualityHint')}: ${pct(project.quality)}`,
+          )}">${starRow(designStars(project.category, project.design))}</span>`
+        : `<span class="proj-rating" title="${esc(t('ui.bench.qualityHint'))}: ${pct(project.quality)}">${starRow(qualityStars(project.quality))}</span>`;
+    // The one thing in the way, said once. The kickoff used to say it twice — on the stage
+    // line and again in a box of its own.
+    const notice = stop ?? (kickoff && !kickoff.tone ? kickoff : null);
+
     const header = `<button class="proj-head" data-action="bench-open" data-id="${project.id}">
       <span class="row between" style="gap:8px;width:100%">
+        ${expanded ? `<span class="proj-wing" style="--tone:${profileOf(project.category).accent}" title="${esc(profileOf(project.category).label)}">${icon(CATEGORY_ICON[project.category])}</span>` : ''}
         <span class="ui-title" style="flex:1;min-width:0;text-align:left">${esc(project.name)}</span>
+        ${expanded ? rating : ''}
         <span class="mono" style="font-size:10.5px;color:var(--subtle-foreground)">
           ${Math.round(overall.ratio * 100)}%
         </span>
@@ -3921,7 +4579,9 @@ export class UI {
         <span class="proj-line__stage">${stageName}</span>
         ${expanded ? `<span class="proj-line__val">${statusLine}</span>` : ''}
         ${
-          stop
+          expanded
+            ? ''
+            : stop
             ? `<span class="proj-line__stop ${stop.tone}">${esc(stop.text)}</span>`
             : `<span class="proj-line__crew">${
                 playerOn && project.team.length
@@ -3938,44 +4598,26 @@ export class UI {
       return `<div class="project project--folded ${stop ? 'project--needs' : ''}">${header}</div>`;
     }
 
-    return `<div class="project">
+    const extras = [
+      project.hypeMultiplier > 1
+        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('flame')}×${project.hypeMultiplier}</span>`
+        : '',
+      project.sponsorCash
+        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('coins')}${t('ui.bench.sponsored')}</span>`
+        : '',
+    ].join('');
+
+    return `<div class="project project--open">
       ${header}
-      <div class="row wrap" style="gap:5px;margin:2px 0 8px">
-        ${categoryChip(project.category)}
-        ${
-          // One rating for the build: the three design choices, averaged (§4c). Quality —
-          // what the crew is actually making of it — is in the tooltip and on the detail.
-          project.design && Object.keys(project.design).length
-            ? `<span class="ui-badge" title="${esc(
-                `${t('build.bench.rating')}\n${CATEGORY_AXES[project.category]
-                  .map((axis) => `${AXES[axis].label}: ${optionOf(axis, project.design).label} ${'★'.repeat(optionOf(axis, project.design).stars)}`)
-                  .join('\n')}\n${t('ui.bench.qualityHint')}: ${pct(project.quality)}`,
-              )}">${starRow(designStars(project.category, project.design))}</span>`
-            : `<span class="ui-badge" title="${esc(t('ui.bench.qualityHint'))}">
-                ${starRow(qualityStars(project.quality))}${pct(project.quality)}
-              </span>`
-        }
-        ${
-          project.hypeMultiplier > 1
-            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('flame')}×${project.hypeMultiplier}</span>`
-            : ''
-        }
-        ${
-          project.sponsorCash
-            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('coins')}${t('ui.bench.sponsored')}</span>`
-            : ''
-        }
-      </div>
       <div class="pipe">${strip}</div>
+      ${extras ? `<div class="row wrap" style="gap:5px;margin-bottom:8px">${extras}</div>` : ''}
       ${
-        kickoff
-          ? `<div class="kickoff-line ${kickoff.tone}">${icon('table')}<span>${esc(kickoff.text)}</span>
-               <span class="kickoff-line__hint">${
-                 kickoff.tone === 'bad' ? t('build.kick.hintBounty') : t('build.kick.hintEveryone')
-               }</span></div>`
+        notice
+          ? `<div class="bench-notice ${notice.tone}"
+               title="${kickoff && notice === kickoff ? esc(kickoff.tone === 'bad' ? t('build.kick.hintBounty') : t('build.kick.hintEveryone')) : ''}">
+               ${icon(kickoff && notice === kickoff ? 'table' : 'alert')}<span>${esc(notice.text)}</span></div>`
           : ''
       }
-
       ${sourcing}
       ${teamBlock}
       <div class="verbs">
@@ -4028,203 +4670,6 @@ export class UI {
   /** The shop floor: every machine, what it is chewing on, and what is behind it. */
   // --- Build: the room itself (§4d, §7b) -----------------------------------
 
-  /**
-   * Everything that stands in the room, on three shelves. **Workspace** is where work
-   * happens — project tables and workstations, one person to a seat, so it is also where a
-   * queue gets fixed. **Comforts** is the Shop as it was: kit for the people. **Decor** is
-   * the small stuff that makes it somewhere you would want to be.
-   *
-   * Every card carries a picture of the thing, rendered from the same model that stands in
-   * the room — a list of names is a spreadsheet, and this is a shop.
-   */
-  private buildBody(state: GameState): { head: string; content: string; foot: string } {
-    const waiting = Object.values(state.runtime.waitingFor).reduce((n, v) => n + (v ?? 0), 0);
-    const tabs = [
-      { key: 'workspace' as const, label: t('build.panel.workspace'), count: FURNITURE.length },
-      { key: 'printers' as const, label: t('build.panel.printers'), count: PRINTERS.length },
-      { key: 'comfort' as const, label: t('build.panel.comfort'), count: AMENITIES.filter((a) => a.group !== 'decor').length },
-      { key: 'decor' as const, label: t('build.panel.decor'), count: AMENITIES.filter((a) => a.group === 'decor').length },
-    ];
-    const chips = `<div class="ui-segmented" style="margin-bottom:12px">
-      ${tabs
-        .map(
-          (t) => `<button data-action="build-tab" data-value="${t.key}" aria-pressed="${t.key === this.buildTab}">
-            ${t.label}<span class="seg-count">${t.count}</span>
-          </button>`,
-        )
-        .join('')}
-    </div>`;
-
-    const content =
-      this.buildTab === 'workspace'
-        ? this.workspaceShelf(state)
-        : this.buildTab === 'printers'
-          ? this.printerShelf(state)
-          : this.buildTab === 'comfort'
-          ? this.comfortShelf(state)
-          : this.decorShelf(state);
-
-    return {
-      head: `<div class="modal-head">${icon('hammer', 'ui-icon ui-icon--lg')}<b>${t('build.panel.title')}</b>
-        ${
-          waiting
-            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${t('build.panel.queue', { count: waiting })}</span>`
-            : ''
-        }
-      </div>`,
-      content: chips + content,
-      foot: `<span class="ui-desc" style="font-size:10.5px">${t('build.panel.foot')}</span>`,
-    };
-  }
-
-  private workspaceShelf(state: GameState): string {
-    const seats = state.runtime.seats;
-    const wait = state.runtime.waitingFor;
-    const line = (type: MachineType, label: MessageKey) => {
-      const queue = wait[type] ?? 0;
-      return `<span class="ui-badge ${queue ? 'ui-badge--tone' : ''}" ${queue ? 'style="--tone:var(--warning)"' : ''}
-        title="${esc(queue ? t('build.seats.waitingHint', { count: queue }) : t('build.seats.hint'))}">
-        ${t(label as 'build.seats.software', { count: seats[type] ?? 0 })}${queue ? ` · ${t('build.seats.waiting', { count: queue })}` : ''}
-      </span>`;
-    };
-    const tables = state.runtime.tables;
-    const summary = `<div class="ui-row" style="margin-bottom:12px;cursor:default">
-      <span class="icon-chip" style="--tone:var(--primary)">${icon('users', 'ui-icon ui-icon--lg')}</span>
-      <div class="ui-row__main">
-        <b class="ui-title">${t('build.seats.title')}</b>
-        <span class="ui-row__meta" style="margin-top:4px">
-          ${line('cad-desk', 'build.seats.software')}
-          ${line('bench', 'build.seats.hardware')}
-          ${line('assembly', 'build.seats.assembly')}
-          <span class="ui-badge" title="${esc(t('build.seats.tablesHint'))}">
-            ${icon('table')}${t('build.seats.tables', { count: tables.length, used: tables.filter((x) => x.projectId).length })}
-          </span>
-        </span>
-      </div>
-    </div>`;
-    const cards = FURNITURE.map((def) => this.furnitureCard(def, state)).join('');
-    return `${summary}<div class="ui-grid ui-grid--3">${cards}</div>`;
-  }
-
-  private furnitureCard(def: FurnitureDef, state: GameState): string {
-    const owned = ownedFurniture(state, def);
-    const locked = def.era > state.era;
-    const afford = this.affordable(state, def.price);
-    const room = this.handlers.furnitureFits(def.type, def.span);
-    const queue = state.runtime.waitingFor[def.type] ?? 0;
-    const buyable = !locked && afford && room;
-    return `<button class="ui-option build-card ${owned ? 'build-card--owned' : ''}" data-action="buy-furniture" data-value="${def.id}"
-      ${buyable ? '' : 'disabled'}
-      title="${esc(locked ? t('build.card.comesWith', { era: eraDef(def.era).name }) : !room ? t('build.card.noRoomHint') : !afford ? t('build.card.notEnough') : t('build.card.price', { price: def.price }))}">
-      ${this.thumb(`furniture:${def.id}`, def.icon)}
-      <div class="ui-option__head">
-        <span class="ui-title">${esc(def.name)}</span>
-        ${owned ? `<span class="build-owned">${icon('check')}${t('build.card.ownedN', { count: owned })}</span>` : ''}
-      </div>
-      <span class="ui-option__desc ui-clamp-2">${esc(def.blurb)}</span>
-      <span class="ui-row__meta" style="margin:0">
-        <span class="ui-badge">${icon('users')}${t('build.card.seats', { count: furnitureSeats(def) })}</span>
-        <span class="ui-badge">${esc(def.use)}</span>
-        ${queue ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${t('build.seats.waiting', { count: queue })}</span>` : ''}
-      </span>
-      <span class="ui-row__meta" style="margin:0">
-        <span class="ui-badge ui-badge--tone" style="--tone:var(--${afford ? 'success' : 'destructive'})">
-          ${icon('coins')}${money(def.price)}
-        </span>
-        ${!room && !locked ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${t('build.card.noRoom')}</span>` : ''}
-      </span>
-    </button>`;
-  }
-
-  /**
-   * Printers, on their own shelf (§4d) — bought here rather than from the Machines panel,
-   * which is for watching what is on the floor. Every model is listed, the ones the lease
-   * does not allow yet included: a machine you cannot see is one you cannot plan for.
-   */
-  private printerShelf(state: GameState): string {
-    const room = this.handlers.buyablePrinters().length > 0;
-    const cards = PRINTERS.map((model) => {
-        const owned = state.runtime.machines.filter((m) => m.label === model.name).length;
-        const locked = model.era > state.era;
-        const afford = this.affordable(state, model.price);
-        const ok = !locked && afford && room;
-        return `<button class="ui-option build-card ${owned ? 'build-card--owned' : ''}" data-action="buy-printer"
-          data-value="${model.id}" ${ok ? '' : 'disabled'}
-          title="${esc(locked ? t('build.card.comesWith', { era: eraDef(model.era).name }) : !room ? t('build.card.noRoomHint') : !afford ? t('build.card.notEnough') : t('build.card.price', { price: model.price }))}">
-          ${this.thumb(`printer:${model.id}`, 'printer')}
-          <div class="ui-option__head">
-            <span class="ui-title">${esc(model.name)}</span>
-            ${owned ? `<span class="build-owned">${icon('check')}${t('build.card.ownedN', { count: owned })}</span>` : ''}
-          </div>
-          <span class="ui-option__desc ui-clamp-2">${esc(model.blurb)}</span>
-          <span class="ui-row__meta" style="margin:0">
-            <span class="ui-badge" title="${esc(t('ui.machines.speedHint'))}">${icon('effort')}${Math.round(model.speed * 100)}%</span>
-            <span class="ui-badge" title="${esc(t('ui.machines.capacityHint'))}">${icon('package')}${t('ui.machines.kg', { kg: model.capacity / 1000 })}</span>
-            <span class="ui-badge">${t('build.printer.fails', { pct: `×${model.reliability.toFixed(2)}` })}</span>
-          </span>
-          <span class="ui-row__meta" style="margin:0">
-            <span class="ui-badge ui-badge--tone" style="--tone:var(--${afford ? 'success' : 'destructive'})">${icon('coins')}${money(model.price)}</span>
-            ${locked ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('clock')}${t('build.card.era', { era: model.era })}</span>` : ''}
-            ${!room && !locked ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${t('build.card.noRoom')}</span>` : ''}
-          </span>
-        </button>`;
-      })
-      .join('');
-    return `<p class="ui-desc" style="margin:0 0 11px">${t('build.printer.intro')}</p>
-      <div class="ui-grid ui-grid--3">${cards}</div>`;
-  }
-
-  /**
-   * The comforts, grouped by the lease that unlocks them. **The grouping is the point**: it
-   * is the one screen that says out loud what signing the next lease gets you (§7b).
-   */
-  private comfortShelf(state: GameState): string {
-    const owned = state.amenities;
-    const comforts = comfortsOf(owned);
-    const pctOf = (value: number) => `${value > 1 ? '+' : '−'}${Math.round(Math.abs(value - 1) * 100)}%`;
-    const summary = owned.length
-      ? `<div class="ui-row" style="margin-bottom:12px;cursor:default">
-          <span class="icon-chip" style="--tone:var(--success)">${icon('users', 'ui-icon ui-icon--lg')}</span>
-          <div class="ui-row__main">
-            <b class="ui-title">${t('build.comfort.title')}</b>
-            <span class="ui-row__meta" style="margin-top:4px">
-              <span class="ui-badge ui-badge--accent" title="${esc(t('build.comfort.moodHint'))}">
-                ${icon('effort')}${t('build.effect.mood', { value: num(Number(comforts.mood.toFixed(1))) })}
-              </span>
-              ${comforts.focus !== 1 ? `<span class="ui-badge">${t('build.effect.focus', { value: pctOf(comforts.focus) })}</span>` : ''}
-              ${comforts.rest !== 1 ? `<span class="ui-badge">${t('build.effect.rest', { value: pctOf(comforts.rest) })}</span>` : ''}
-              ${comforts.fatigue !== 1 ? `<span class="ui-badge">${t('build.effect.fatigue', { value: pctOf(comforts.fatigue) })}</span>` : ''}
-              ${comforts.drift !== 1 ? `<span class="ui-badge">${t('build.effect.drift', { value: pctOf(comforts.drift) })}</span>` : ''}
-              ${comforts.draw !== 1 ? `<span class="ui-badge">${t('build.effect.draw', { value: pctOf(comforts.draw) })}</span>` : ''}
-            </span>
-          </div>
-          <span class="ui-badge ui-badge--tone" style="--tone:var(--warning)" title="${esc(t('build.card.perMonthHint'))}">
-            ${icon('coins')}${t('build.card.perMonth', { upkeep: comforts.upkeep })}
-          </span>
-        </div>`
-      : '';
-    const groups = [1, 2, 3, 4]
-      .map((era) => {
-        const items = AMENITIES.filter((a) => a.era === era && a.group !== 'decor');
-        if (!items.length) return '';
-        const locked = era > state.era;
-        return `<div class="ui-label" style="margin:${era === 1 ? 0 : 16}px 0 9px">
-            ${esc(eraDef(era).name)}
-            ${locked ? `<span class="ui-badge" style="margin-left:7px">${icon('clock')}${t('build.card.notYours')}</span>` : ''}
-          </div>
-          <div class="ui-grid ui-grid--3">${items.map((a) => this.amenityCard(a, state)).join('')}</div>`;
-      })
-      .join('');
-    return summary + groups;
-  }
-
-  /** The small stuff. Cheap, mostly free to run, and all of it through the same mood curve. */
-  private decorShelf(state: GameState): string {
-    const items = AMENITIES.filter((a) => a.group === 'decor');
-    return `<p class="ui-desc" style="margin:0 0 11px">${t('build.decor.intro')}</p>
-      <div class="ui-grid ui-grid--3">${items.map((a) => this.amenityCard(a, state)).join('')}</div>`;
-  }
-
   /** A picture of the thing, or its icon while there is no renderer to draw one. */
   private thumb(key: string, fallback: IconName): string {
     const src = this.handlers.thumbnail(key);
@@ -4233,57 +4678,198 @@ export class UI {
     }</span>`;
   }
 
-  private amenityCard(def: AmenityDef, state: GameState): string {
-    const owned = state.amenities.includes(def.id);
-    const locked = def.era > state.era;
-    const afford = this.affordable(state, def.price);
-    const buyable = !owned && !locked && afford;
-    return `<button class="ui-option build-card ${owned ? 'build-card--owned' : ''}" data-action="buy-amenity"
-      data-value="${def.id}" ${buyable ? '' : 'disabled'}
-      title="${esc(
-        owned
-          ? t('build.card.alreadyIn')
-          : locked
-            ? t('build.card.comesWith', { era: eraDef(def.era).name })
-            : afford
-              ? def.upkeep
-                ? t('build.card.priceUpkeep', { price: def.price, upkeep: def.upkeep })
-                : t('build.card.price', { price: def.price })
-              : t('build.card.notEnough'),
-      )}">
-      ${this.thumb(`amenity:${def.id}`, def.icon)}
-      <div class="ui-option__head">
-        <span class="ui-title">${esc(def.name)}</span>
-        ${owned ? `<span class="build-owned">${icon('check')}${t('build.card.owned')}</span>` : ''}
-      </div>
-      <span class="ui-option__desc ui-clamp-2">${esc(def.blurb)}</span>
-      <span class="ui-row__meta" style="margin:0">
-        ${effectLines(def.effect)
-          .map(
-            (line) =>
-              `<span class="ui-badge ui-badge--tone" style="--tone:var(--${line.good ? 'success' : 'destructive'})">
-                 ${esc(line.label)}
-               </span>`,
-          )
-          .join('')}
-      </span>
-      <span class="ui-row__meta" style="margin:0">
-        <span class="ui-badge ui-badge--tone"
-          style="--tone:var(--${locked ? 'warning' : afford || owned ? 'success' : 'destructive'})">
-          ${icon('coins')}${money(def.price)}
-        </span>
-        ${
-          locked
-            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('clock')}${t('build.card.era', { era: def.era })}</span>`
-            : ''
+  /** A drink comfort was clicked in the room: ask who is having one. */
+  openTreat(amenityId: string) {
+    this.treatAmenity = amenityId;
+    this.rerender();
+  }
+
+  /**
+   * Who is having one (§7b) — everybody in the building, lowest mood first, each with the
+   * mood bar their label shows. A strip over the room like "buy it?", not a modal: the room
+   * is where you see who looks worn out.
+   */
+  private renderTreat(state: GameState) {
+    const def = this.treatAmenity ? AMENITIES.find((a) => a.id === this.treatAmenity) : null;
+    if (!def || state.buildMode) {
+      this.treatAmenity = null;
+      this.setHTML(this.treatEl, 'treat', '');
+      this.treatEl.classList.remove('on');
+      return;
+    }
+    const people = state.runtime.members.filter((m) => m.present).sort((a, b) => a.mood - b.mood);
+    this.treatEl.classList.add('on');
+    this.setHTML(
+      this.treatEl,
+      'treat',
+      `<div class="treat-head"><b>${esc(t('build.treat.title', { item: def.name }))}</b>
+         <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="treat-close">${icon('x')}</button></div>
+       <p class="ui-desc">${t('build.treat.hint')}</p>
+       <div class="treat-list">${people
+         .map((m) => {
+           const tone = m.mood < 35 ? 'bad' : m.mood < 55 ? 'warn' : '';
+           return `<button class="treat-row" data-action="treat" data-id="${m.id}" ${m.treated ? 'disabled' : ''}>
+             <span class="wing" style="color:${CATEGORY_PROFILES[m.primary].accent}">${icon(CATEGORY_ICON[m.primary])}</span>
+             <b>${esc(m.name)}</b>
+             <span class="treat-mood ${tone}"><i style="width:${Math.round(m.mood)}%"></i></span>
+             <span class="ui-desc">${m.treated ? t('build.treat.had') : Math.round(m.mood)}</span>
+           </button>`;
+         })
+         .join('')}</div>`,
+    );
+  }
+
+  /** Open the Learning Station's panel, optionally with a skill and a person already picked. */
+  openTraining(skill?: SkillKey, memberId?: string) {
+    this.openModal = 'training';
+    if (skill) this.trainSkill = skill;
+    this.trainPick.clear();
+    if (memberId && this.trainSkill && !this.trainBlocked(memberId, this.trainSkill)) this.trainPick.add(memberId);
+    this.rerender();
+  }
+
+  /** Chairs free at the learning stations right now: two a station, less whoever is on a course. */
+  private trainSeats(): number {
+    const state = this.lastState;
+    if (!state) return 0;
+    const seats = STATIONS.filter((s) => s.type === 'learning').length * (SEATS.learning ?? 2);
+    return Math.max(0, seats - state.runtime.members.filter((m) => m.training).length);
+  }
+
+  /** Why somebody cannot take this course, or null if they can. */
+  private trainBlocked(memberId: string, skill: SkillKey | null): string | null {
+    const state = this.lastState;
+    const m = state?.runtime.members.find((x) => x.id === memberId);
+    if (!state || !m || !skill) return '';
+    if (m.training) return t('build.people.alreadyOnCourse');
+    if (m.team) return t('build.people.onCrew');
+    if ((m.skills[skill] ?? 0) >= TRAIN.maxLevel) return t('build.people.maxed');
+    return null;
+  }
+
+  /** The level the course being put together runs from: whoever was picked first sets it. */
+  private trainLevel(skill: SkillKey | null): number | null {
+    const first = [...this.trainPick][0];
+    const lead = first && skill ? this.lastState?.runtime.members.find((x) => x.id === first) : null;
+    return lead ? (lead.skills[skill!] ?? 0) : null;
+  }
+
+  /**
+   * The Learning Station (§4c). Pick a skill, then who goes on the course — as many people as
+   * there are free chairs, two to a station. The skill comes first because the chairs are
+   * shared: two people learning the same thing side by side is the course; the list under
+   * it is everybody's level in that one skill, what the next one costs and how long it takes.
+   */
+  private trainingBody(state: GameState): { head: string; content: string; foot: string } {
+    const stations = STATIONS.filter((s) => s.type === 'learning').length;
+    const seats = this.trainSeats();
+    const skill = this.trainSkill;
+    const onCourse = state.runtime.members.filter((m) => m.training);
+    const head = `<div class="modal-head">${icon('book', 'ui-icon ui-icon--lg')}<b>${t('build.train.title')}</b>
+      <span class="ui-badge ${seats ? 'ui-badge--accent' : ''}">${t('build.train.seats', { free: seats, total: stations * (SEATS.learning ?? 2) })}</span>
+    </div>`;
+    if (!stations) {
+      return { head, content: `<p class="ui-desc">${t('build.train.noStation')}</p>`, foot: '' };
+    }
+    const now = onCourse.length
+      ? `<div class="train-now"><header class="train-group__head"><b>${t('build.train.now')}</b></header>${onCourse
+          .map((m) => {
+            const done = m.training ? 1 - m.training.hoursLeft / m.training.total : 0;
+            return `<div class="train-now__row"><b>${esc(m.name)}</b>
+              <span class="ui-desc">${esc(t(`build.skill.${m.training!.skill}` as MessageKey))} → ${(m.skills[m.training!.skill] ?? 0) + 1}</span>
+              ${bar(done, 1)}</div>`;
+          })
+          .join('')}</div>`
+      : '';
+    const skills = `<div class="ui-segmented train-skills">${SKILL_KEYS.map(
+      // One tab a wing, in the wing's own colour and icon (design §3.3).
+      (key) => `<button data-action="train-skill" data-value="${key}" aria-pressed="${key === skill}"
+        style="--wing:${CATEGORY_PROFILES[key].accent}">
+        <span class="wing">${icon(CATEGORY_ICON[key])}</span>${esc(t(`build.role.${key}` as MessageKey))}</button>`,
+    ).join('')}</div>`;
+    let list = `<p class="ui-desc" style="margin-top:12px">${t('build.train.pickSkill')}</p>`;
+    const picked = skill ? state.runtime.members.filter((m) => this.trainPick.has(m.id)) : [];
+    const course = this.trainLevel(skill);
+    const total = picked.reduce((sum, m) => sum + this.handlers.trainCost(m.id, skill!), 0);
+    if (skill) {
+      /**
+       * **Grouped by level, because a course is one level.** Every row used to carry its own
+       * price and hours — the same numbers for everybody at a level — and, once somebody was
+       * picked, every other level said "This course is 4 → 5" down the whole list. A group
+       * says the price once, and picking in another group switches the course rather than
+       * being refused, so there is no dead end to untick your way out of.
+       */
+      const pips = (level: number, next: boolean) =>
+        `<span class="pips">${[1, 2, 3, 4, 5]
+          .map((n) => `<i class="${n <= level ? 'on' : next && n === level + 1 ? 'next' : ''}"></i>`)
+          .join('')}</span>`;
+      const free = state.runtime.members.filter((m) => !this.trainBlocked(m.id, skill));
+      const levels = [...new Set(free.map((m) => m.skills[skill] ?? 0))].sort((a, b) => a - b);
+      const groups = levels
+        .map((level) => {
+          const people = free.filter((m) => (m.skills[skill] ?? 0) === level);
+          const active = course === level;
+          const other = course !== null && !active;
+          const full = active && this.trainPick.size >= seats;
+          const h = TRAIN.hoursPerLevel * (level + 1);
+          const cost = this.handlers.trainCost(people[0].id, skill);
+          const rows = people
+            .map((m) => {
+              const on = this.trainPick.has(m.id);
+              const title = other ? ` title="${esc(t('build.train.switch'))}"` : '';
+              return `<button class="train-row ${on ? 'on' : ''}" data-action="train-pick" data-id="${m.id}"
+                ${!on && (full || !seats) ? 'disabled' : ''}${title}>
+                <span class="train-row__check">${on ? icon('check') : ''}</span>
+                <b class="train-row__name">${esc(m.name)}</b>
+              </button>`;
+            })
+            .join('');
+          return `<section class="train-group ${active ? 'train-group--on' : ''} ${other ? 'train-group--other' : ''}">
+            <header class="train-group__head">
+              ${pips(level, true)}
+              <b>${t('build.train.level', { from: level, to: level + 1 })}</b>
+              ${active ? `<span class="ui-badge ui-badge--accent">${t(full ? 'build.train.full' : 'build.train.thisCourse')}</span>` : ''}
+              <span class="train-group__price mono">${money(cost)} · ${workSpan(h)} <span>${t('build.train.each')}</span></span>
+            </header>
+            <div class="train-people">${rows}</div>
+          </section>`;
+        })
+        .join('');
+      // Whoever is on a course already has a row with their progress at the top.
+      const busy = state.runtime.members.filter((m) => !m.training && this.trainBlocked(m.id, skill));
+      const why = (m: (typeof busy)[number]) => {
+        if (m.training) return t('build.train.onCourse');
+        if (m.team) {
+          const project = state.runtime.projects.find((p) => p.id === m.team);
+          return project ? t('build.train.onCrewOf', { project: esc(project.name) }) : t('build.train.onCrew');
         }
-        ${
-          def.upkeep
-            ? `<span class="ui-badge" title="${esc(t('build.card.perMonthHint'))}">${t('build.card.perMonth', { upkeep: def.upkeep })}</span>`
-            : ''
-        }
-      </span>
-    </button>`;
+        return t('build.train.maxed');
+      };
+      const notFree = busy.length
+        ? `<section class="train-group train-group--busy">
+            <header class="train-group__head"><b>${t('build.train.notFree')}</b></header>
+            <div class="train-busy">${busy
+              .map((m) => `<span class="train-busy__row"><b>${esc(m.name)}</b>${pips(m.skills[skill] ?? 0, false)}<span>${why(m)}</span></span>`)
+              .join('')}</div>
+          </section>`
+        : '';
+      list = `<div class="train-list">${groups || `<p class="ui-desc">${t('build.train.nobody')}</p>`}${notFree}</div>`;
+    }
+    const n = picked.length;
+    const summary =
+      n && skill && course !== null
+        ? `<span class="train-summary"><b>${picked.map((m) => esc(m.name)).join(', ')}</b>
+            · <span class="cap">${esc(t(`build.skill.${skill}` as MessageKey))}</span> ${course} → ${course + 1}
+            · ${workSpan(TRAIN.hoursPerLevel * (course + 1))}</span>`
+        : `<span class="ui-desc" style="font-size:10.5px">${t('build.train.foot')}</span>`;
+    return {
+      head,
+      content: now + skills + list,
+      foot: `${summary}
+        <button class="ui-btn ui-btn--primary ui-btn--sm" data-action="train-start" ${n && skill && this.affordable(state, total) ? '' : 'disabled'}>
+          ${icon('book')}${n ? t('build.train.startCourse', { cost: total }) : t('build.train.startNone')}
+        </button>`,
+    };
   }
 
   private machinesBody(state: GameState): { head: string; content: string; foot: string } {
@@ -4313,15 +4899,120 @@ export class UI {
             </tr></thead>
             <tbody>${machines.map((m) => this.machineRow(m, state)).join('')}</tbody>
           </table>`
-        : `<p class="ui-desc">${t('ui.machines.empty')}</p>`) + shop;
+        : `<p class="ui-desc">${t('ui.machines.empty')}</p>`) + this.shelfRow(state) + shop + this.ordersSection(state);
+    // One button for every printer's filament: four trips were four half-hours. The shelf
+    // is drawn on first, so a fill can cost nothing and still be worth pressing.
+    const fillAll = this.handlers.refillAllCost();
+    const anyShort = machines.some((m) => m.consumableMax > 0 && m.consumable < m.consumableMax);
+    const fill = machines.some((m) => m.consumableMax > 0)
+      ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="filament-all" ${anyShort ? '' : 'disabled'}
+          title="${esc(t('build.orders.fillAllHint'))}">${icon('package')}${
+            !anyShort ? t('build.orders.allFull') : fillAll > 0 ? t('build.orders.fillAll', { cost: fillAll }) : t('build.orders.fillFromShelf')
+          }</button>`
+      : '';
+    // And one for every bed: a maintenance round, an hour of your day.
+    const drifting = machines.filter((m) => m.consumableMax > 0 && m.calibration < 0.97).length;
+    const maintain = machines.some((m) => m.consumableMax > 0)
+      ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="maintain-all" ${drifting ? '' : 'disabled'}
+          title="${esc(t('build.orders.maintainHint'))}">${icon('cog')}${t('build.orders.maintain', { count: drifting })}</button>`
+      : '';
     return {
       head: `<div class="modal-head">${icon('printer', 'ui-icon ui-icon--lg')}<b>${t('ui.machines.title')}</b>
         <span class="ui-badge${running ? ' ui-badge--accent' : ''}">${t('ui.machines.running', { n: running })}</span>
         <span class="ui-badge">${t('ui.machines.queued', { n: queued })}</span>
+        <span class="row" style="margin-left:auto;gap:6px">${maintain}${fill}</span>
       </div>`,
       content,
       foot: `<span class="ui-desc" style="font-size:10.5px">${t('ui.machines.foot')}</span>`,
     };
+  }
+
+  /**
+   * The Filament Shelf (§5): what is in stock, and buying ahead. Without a shelf the row
+   * says where to get one — stock needs somewhere to sit.
+   */
+  private shelfRow(state: GameState): string {
+    const capacity = this.handlers.shelfCapacity();
+    if (!capacity) {
+      return `<p class="ui-desc" style="margin:12px 0 0">${t('build.shelf.none', { build: `<b>${t('build.bar.build')}</b>` })}</p>`;
+    }
+    const spools = Math.floor(state.filamentStock / 1000);
+    const max = Math.floor(capacity / 1000);
+    const room = max - spools;
+    const button = (n: number, label: string) =>
+      `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="spools" data-value="${n}" ${room >= 1 ? '' : 'disabled'}
+        title="${esc(money(Math.min(n, room) * FILAMENT.spoolCost))}">${label}</button>`;
+    return `<div class="shelf-row">
+      ${icon('package')}<b>${t('build.shelf.title')}</b>
+      ${bar(spools, max)}
+      <span class="mono">${t('build.shelf.count', { count: spools, max })}</span>
+      <span class="row" style="gap:6px;margin-left:auto">
+        ${button(1, '+1')}${button(4, '+4')}${button(room, t('build.shelf.fill', { cost: room * FILAMENT.spoolCost }))}
+      </span>
+    </div>`;
+  }
+
+  /**
+   * Print orders (§5): what is on offer, and what you have already said yes to. Offers are
+   * a comparison — how long on the bed, how long until it is due, what it pays — so they
+   * are a table like the printers above them.
+   */
+  private ordersSection(state: GameState): string {
+    const day = state.day;
+    const active = state.runtime.projects.filter((p) => p.order);
+    const bed = (defId: string) => Math.max(0, ...(CATALOG_MAP[defId]?.parts ?? []).map((part) => part.hours));
+    const offers = state.printOffers
+      .map((offer) => {
+        const def = CATALOG_MAP[offer.defId];
+        if (!def?.order) return '';
+        const left = offer.expiresOnDay - day;
+        return `<tr title="${esc(def.blurb)}">
+          <td class="space-cell"><b>${esc(def.name)}</b>${def.order.series ? ` <span class="ui-badge" title="${esc(t('build.orders.seriesHint'))}">${t('build.orders.series')}</span>` : ''}<div class="ui-desc" style="font-size:11px">${esc(def.order.client)}</div></td>
+          <td class="mono">${span(bed(def.id))}</td>
+          <td class="mono">${t('build.days', { days: offer.days })}</td>
+          <td class="mono cash cash--good">${money(def.payout)}</td>
+          <td class="actions">
+            <button class="ui-btn ui-btn--primary ui-btn--sm" data-action="order-accept" data-id="${offer.id}"
+              title="${esc(t('build.orders.acceptHint', { days: offer.days }))}">${icon('check')}${t('build.orders.accept')}</button>
+            <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="order-decline" data-id="${offer.id}"
+              title="${esc(t('build.orders.declineHint', { days: Math.max(0, left) }))}">${icon('x')}</button>
+          </td>
+        </tr>`;
+      })
+      .join('');
+    const running = active
+      .map((p) => {
+        const left = p.order!.dueDay - day;
+        const tone = left <= 0 ? 'destructive' : left <= 1 ? 'warning' : 'muted-foreground';
+        return `<tr>
+          <td class="space-cell"><b>${esc(p.name)}</b><div class="ui-desc" style="font-size:11px">${esc(p.order!.client)} · ${esc(stageLabel(p.category, p.stage))}</div></td>
+          <td class="mono">${span(bed(p.defId))}</td>
+          <td class="mono" style="color:var(--${tone})">${left <= 0 ? t('build.orders.dueToday') : t('build.orders.dueIn', { days: left })}</td>
+          <td class="mono cash cash--good">${money(p.order!.pay)}</td>
+          <td></td>
+        </tr>`;
+      })
+      .join('');
+    return `<div class="ui-sep" style="margin:16px 0 12px"></div>
+      <div class="row between" style="gap:8px;margin-bottom:8px">
+        <b>${icon('clipboard')} ${t('build.orders.title')}</b>
+        <span class="ui-badge">${t('build.orders.count', { n: state.printOffers.length })}</span>
+      </div>
+      <p class="ui-desc" style="margin:0 0 10px">${t('build.orders.blurb')}</p>
+      ${
+        offers || running
+          ? `<table class="rank-table machine-table">
+              <thead><tr>
+                <th class="space-head">${t('build.orders.col.order')}</th>
+                <th>${t('build.orders.col.bed')}</th>
+                <th>${t('build.orders.col.due')}</th>
+                <th>${t('build.orders.col.pays')}</th>
+                <th></th>
+              </tr></thead>
+              <tbody>${running}${offers}</tbody>
+            </table>`
+          : `<p class="ui-desc">${t('build.orders.none')}</p>`
+      }`;
   }
 
   private machineRow(machine: MachineSnapshot, state: GameState): string {
@@ -4335,7 +5026,7 @@ export class UI {
       ? `<div class="mrow-job" title="${esc(`${projectName(job.projectId)} · ${t('ui.machine.risk')} ${pct(machine.risk)}`)}">
            <span class="mrow-job__name">${esc(job.partName)}</span>
            <span class="bar ${riskTone}"><i style="width:${((job.progress / job.hoursRequired) * 100).toFixed(1)}%"></i></span>
-           <span class="mono">${t('ui.machine.progress', { done: job.progress, total: job.hoursRequired })}</span>
+           <span class="mono">${esc(t('ui.machine.leftSpan', { span: span(job.hoursRequired - job.progress) }))}</span>
          </div>`
       : `<span class="note ${machine.queue.length ? 'warn' : ''}">${
           machine.queue.length ? t('ui.machine.waiting') : t('ui.activity.idle')
@@ -4366,7 +5057,7 @@ export class UI {
           <div class="queue-row">
             <span class="queue-no">${index + 1}</span>
             <span class="queue-name">${esc(item.partName)}</span>
-            <span class="mono queue-hours">${hours(item.hoursRequired)}</span>
+            <span class="mono queue-hours">${span(item.hoursRequired)}</span>
             <span class="queue-ctrl">
               <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="job-up" data-id="${machine.id}" data-id2="${item.id}" ${index === 0 ? 'disabled' : ''}>↑</button>
               <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="job-down" data-id="${machine.id}" data-id2="${item.id}" ${index === machine.queue.length - 1 ? 'disabled' : ''}>↓</button>
@@ -4629,9 +5320,19 @@ export class UI {
          ${stat(t('ui.projects.col.progress'), `<span class="mono">${Math.round(projectProgress(project!).ratio * 100)}%</span>`)}
          ${stat(t('build.detail.spent'), `<span class="mono">${money(Math.round(project!.spent))}</span>`)}`;
 
+    // The axes the build was actually designed on — a build from before the design step
+    // was rethought has the old three, and showing it the new ones would be a fiction.
+    const designAxes = design
+      ? ((Object.keys(design).filter((k) => k in AXES) as DesignAxisId[]).length
+          ? (Object.keys(design).filter((k) => k in AXES) as DesignAxisId[])
+          : CATEGORY_AXES[category])
+      : [];
     const designRows = design
-      ? CATEGORY_AXES[category]
+      ? designAxes
           .map((axisId) => {
+            if (isMulti(axisId)) {
+              return `<div class="breakdown-row"><span>${esc(AXES[axisId].label)}</span><span class="mono">${esc(designLabel(axisId, design))}</span></div>`;
+            }
             const option = optionOf(axisId, design);
             return `<div class="breakdown-row"><span>${esc(AXES[axisId].label)}</span>
               <span class="row" style="gap:6px"><span class="mono">${esc(option.label)}</span>${starRow(option.stars)}</span></div>`;

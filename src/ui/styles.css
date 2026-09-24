@@ -374,13 +374,10 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
   justify-content: space-between;
   gap: 8px;
   font-size: 11px;
-  background: #1e242e;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 5px 7px;
-  margin-bottom: 8px;
+  color: var(--muted-foreground);
+  margin-bottom: 10px;
 }
-.sourcing.urgent { background: #2c1f1b; border-color: #56342a; color: #f0a48f; }
+.sourcing.urgent { color: var(--destructive); }
 
 /* --- backlog ------------------------------------------------------------- */
 
@@ -1064,25 +1061,43 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .proj-progress .bar > i { background: var(--primary); }
 .proj-pct { font-size: 10.5px; color: var(--muted-foreground); width: 30px; text-align: right; }
 
-/* The pipeline as one line of stage names rather than eight stacked rows. */
-.pipe {
+/* The pipeline as a row of segments, one per stage it goes through; names on hover. */
+.pipe { display: flex; gap: 3px; margin: 2px 0 10px; }
+.pipe-seg { flex: 1; height: 3px; border-radius: 2px; background: var(--muted); }
+.pipe-seg.done { background: color-mix(in srgb, var(--success) 55%, var(--muted)); }
+.pipe-seg.now { background: var(--primary); box-shadow: 0 0 6px color-mix(in srgb, var(--primary) 45%, transparent); }
+
+/* The open card: the wing's icon and the rating live on the title row. */
+.proj-wing { display: inline-flex; color: var(--tone); flex: none; }
+.proj-wing .ui-icon { width: 14px; height: 14px; }
+.proj-rating .stars .ui-icon { width: 10px; height: 10px; }
+.project--open .proj-line { font-family: var(--font); }
+
+/* The one thing in the way, said once. */
+.bench-notice {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 4px;
-  font-family: var(--font);
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+.bench-notice .ui-icon { width: 13px; height: 13px; flex: none; margin-top: 1px; }
+.bench-notice.warn { color: var(--warning); }
+.bench-notice.bad { color: var(--destructive); }
+
+/* Who is on it: one flat row, no box. */
+.crew-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 10px; }
+.crew-row__label {
   font-size: 10px;
-  line-height: 1.7;
-  margin-bottom: 7px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--subtle-foreground);
+  margin-right: 4px;
 }
-.pipe-stage { color: #39404d; transition: color 0.2s ease; }
-.pipe-stage.done { color: color-mix(in srgb, var(--success) 62%, var(--subtle-foreground)); }
-.pipe-stage.now {
-  color: var(--primary);
-  font-weight: 600;
-  text-shadow: 0 0 10px color-mix(in srgb, var(--primary) 35%, transparent);
-}
-.pipe-dot { color: #2a303a; }
+.person--you { background: color-mix(in srgb, var(--gold) 14%, transparent); border-color: transparent; color: var(--gold); padding-right: 7px; }
+.crew-row + .candidates { margin-top: -4px; margin-bottom: 10px; }
 
 .proj-now {
   display: flex;
@@ -1433,6 +1448,17 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   color: var(--subtle-foreground);
 }
 .space-cell { padding-left: 9px !important; }
+/* Places moved since the month closed. Green up, red down, and nothing at all when a space
+   held its place — a column of grey dashes would say "no change" eighteen times. */
+.move-cell {
+  width: 26px;
+  padding: 0 0 0 6px !important;
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.move-cell.up { color: var(--success); }
+.move-cell.down { color: var(--destructive); }
 .space-cell,
 .space-name { white-space: nowrap; }
 .space-dot {
@@ -1468,6 +1494,9 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 #clockpanel {
   top: 12px;
   left: 12px;
+  /* The same width as the bench under it: one column, not two boxes that nearly line up. */
+  width: 330px;
+  box-sizing: border-box;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1482,7 +1511,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   letter-spacing: 0.08em;
   color: var(--muted-foreground);
 }
-#clockpanel .speeds { margin-left: 2px; }
+#clockpanel .speeds { margin-left: auto; }
 
 /* money is a state, not just a number */
 .cash--good { color: var(--success); }
@@ -1534,73 +1563,11 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .queue-ctrl .ui-btn { height: 22px; padding: 0 6px; }
 .queue-ctrl .ui-icon { width: 11px; height: 11px; }
 
-/* --- difficulty picker --------------------------------------------------- */
-
-/* --- difficulty: three uniform cards, built on .ui-option -----------------
-   They were three stacked cards of different heights, which is the loudest
-   sign a screen was assembled rather than designed (§11). The blurb is now
-   clamped so every card is the same box, and each one states its terms:
-   the opening cash, which is the only thing difficulty changes for you. */
-
-.diff-pick { gap: 9px; }
-.diff-pick .ui-option__desc { min-height: 48px; color: var(--muted-foreground); }
-.diff-pick:not(.on) .ui-option__desc { color: var(--subtle-foreground); }
-
-/* The terms: three ruled rows, label left and figure right, identical on every card. */
-.diff-terms { width: 100%; margin: 0; border-top: 1px solid var(--border); padding-top: 4px; }
-.diff-terms > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 3px 0;
-}
-.diff-terms dt {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--subtle-foreground);
-}
-.diff-terms dt .ui-icon { width: 12px; height: 12px; }
-.diff-terms dd {
-  margin: 0;
-  font-family: var(--font);
-  font-size: 11.5px;
-  color: var(--muted-foreground);
-}
-.diff-pick.on .diff-terms { border-top-color: color-mix(in srgb, var(--tone) 25%, var(--border)); }
-.diff-pick.on .diff-terms dd { color: var(--foreground); }
-.diff-pick .ui-option__head { gap: 8px; }
-.diff-pick .ui-title { flex: 1; min-width: 0; }
-.diff-pick.on {
-  border-color: color-mix(in srgb, var(--tone) 55%, transparent);
-  background: color-mix(in srgb, var(--tone) 9%, var(--card));
-}
-.diff-pick.on:hover { border-color: color-mix(in srgb, var(--tone) 70%, transparent); }
-/* A tick, so the choice is not carried by colour alone. */
-.diff-tick { display: grid; place-items: center; color: var(--tone); }
-.diff-tick .ui-icon { width: 14px; height: 14px; stroke-width: 2.4; }
-
-/* The pressure meter: one quantity, one visual. */
-.pace { gap: 2.5px; grid-auto-flow: column; align-items: end; justify-content: center; }
-.pace > i {
-  width: 3.5px;
-  border-radius: 2px;
-  background: var(--border-strong);
-}
-.pace > i:nth-child(1) { height: 9px; }
-.pace > i:nth-child(2) { height: 14px; }
-.pace > i:nth-child(3) { height: 19px; }
-.pace > i.lit { background: var(--tone); }
-
 /* Narrow windows: the strip and the three columns fold rather than squash. */
 @media (max-width: 560px) {
   .logo-grid { grid-template-columns: repeat(4, 1fr); }
-  .start-card .ui-grid--3 { grid-template-columns: 1fr; }
   .start-card { padding: 20px; }
   .start-name__shuffle span { display: none; }
-  .diff-pick .ui-option__desc { min-height: 0; }
 }
 
 /* hover label for a station: name over role, rather than a bare word */
@@ -2457,6 +2424,18 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 
 /* --- the top bar, as four groups rather than eight boxes ------------------ */
 #topbar { gap: 0; padding: 7px 8px; }
+/* **Between the clock and the log, never over either.** Centred on the window, the bar slid
+   under the clock panel on anything narrower than about 1500px and sat on top of the speed
+   buttons, so 3× could not be pressed on a laptop. It is centred in the band the two side
+   columns leave (12 + 330 + 12 on the left, 12 + 300 + 12 on the right). */
+#topbar {
+  left: 354px;
+  right: 324px;
+  transform: none;
+  width: fit-content;
+  max-width: calc(100vw - 678px);
+  margin: 0 auto;
+}
 #topbar .tb-group {
   display: flex;
   align-items: center;
@@ -2479,6 +2458,21 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 #topbar .tb-meter > i { display: block; height: 100%; background: var(--warning); border-radius: 3px; }
 #topbar .season { margin-left: 8px; }
 #topbar .lang-toggle { margin-left: 6px; }
+/* Narrower windows: the same four groups, tighter. The band between the side columns is
+   under 800px below about 1480px wide, so the gaps close, the meters shorten, and the
+   season keeps its day count while its bar goes; at laptop widths the small second lines
+   go too — the figures stay, and each group's tooltip still says what they are. */
+@media (max-width: 1480px) {
+  #topbar .tb-group { padding: 2px 10px; gap: 7px; }
+  #topbar .tb-meter { width: 52px; }
+  #topbar .season-bar, #topbar .season-label { display: none; }
+  #topbar .season { margin-left: 4px; }
+}
+@media (max-width: 1360px) {
+  #topbar .tb-sub { display: none; }
+  #topbar .tb-group { padding: 2px 8px; }
+  #topbar .tb-icon { display: none; }
+}
 
 /* A design option the crew cannot back yet says why, in place (§4c). */
 .design-option--locked { opacity: 0.55; }
@@ -2716,3 +2710,329 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .tour-waiting { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--primary); }
 .tour-waiting .ui-icon, .tour-waiting svg { width: 12px; height: 12px; }
 .trainee .bar i { background: var(--learning); }
+
+/*
+ * Build mode (§7b) — the catalogue docked along the bottom, the room above it. Shelves on
+ * the left, what the picked item is in the middle, a wall of pictures on the right: the
+ * Sims' Buy mode, because the thing being decided about is the room and it stays in view.
+ */
+#bottombar.hidden { display: none; }
+#moving.above-build { bottom: 238px; }
+#buildpanel {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: none;
+  /* The shelves are a strip across the top; under it, what the item is and the wall of pictures. */
+  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px 14px;
+  width: min(1180px, calc(100vw - 32px));
+  height: 214px;
+  padding: 10px 12px 12px;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+#buildpanel.on { display: grid; }
+.build-shelves {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.build-shelf-tabs { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.build-shelf .ui-icon { width: 13px; height: 13px; }
+.build-shelf[aria-pressed='true'] .ui-icon { color: var(--primary); }
+.build-exit { margin-left: auto; flex: none; }
+.build-info {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px 14px 2px 0;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+.build-info__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.build-info .ui-desc { margin: 0; font-size: 11.5px; }
+.build-info__price { font-family: var(--mono, monospace); font-size: 11px; color: var(--muted-foreground); margin-top: -3px; }
+/* One line of badges, never two: the column is short, and what does not fit is on the card's tooltip-free second look. */
+.build-info .ui-row__meta { flex-wrap: nowrap; overflow: hidden; gap: 4px; }
+.build-info .ui-badge { flex: none; font-size: 10px; padding: 1px 6px; }
+.build-info__hint {
+  display: flex;
+  gap: 6px;
+  margin: auto 0 0;
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+}
+.build-info__hint .ui-icon { flex: none; width: 13px; height: 13px; margin-top: 1px; }
+.build-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 92px);
+  grid-auto-rows: 122px;
+  gap: 8px;
+  align-content: start;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.build-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 5px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.build-tile:hover:not(:disabled) { border-color: var(--border-strong); background: var(--card-hover); }
+.build-tile.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+.build-tile.owned { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); }
+.build-tile:disabled { opacity: 0.45; }
+/* Owned and therefore not for sale again is not the same as unavailable: it keeps its green edge at full strength. */
+.build-tile.owned:disabled { opacity: 1; }
+.build-tile .build-thumb { height: 60px; }
+.build-tile .build-thumb img { width: 60px; height: 60px; }
+.build-tile__name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-height: 2.4em;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--foreground);
+}
+.build-info__why { margin: 0; font-size: 11px; color: var(--warning); }
+.build-tile__price {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-family: var(--mono, monospace);
+  font-size: 10.5px;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+.build-tile__price.bad { color: var(--destructive); }
+.build-tile__price .ui-icon { width: 11px; height: 11px; }
+#buyconfirm {
+  position: absolute;
+  left: 50%;
+  bottom: 238px;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  max-width: min(560px, calc(100vw - 32px));
+  border-color: var(--primary);
+}
+#buyconfirm.on { display: flex; }
+#buyconfirm .ui-desc { font-size: 11px; }
+
+/*
+ * Notifications (§11) — beside the bench, level with the clock, five seconds each. They
+ * slide in, sit, and fade over their last half-second; a press dismisses one early.
+ */
+#toasts {
+  position: absolute;
+  /* Right of the bench, level with its top: the top bar owns the clock's row. */
+  top: 66px;
+  left: 352px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(360px, calc(100vw - 740px));
+  min-width: 240px;
+  pointer-events: none;
+  z-index: 5;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warning) 7%, var(--popover));
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--foreground);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: toast-in 0.18s ease-out, toast-out 0.5s ease-in 4.5s forwards;
+}
+.toast--bad { background: color-mix(in srgb, var(--destructive) 8%, var(--popover)); }
+.toast .ui-icon { flex: none; width: 14px; height: 14px; margin-top: 1px; color: var(--warning); }
+.toast--bad .ui-icon { color: var(--destructive); }
+@keyframes toast-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(-4px); } }
+
+/* The Learning Station's panel (§4c): a skill, then who goes. */
+.train-now { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.train-now__row { display: grid; grid-template-columns: 110px 1fr 120px; align-items: center; gap: 10px; font-size: 12px; }
+.train-skills { flex-wrap: wrap; }
+.train-skills button, .train-now .ui-desc { text-transform: capitalize; }
+.train-list { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.train-group { display: flex; flex-direction: column; gap: 6px; }
+/* Everybody in a group is the same level, so a person is a chip — three to a row keeps a full roster on one screen. */
+.train-people { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.train-group__head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 2px 2px; font-size: 11px; color: var(--muted-foreground);
+}
+.train-group__head b { color: var(--foreground); font-weight: 600; }
+.train-group__price { margin-left: auto; color: var(--foreground); font-size: 11px; }
+.train-group__price span { color: var(--subtle-foreground); }
+/* Another level while a course is being put together: quieter, still pressable — a pick here switches the course. */
+.train-group--other { opacity: 0.6; }
+.train-group--other:hover { opacity: 1; }
+.train-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: left;
+  font-size: 12px;
+}
+.train-row:hover:not(:disabled) { background: var(--card-hover); border-color: var(--border-strong); }
+.train-row.on { border-color: var(--primary); background: var(--primary-muted); }
+.train-row:disabled { opacity: 0.45; }
+.train-row__check {
+  display: grid; place-items: center; width: 18px; height: 18px;
+  border: 1px solid var(--border-strong); border-radius: 5px; color: var(--primary);
+}
+.train-row.on .train-row__check { border-color: var(--primary); }
+.train-row__check .ui-icon { width: 13px; height: 13px; }
+.train-row__name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.train-group__head .pips i.next { background: color-mix(in srgb, var(--primary) 45%, transparent); }
+/* Nobody here can be picked, so it is a list, not buttons: one line each, the reason beside the name. */
+.train-busy { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; padding: 0 2px; }
+.train-busy__row {
+  display: grid; grid-template-columns: 90px auto 1fr; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--subtle-foreground); min-width: 0;
+}
+.train-busy__row b { font-weight: 500; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.train-busy__row > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.train-summary .cap { text-transform: capitalize; }
+.train-summary { flex: 1; font-size: 11.5px; color: var(--muted-foreground); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.train-summary b { color: var(--foreground); font-weight: 500; }
+
+/* The name over a head (§3.1): the role's icon in its wing's colour, and a thin mood bar. */
+.label .who { display: inline-flex; align-items: center; gap: 4px; }
+.label .wing { display: inline-flex; }
+.label .wing .ui-icon { width: 11px; height: 11px; stroke-width: 2.4; }
+.label .mood { display: block; height: 2px; margin: 3px auto 0; width: 34px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.label .mood i { display: block; height: 100%; background: var(--success); }
+.label .mood.warn i { background: var(--warning); }
+.label .mood.bad i { background: var(--destructive); }
+
+/* Who is having a tea (§7b): a strip over the room, lowest mood first. */
+#treat {
+  position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
+  display: none; flex-direction: column; gap: 8px; padding: 12px; width: min(420px, calc(100vw - 32px));
+  border-color: var(--primary);
+}
+#treat.on { display: flex; }
+.treat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#treat .ui-desc { margin: 0; font-size: 11px; }
+.treat-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.treat-row {
+  display: grid; grid-template-columns: 16px 1fr 90px 60px; align-items: center; gap: 8px;
+  padding: 6px 9px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 12px; text-align: left;
+}
+.treat-row:hover:not(:disabled) { border-color: var(--primary); }
+.treat-row:disabled { opacity: 0.45; }
+.treat-row .wing .ui-icon { width: 13px; height: 13px; }
+.treat-mood { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); overflow: hidden; }
+.treat-mood i { display: block; height: 100%; background: var(--success); }
+.treat-mood.warn i { background: var(--warning); }
+.treat-mood.bad i { background: var(--destructive); }
+
+/* Wing tabs and column heads carry the wing's icon in its colour. */
+.train-skills button { display: inline-flex; align-items: center; gap: 6px; text-transform: none; }
+.train-skills button .wing { display: inline-flex; color: var(--wing); }
+.train-skills button .ui-icon, .skill-head .ui-icon { width: 13px; height: 13px; }
+.train-skills button[aria-pressed="true"] {
+  /* Selected is a whisper of the wing's colour in the background — no underline. */
+  background: color-mix(in srgb, var(--wing) 14%, var(--card));
+  color: var(--foreground);
+}
+.skill-head .wing { display: inline-flex; vertical-align: -2px; margin-right: 4px; }
+
+/* The four wings (design §6.2): big cards, each in its wing's colour. */
+.wing-grid { gap: 12px; }
+.wing-card { min-height: 190px; gap: 10px; background: color-mix(in srgb, var(--wing) 4%, var(--card)); }
+.wing-card:hover:not(:disabled) { background: color-mix(in srgb, var(--wing) 9%, var(--card)); }
+.wing-card__head { display: flex; align-items: center; gap: 12px; }
+.wing-card__head .ui-title { display: block; font-size: 15px; }
+.wing-card__icon {
+  display: grid; place-items: center; width: 42px; height: 42px; flex: none;
+  border-radius: var(--radius); color: var(--wing);
+  background: color-mix(in srgb, var(--wing) 14%, transparent);
+}
+.wing-card__icon .ui-icon { width: 22px; height: 22px; }
+.wing-card__role { font-size: 11px; color: var(--wing); }
+.wing-card .ui-option__desc { font-size: 12px; }
+.wing-card__facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.wing-card__taste { margin-top: auto; font-size: 11px; color: var(--muted-foreground); }
+
+/* The build's name, required (design §6.2), and the own-project card on the brief step. */
+.np-name { margin-top: 12px; }
+.np-name .ui-input { flex: 1; }
+.ui-input {
+  height: 32px; padding: 0 10px; background: var(--card); color: var(--foreground);
+  border: 1px solid var(--border-strong); border-radius: var(--radius); font: inherit; font-size: 13px;
+}
+.ui-input:focus { outline: none; border-color: var(--primary); }
+.own-row { margin-bottom: 10px; cursor: default; border-style: dashed; }
+
+/* The filament shelf row in the Machines panel (§5). */
+.shelf-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 12px; }
+.shelf-row .bar { width: 120px; }
+.shelf-row .ui-icon { width: 14px; height: 14px; }
+
+/* A panel head keeps its title on one line when buttons share the row. */
+.modal-head > b { white-space: nowrap; }
+
+/* The design step as three questions (design §5.4). */
+.forecast {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;
+  padding: 10px 12px; background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.forecast__item { display: flex; flex-direction: column; gap: 3px; }
+.forecast__item b { font-size: 14px; }
+.forecast__item .ui-desc { font-size: 11px; }
+.design-wishes, .design-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.design-wishes .ui-label { margin-right: 4px; }
+.design-presets { margin-bottom: 14px; }
+.design-reach { font-size: 11px; line-height: 1.35; color: var(--warning); }
+.design-fixed {
+  display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius); color: var(--muted-foreground); font-size: 12px;
+}
+.design-fixed .ui-icon { width: 13px; height: 13px; }
+.design-tech {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px;
+}
+.design-tech .wing { display: inline-flex; }
+.design-tech .ui-icon { width: 16px; height: 16px; }
+.ui-grid--4 { grid-template-columns: repeat(4, 1fr); }
+.brief-wishes { margin-top: 2px; }

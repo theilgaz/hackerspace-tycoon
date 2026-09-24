@@ -34,6 +34,8 @@ interface Command {
   name: string;
   args: string;
   help: string;
+  /** Easter eggs: they work, they log like anything else, and `help` keeps quiet about them. */
+  hidden?: boolean;
   run: (sim: Simulation, args: string[]) => string[] | string;
 }
 
@@ -58,7 +60,31 @@ const COMMANDS: Command[] = [
     name: 'help',
     args: '',
     help: 'this list',
-    run: () => COMMANDS.map((c) => `  ${c.name}${c.args ? ' ' + c.args : ''} — ${c.help}`),
+    run: () => COMMANDS.filter((c) => !c.hidden).map((c) => `  ${c.name}${c.args ? ' ' + c.args : ''} — ${c.help}`),
+  },
+  {
+    // Say it three times and the fridge turns up.
+    name: 'matematemate',
+    args: '',
+    help: 'a Club-Mate fridge, on the house',
+    hidden: true,
+    run: (sim) => {
+      if (store.getState().amenities.includes('mate-fridge')) return 'the Mate fridge is already humming';
+      store.getState().buyAmenity('mate-fridge');
+      sim.publish();
+      return 'a Club-Mate fridge appears. Nobody saw who brought it.';
+    },
+  },
+  {
+    name: 'moneymoneymoney',
+    args: '',
+    help: '₺50,000 on top of what is there',
+    hidden: true,
+    run: () => {
+      const next = Math.round(store.getState().cash + 50000);
+      store.setState({ cash: next });
+      return `+${money(50000)} — cash → ${money(next)}`;
+    },
   },
   {
     name: 'cash',

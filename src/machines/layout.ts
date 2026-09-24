@@ -1,5 +1,7 @@
 import type { MachineType, Seat, StageKey } from '@/game/types';
 import { SEATS } from '@/utils/constants';
+import { amenityDef } from '@/utils/amenities';
+import { FURNITURE_MAP } from '@/utils/furniture';
 import type { Tile } from '@/utils/grid';
 
 /**
@@ -377,9 +379,13 @@ function sideways(def: Pick<StationDef, 'tile' | 'stand'>): Tile {
   return dx === 0 ? { x: 1, y: 0 } : { x: 0, y: 1 };
 }
 
+/** How far a workstation's chair is pulled out from the middle of its tile (`SpaceView.chair`). */
+export const CHAIR_REACH = 0.52;
+
 /** How many people can work at it at once. Undefined means no limit. */
-export function seatsOf(def: Pick<StationDef, 'type'>): number | undefined {
-  return SEATS[def.type];
+export function seatsOf(def: Pick<StationDef, 'type' | 'model'>): number | undefined {
+  // A variant (a long bench, a pair desk) says its own number; everything else its kind's.
+  return (def.model ? FURNITURE_MAP[def.model]?.seats : undefined) ?? SEATS[def.type];
 }
 
 /**
@@ -398,6 +404,13 @@ export function seatPosition(def: StationDef, index: number): Seat {
   };
   const at = (x: number, y: number, look = centre): Seat => ({ x, y, look: { ...look } });
 
+  if (def.model === 'meeting-corner') {
+    // A sofa of three along the back, three armchairs along the front, facing each other
+    // over the low table.
+    const side = index % 2 === 0 ? -1 : 1;
+    const along = [-0.62, 0, 0.62][Math.floor(index / 2) % 3];
+    return at(centre.x + front.x * side * 0.55 + across.x * along, centre.y + front.y * side * 0.55 + across.y * along);
+  }
   if (def.type === 'table-small') {
     // The side facing the room first, then the flanks, then the back.
     const order = [front, across, { x: -across.x, y: -across.y }, { x: -front.x, y: -front.y }];
@@ -422,14 +435,22 @@ export function seatPosition(def: StationDef, index: number): Seat {
     return places[index % places.length];
   }
   const seats = seatsOf(def) ?? 1;
-  const look = { x: def.tile.x, y: def.tile.y };
-  if (seats <= 1) return at(def.stand.x, def.stand.y, look);
-  // Shoulder to shoulder along the front of the bench.
-  const shift = (index % seats) - (seats - 1) / 2;
-  return at(def.stand.x + across.x * shift * 0.5, def.stand.y + across.y * shift * 0.5, {
-    x: look.x + across.x * shift * 0.5,
-    y: look.y + across.y * shift * 0.5,
-  });
+  const look = { x: centre.x, y: centre.y };
+  // **In the chair, not on the stand tile.** The renderer pulls every chair up to the desk
+  // (`CHAIR_REACH` from the station's middle), and seating people a full tile out put them
+  // behind their own chair, sitting on air. The assembly table has no chairs: its crew
+  // works on their feet.
+  const reach = def.type === 'assembly' ? 0.72 : CHAIR_REACH;
+  const stand = def.type === 'assembly';
+  const shift = seats <= 1 ? 0 : (index % seats) - (seats - 1) / 2;
+  // A long bench spreads its three chairs over both of its tiles.
+  const gap = def.type === 'assembly' ? 0.5 : seats > 2 ? (tiles.length * 0.9) / seats : 0.44;
+  return {
+    x: centre.x + front.x * reach + across.x * shift * gap,
+    y: centre.y + front.y * reach + across.y * shift * gap,
+    look: { x: look.x + across.x * shift * gap, y: look.y + across.y * shift * gap },
+    stand,
+  };
 }
 
 /** Live station list — grows when a tool project ships. */
@@ -572,6 +593,12 @@ export function amenityMoveSafe(id: string, tile: Tile): boolean {
  * down, so a search per station made the Build panel stutter.
  */
 function everyStandReachable(): boolean {
+  const reached = reachableFromDoor();
+  return STATIONS.every((station) => station.stand.x < 0 || reached.has(key(station.stand)));
+}
+
+/** Every floor tile somebody can walk to from the door. One flood fill, not a path per tile. */
+function reachableFromDoor(): Set<string> {
   const reached = new Set<string>([key(DOOR)]);
   const queue: Tile[] = [{ ...DOOR }];
   while (queue.length) {
@@ -585,7 +612,7 @@ function everyStandReachable(): boolean {
       queue.push(next);
     }
   }
-  return STATIONS.every((station) => station.stand.x < 0 || reached.has(key(station.stand)));
+  return reached;
 }
 
 /** Everything the player has rearranged, for the save file. */
@@ -783,12 +810,49 @@ export function furnitureFits(type: MachineType, span = 1): boolean {
   return ok;
 }
 
+/**
+ * Could a new station of this type stand on this tile, facing some legal way, with the
+ * room still walkable? Asked by Build mode for every tile while something is being placed
+ * — before anything is paid for. A probe goes on the floor and comes straight off again.
+ */
+export function newStationFitsAt(type: MachineType, span: number, tile: Tile): boolean {
+  if (!inBounds(tile)) return false;
+  const probe: StationDef = {
+    id: '__place__',
+    type,
+    label: '',
+    tile: { x: -1, y: -1 },
+    stand: { x: -1, y: -1 },
+    span,
+    furniture: true,
+  };
+  STATIONS.push(probe);
+  STATION_MAP[probe.id] = probe;
+  const ok = placeStation(probe.id, tile, 0);
+  STATIONS.pop();
+  delete STATION_MAP[probe.id];
+  delete stationCustom[probe.id];
+  rebuildBlocked();
+  return ok;
+}
+
+/** Could a new floor comfort stand on this tile without walling anything in? */
+export function newAmenityFitsAt(tile: Tile): boolean {
+  if (!amenityTileFree(tile)) return false;
+  const at = key(tile);
+  PROPS.add(at);
+  const ok = everyStandReachable();
+  PROPS.delete(at);
+  return ok;
+}
+
 /** Put a bought table or workstation on the floor. Null if there is no room for it. */
 export function installFurniture(
   type: MachineType,
   id: string,
   label: string,
   span = 1,
+  model?: string,
 ): StationDef | null {
   const def: StationDef = {
     id,
@@ -798,6 +862,8 @@ export function installFurniture(
     stand: { x: -1, y: -1 },
     span,
     furniture: true,
+    // Which catalogue piece it is: the variants draw, seat and work differently.
+    model,
   };
   STATIONS.push(def);
   STATION_MAP[id] = def;
@@ -941,6 +1007,9 @@ export function applyEraLayout(era: number) {
     if (!slot) continue; // no room at this size; it keeps the tile it had
     station.tile = { ...slot.tile };
     station.stand = { ...slot.stand };
+    // The sofa grows with the lease: a two-seater by the garage door, a proper corner with
+    // a side table from Unit 4B on.
+    if (station.type === 'lounge') station.span = era >= 2 ? 2 : undefined;
   }
 
   // The comforts move too — their slots are derived from the new grid, so this re-runs
@@ -965,4 +1034,62 @@ rebuildBlocked();
 export function isBlocked(tile: Tile): boolean {
   const key = `${tile.x},${tile.y}`;
   return BLOCKED.has(key) || PROPS.has(key);
+}
+
+/**
+ * Where people stand or sit to use a comfort on a break (§7b), one entry per person it
+ * takes. **The seat is a drawing position and the tile is where the path finder takes
+ * them** — the same split a project table uses: a prop blocks its own tile, so everybody
+ * walks to a free tile beside it and the renderer puts them in the chair or at the end of
+ * the table from there. Empty when it is not on the floor or nobody can get next to it.
+ */
+export function leisureSpots(id: string): { tile: Tile; seat: Seat }[] {
+  const use = amenityDef(id)?.use;
+  const place = amenityPlaces.get(id);
+  if (!use || !place) return [];
+  const turn = (place.yaw * Math.PI) / 2;
+  const c = Math.cos(turn);
+  const s = Math.sin(turn);
+  // The prop's frame into the grid's: the renderer turns the node by `rotation.y`, and the
+  // grid's x and y are the world's x and z.
+  const toGrid = (x: number, z: number) => ({ x: place.x + x * c + z * s, y: place.y - x * s + z * c });
+  const stands = new Set(STATIONS.map((station) => key(station.stand)));
+  // Reachable, not merely free: the tile between two props on the bottom row is empty
+  // and walled in, and a break chosen there is somebody walking nowhere.
+  const reached = reachableFromDoor();
+  const open = (tile: Tile) => reached.has(key(tile)) && !(tile.x === DOOR.x && tile.y === DOOR.y);
+  const around = STAND_OFFSET.map((step) => ({ x: place.x + step.x, y: place.y + step.y })).filter(open);
+  if (!around.length) return [];
+  // Nearest to where the spot is, and off a workstation's stand tile where there is a choice.
+  const rank = (tile: Tile, at: { x: number; y: number }) =>
+    Math.hypot(tile.x - at.x, tile.y - at.y) + (stands.has(key(tile)) ? 2 : 0);
+  const out: { tile: Tile; seat: Seat }[] = [];
+  const used = new Set<string>();
+  for (const spot of use.spots) {
+    const at = toGrid(spot.x, spot.z);
+    if (spot.sit !== undefined) {
+      // In the seat itself: walk to the nearest free tile, then sit down on the seat.
+      const tile = [...around].sort((a, b) => rank(a, at) - rank(b, at))[0];
+      out.push({ tile, seat: { x: at.x, y: at.y, look: toGrid(spot.look.x, spot.look.z), height: spot.sit } });
+      continue;
+    }
+    // **On their feet, on a floor tile of their own.** A spot drawn at the prop's edge put
+    // people half inside the fridge, or outside the room when the prop stood by a wall.
+    const tile = around.filter((t) => !used.has(key(t))).sort((a, b) => rank(a, at) - rank(b, at))[0];
+    if (!tile) continue;
+    used.add(key(tile));
+    const lean = 0.22; // a step toward the thing, so they read as using it
+    out.push({
+      tile,
+      seat: {
+        x: tile.x + (place.x - tile.x) * lean,
+        y: tile.y + (place.y - tile.y) * lean,
+        look: { x: place.x, y: place.y },
+        stand: true,
+      },
+    });
+  }
+  // Nobody plays table tennis with one end of the table against a wall.
+  if (use.pair && out.length < use.spots.length) return [];
+  return out;
 }

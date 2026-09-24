@@ -18,6 +18,10 @@ interface LocaleData {
   months: string[];
   /** Suffix for a quantity of hours: "3.5h" / "3,5 sa". */
   hourUnit: string;
+  /** A span in days, as the player reads durations (design §2): half a day at the finest. */
+  spanDays: (n: number) => string;
+  /** Under half a day. */
+  underHalfDay: string;
 }
 
 const DATA: Record<Locale, LocaleData> = {
@@ -29,6 +33,8 @@ const DATA: Record<Locale, LocaleData> = {
       'July', 'August', 'September', 'October', 'November', 'December',
     ],
     hourUnit: 'h',
+    spanDays: (n) => (n === 0.5 ? 'half a day' : `${n % 1 ? n.toLocaleString('en-GB') : n} ${n === 1 ? 'day' : 'days'}`),
+    underHalfDay: 'under half a day',
   },
   tr: {
     numbers: 'tr-TR',
@@ -38,6 +44,8 @@ const DATA: Record<Locale, LocaleData> = {
       'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
     ],
     hourUnit: ' sa',
+    spanDays: (n) => (n === 0.5 ? 'yarım gün' : `${n.toLocaleString('tr-TR')} gün`),
+    underHalfDay: 'yarım günden az',
   },
   xx: {
     numbers: 'en-GB',
@@ -47,6 +55,8 @@ const DATA: Record<Locale, LocaleData> = {
       '⟦July⟧', '⟦August⟧', '⟦September⟧', '⟦October⟧', '⟦November⟧', '⟦December⟧',
     ],
     hourUnit: 'h',
+    spanDays: (n) => `⟦${n} days⟧`,
+    underHalfDay: '⟦under half a day⟧',
   },
 };
 

@@ -1,5 +1,6 @@
 import type {
   MachineType,
+  ProjectCategory,
   ProjectData,
   RivalState,
   Role,
@@ -8,6 +9,23 @@ import type {
   Training,
 } from '@/game/types';
 import type { Job } from '@/machines/Machine';
+import { CATALOG_MAP } from '@/utils/catalog';
+import { CATEGORY_ORDER } from '@/utils/categories';
+import { APPLICANTS, ROSTER, rolesFrom } from '@/utils/constants';
+
+/** Where each of the ten old genres went when they became four wings (save v16). */
+const OLD_GENRE_WING: Record<string, ProjectCategory> = {
+  software: 'software',
+  electronics: 'electronics',
+  retro: 'electronics',
+  iot: 'comms',
+  radio: 'comms',
+  civic: 'comms',
+  mechanical: 'mechanical',
+  robotics: 'mechanical',
+  tooling: 'mechanical',
+  home: 'mechanical',
+};
 import type { Tile } from '@/utils/grid';
 
 export interface MemberSave {
@@ -62,7 +80,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 14;
+export const SAVE_VERSION = 20;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -190,11 +208,7 @@ function migrate(file: SaveFile): SaveFile {
     }
   }
   if (!store.market || typeof store.market !== 'object') {
-    store.market = Object.fromEntries(
-      ['software', 'electronics', 'iot', 'radio', 'robotics', 'mechanical', 'retro', 'home', 'tooling', 'civic'].map(
-        (category) => [category, 1],
-      ),
-    );
+    store.market = Object.fromEntries(CATEGORY_ORDER.map((category) => [category, 1]));
   }
 
   // v10 — applicants are dealt onto the ladder in a shuffled order per run. An older run
@@ -220,6 +234,58 @@ function migrate(file: SaveFile): SaveFile {
   // v14 — seat licences are kept. What an older run paid for was never recorded, so it
   // owns none and buys them again once; charging nothing would be the wrong guess.
   if (!store.licences || typeof store.licences !== 'object') store.licences = {};
+
+  // v15 — print orders arrive in the Machines panel. An older run has none on offer yet.
+  if (!Array.isArray(store.printOffers)) store.printOffers = [];
+
+  // v16 — ten genres became four wings (design §1). A build or a shipped record takes the
+  // wing its catalogue entry is in now; anything the catalogue no longer knows falls back
+  // on what its old genre became. The market keeps each wing's average of its old genres.
+  const wingOf = (category: string, defId?: string): ProjectCategory =>
+    (defId ? CATALOG_MAP[defId]?.category : undefined) ?? OLD_GENRE_WING[category] ?? 'mechanical';
+  for (const raw of sim.projects ?? []) {
+    const project = raw as ProjectData;
+    project.category = wingOf(project.category, project.defId);
+  }
+  for (const record of (store.shipped as { category: string; defId: string }[] | undefined) ?? []) {
+    record.category = wingOf(record.category, record.defId);
+  }
+  // v17 — six skills became four roles (design §3.2), by the same rule the roster uses:
+  // Mechanical the best of CAD, machining and welding; Communications from a love of radio
+  // or IoT. A course under way in an old skill carries on in the role it belongs to.
+  const byId = new Map([...ROSTER, ...APPLICANTS].map((m) => [m.id, m]));
+  const OLD_SKILL_ROLE: Record<string, string> = {
+    software: 'software', electronics: 'electronics', docs: 'software',
+    cad: 'mechanical', machining: 'mechanical', welding: 'mechanical',
+  };
+  for (const saved of (sim.members ?? []) as { id: string; skills?: Record<string, number>; training?: { skill: string } | null }[]) {
+    if (saved.skills && 'cad' in saved.skills) {
+      saved.skills = rolesFrom(saved.skills, byId.get(saved.id)?.passions ?? {});
+    }
+    if (saved.training && OLD_SKILL_ROLE[saved.training.skill]) saved.training.skill = OLD_SKILL_ROLE[saved.training.skill];
+  }
+  const player = sim.player as { skills?: Record<string, number> } | undefined;
+  if (player?.skills && 'cad' in player.skills) player.skills = rolesFrom(player.skills, {});
+
+  // v18 — filament can be kept on a shelf. An older run has none in stock.
+  if (typeof store.filamentStock !== 'number') store.filamentStock = 0;
+
+  // v19 — the standings remember last month, for the Ranking arrows. An older run has no
+  // month on record, so the first day after loading takes one and the arrows start there.
+  if (!store.rankPrev || typeof store.rankPrev !== 'object') store.rankPrev = {};
+
+  // v20 — there is one setting now (difficulty.ts). A run started on easy or hard keeps the
+  // crew and cash it already has; from here on it recruits and faces rivals like everybody.
+  store.difficulty = 'normal';
+
+  const market = store.market as Record<string, number>;
+  if (!CATEGORY_ORDER.every((wing) => typeof market[wing] === 'number')) {
+    const sums: Record<string, number[]> = {};
+    for (const [old, value] of Object.entries(market)) (sums[wingOf(old)] ??= []).push(value);
+    store.market = Object.fromEntries(
+      CATEGORY_ORDER.map((wing) => [wing, sums[wing]?.length ? sums[wing].reduce((a, b) => a + b, 0) / sums[wing].length : 1]),
+    );
+  }
 
   file.version = SAVE_VERSION;
   return file;

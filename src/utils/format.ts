@@ -22,6 +22,21 @@ export function hours(value: number): string {
   return value >= 10 ? `${Math.round(value)}${unit}` : `${num(value, 1)}${unit}`;
 }
 
+/**
+ * A duration the way the player reads it (design §2): **days, never hours**. Machine time
+ * runs round the clock (`perDay` 24); hand work and courses run on the working day (8).
+ * Rounded to the half day — "1.5 days" is a plan, "13h" is a spreadsheet.
+ */
+export function span(hours: number, perDay = 24): string {
+  const days = hours / perDay;
+  if (days <= 0) return localeData().spanDays(0);
+  if (days < 0.25) return localeData().underHalfDay;
+  return localeData().spanDays(Math.max(0.5, Math.round(days * 2) / 2));
+}
+
+/** Hand work and courses: counted in working days of eight hours. */
+export const workSpan = (hours: number): string => span(hours, 8);
+
 export function pct(value: number): string {
   return `${Math.round(value * 100)}%`;
 }

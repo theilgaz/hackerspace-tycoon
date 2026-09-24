@@ -11,6 +11,7 @@ import type {
 import { MEMBER, WEEKLY_HOURS, WORKDAY } from '@/utils/constants';
 import { findPath, sameTile, type Tile } from '@/utils/grid';
 import { GRID, isBlocked } from '@/machines/layout';
+import { primaryWing } from '@/utils/categories';
 
 /**
  * A volunteer. The player never commands one of these — the Simulation asks it what it
@@ -181,6 +182,7 @@ export class MemberEntity {
 
   snapshot(): MemberSnapshot {
     return {
+      primary: primaryWing(this.data.skills, this.data.passions),
       id: this.id,
       name: this.name,
       role: this.role,
@@ -195,6 +197,7 @@ export class MemberEntity {
       tile: this.tile,
       pos: { ...this.pos },
       seat: null,
+      spot: null,
       share: null,
       skills: { ...this.data.skills },
       training: this.training ? { ...this.training } : null,

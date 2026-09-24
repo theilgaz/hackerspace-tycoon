@@ -18,7 +18,8 @@ import { merit, react } from '@/systems/HypeSystem';
 import type { ProjectData, StageKey } from '@/game/types';
 import { freshMarket } from '@/utils/market';
 
-const LEVEL = (process.argv[3] ?? 'normal') as DifficultyKey;
+// One setting since the start screen stopped offering three (difficulty.ts).
+const LEVEL: DifficultyKey = 'normal';
 const SEEDS = Number(process.argv[2] ?? 6);
 
 // ---------------------------------------------------------------- the table

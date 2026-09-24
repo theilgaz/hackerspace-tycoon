@@ -1,4 +1,5 @@
-import type { MachineType, PartData, ProjectDef, StageKey } from '@/game/types';
+import type { MachineType, PartData, ProjectCategory, ProjectDef, ProjectTier, StageKey } from '@/game/types';
+import { PRINT_JOBS } from './printjobs';
 
 type Part = Omit<PartData, 'id' | 'status' | 'attempts'>;
 
@@ -82,6 +83,7 @@ const CATALOG_DATA: Draft[] = [
     id: 'door-access',
     name: 'Member Portal & Door Access',
     category: 'software',
+    secondary: 'electronics',
     tags: ['software', 'iot', 'electronics'],
     era: 2,
     tier: 'medium',
@@ -134,7 +136,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'phone-stand',
     name: 'Phone Stand',
-    category: 'home',
+    category: 'mechanical',
     tags: ['design', 'cad'],
     era: 1,
     tier: 'small',
@@ -151,7 +153,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'cable-tidy',
     name: 'Desk Cable Tidy',
-    category: 'home',
+    category: 'mechanical',
     tags: ['design', 'woodworking'],
     era: 1,
     tier: 'small',
@@ -185,7 +187,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'fume-extractor',
     name: 'Fume Extractor',
-    category: 'tooling',
+    category: 'electronics',
     tags: ['electronics', 'machining'],
     era: 1,
     tier: 'small',
@@ -202,14 +204,14 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'dry-box',
     name: 'Filament Dry Box',
-    category: 'tooling',
+    category: 'mechanical',
     tags: ['machining', 'design'],
     era: 1,
     tier: 'small',
     teamSize: 2,
     blurb: 'Wet filament is why that print failed. Probably. Usually.',
-    work: { concept: 7, cad: 15, simulation: 7, assembly: 19, iterate: 7, release: 8 },
-    parts: [...repeat(2, (i) => fdm(`Spool Roller ${i}`, 2, 40)), fdm('Seal Frame', 3, 55), fdm('Gland', 1, 15)],
+    work: { concept: 6, cad: 12, simulation: 5, assembly: 15, iterate: 6, release: 6 },
+    parts: [fdm('Spool Rollers', 3, 80), fdm('Seal Frame', 3, 70)],
     bomCost: 600,
     leadDays: 3,
     requires: ['fdm'],
@@ -244,7 +246,7 @@ const CATALOG_DATA: Draft[] = [
     tier: 'small',
     teamSize: 2,
     blurb: 'Six keys, one knob, and an unreasonable number of evenings spent on firmware.',
-    work: { concept: 8, cad: 19, simulation: 8, assembly: 26, iterate: 8, release: 10 },
+    work: { concept: 8, cad: 14, simulation: 6, assembly: 18, iterate: 8, release: 8 },
     parts: [fdm('Case', 4, 90), fdm('Switch Plate', 2, 40), fdm('Knob', 1, 15)],
     bomCost: 800,
     leadDays: 3,
@@ -255,13 +257,14 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'aq-node',
     name: 'Air Quality Node',
-    category: 'civic',
+    category: 'comms',
+    secondary: 'electronics',
     tags: ['iot', 'civic', 'electronics'],
     era: 1,
     tier: 'medium',
     teamSize: 2,
     blurb: 'One sensor on one balcony. The point is the forty that come after it.',
-    work: { concept: 11, cad: 24, simulation: 11, assembly: 36, iterate: 11, release: 27 },
+    work: { concept: 11, cad: 28, simulation: 13, assembly: 42, iterate: 11, release: 30 },
     parts: [fdm('Weatherproof Case', 6, 115), fdm('Sensor Mount', 2, 35), fdm('Solar Bracket', 3, 55)],
     bomCost: 1400,
     leadDays: 4,
@@ -272,7 +275,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'eink-dash',
     name: 'E-ink Dashboard',
-    category: 'iot',
+    category: 'comms',
+    secondary: 'software',
     tags: ['iot', 'software', 'design'],
     era: 1,
     tier: 'medium',
@@ -289,7 +293,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'nixie-clock',
     name: 'Nixie Clock',
-    category: 'retro',
+    category: 'electronics',
     tags: ['retro', 'electronics', 'design'],
     era: 1,
     tier: 'medium',
@@ -306,7 +310,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'reflow-oven',
     name: 'Reflow Oven',
-    category: 'tooling',
+    category: 'electronics',
     tags: ['electronics', 'machining'],
     era: 1,
     tier: 'medium',
@@ -325,6 +329,7 @@ const CATALOG_DATA: Draft[] = [
     id: 'fpv-drone',
     name: 'FPV Drone',
     category: 'mechanical',
+    secondary: 'electronics',
     tags: ['fpv', 'electronics', 'cad'],
     era: 1,
     tier: 'large',
@@ -347,7 +352,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'cyberdeck',
     name: 'Cyberdeck',
-    category: 'retro',
+    category: 'electronics',
+    secondary: 'software',
     tags: ['retro', 'electronics', 'software', 'design'],
     era: 1,
     tier: 'medium',
@@ -372,7 +378,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'repair-cafe',
     name: 'Repair Café Rig',
-    category: 'civic',
+    category: 'electronics',
     tags: ['civic', 'woodworking', 'electronics'],
     era: 2,
     tier: 'medium',
@@ -389,7 +395,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'ha-hub',
     name: 'Home Assistant Hub',
-    category: 'iot',
+    category: 'comms',
+    secondary: 'software',
     tags: ['iot', 'software', 'electronics'],
     era: 2,
     tier: 'medium',
@@ -406,7 +413,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'lorawan-gw',
     name: 'LoRaWAN Gateway',
-    category: 'radio',
+    category: 'comms',
     tags: ['radio', 'iot', 'electronics'],
     era: 2,
     tier: 'medium',
@@ -423,7 +430,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'pizza-oven',
     name: 'Pizza Oven',
-    category: 'home',
+    category: 'mechanical',
     tags: ['food', 'woodworking', 'machining'],
     era: 2,
     tier: 'large',
@@ -440,13 +447,13 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'mesh-net',
     name: 'Neighbourhood Mesh',
-    category: 'civic',
+    category: 'comms',
     tags: ['radio', 'civic', 'iot'],
     era: 2,
     tier: 'large',
     teamSize: 4,
     blurb: 'Rooftop to rooftop, no ISP in the middle. The documentation is the actual deliverable.',
-    work: { concept: 21, cad: 36, simulation: 40, assembly: 74, iterate: 24, release: 53 },
+    work: { concept: 21, cad: 36, simulation: 40, assembly: 95, iterate: 24, release: 65 },
     parts: [...repeat(3, (i) => fdm(`Node Case ${i}`, 5, 95)), fdm('Roof Mount', 4, 75)],
     bomCost: 4600,
     leadDays: 8,
@@ -457,7 +464,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'cnc-router',
     name: 'CNC Router',
-    category: 'tooling',
+    category: 'mechanical',
+    secondary: 'electronics',
     tags: ['machining', 'cad', 'woodworking'],
     era: 2,
     tier: 'large',
@@ -480,7 +488,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'robot-arm',
     name: 'Robot Arm',
-    category: 'robotics',
+    category: 'mechanical',
+    secondary: 'software',
     tags: ['robotics', 'machining', 'software'],
     era: 2,
     tier: 'large',
@@ -505,6 +514,7 @@ const CATALOG_DATA: Draft[] = [
     id: 'ebike',
     name: 'E-bike Conversion',
     category: 'mechanical',
+    secondary: 'electronics',
     tags: ['machining', 'electronics', 'design'],
     era: 2,
     tier: 'large',
@@ -523,7 +533,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'sdr-station',
     name: 'SDR Ground Station',
-    category: 'radio',
+    category: 'comms',
+    secondary: 'software',
     tags: ['radio', 'software', 'electronics'],
     era: 3,
     tier: 'large',
@@ -540,7 +551,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'aq-network',
     name: 'City Air Quality Network',
-    category: 'civic',
+    category: 'comms',
     tags: ['civic', 'iot', 'radio'],
     era: 3,
     tier: 'large',
@@ -558,26 +569,27 @@ const CATALOG_DATA: Draft[] = [
     id: 'moto',
     name: '3D-Printed Motorcycle',
     category: 'mechanical',
+    secondary: 'electronics',
     tags: ['machining', 'cad', 'design'],
     era: 3,
     tier: 'large',
     teamSize: 8,
     blurb: 'The one that gets you on the front page, or ends the hackerspace. Possibly both.',
-    work: { concept: 43, cad: 164, simulation: 84, assembly: 181, iterate: 57, release: 67 },
+    work: { concept: 30, cad: 95, simulation: 45, assembly: 105, iterate: 36, release: 40 },
     parts: [
-      fdm('Frame Section A', 13, 420),
-      fdm('Frame Section B', 13, 420),
-      fdm('Frame Section C', 12, 390),
-      fdm('Swingarm', 15, 480),
-      fdm('Fairing L', 10, 340),
-      fdm('Fairing R', 10, 340),
-      fdm('Tank Shell', 12, 380),
-      fdm('Seat Base', 6, 170),
+      fdm('Frame Section A', 11, 420),
+      fdm('Frame Section B', 11, 420),
+      fdm('Frame Section C', 10, 390),
+      fdm('Swingarm', 12, 480),
+      fdm('Fairing L', 8, 340),
+      fdm('Fairing R', 8, 340),
+      fdm('Tank Shell', 10, 380),
+      fdm('Seat Base', 5, 170),
       cnc('Triple Clamp', 6),
       cnc('Axle Spacers', 3),
     ],
     bomCost: 65000,
-    leadDays: 12,
+    leadDays: 5,
     requires: ['fdm', 'cnc', 'assembly'],
     hype: 2400,
     payout: 40000,
@@ -608,7 +620,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'car-park',
     name: 'Car Park Control System',
-    category: 'iot',
+    category: 'comms',
+    secondary: 'software',
     tags: ['iot', 'software', 'electronics'],
     era: 2,
     tier: 'medium',
@@ -625,7 +638,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'hospital-queue',
     name: 'Hospital Queue System',
-    category: 'civic',
+    category: 'software',
     tags: ['civic', 'software', 'design'],
     era: 2,
     tier: 'medium',
@@ -642,7 +655,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'drone-delivery',
     name: 'Drone Grocery Delivery',
-    category: 'robotics',
+    category: 'mechanical',
+    secondary: 'comms',
     tags: ['robotics', 'fpv', 'software'],
     era: 3,
     tier: 'large',
@@ -664,7 +678,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'smart-bins',
     name: 'Smart Waste Bins',
-    category: 'civic',
+    category: 'comms',
     tags: ['civic', 'iot', 'radio'],
     era: 2,
     tier: 'medium',
@@ -681,7 +695,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'bus-stop',
     name: 'Solar Bus Stop Display',
-    category: 'civic',
+    category: 'comms',
+    secondary: 'electronics',
     tags: ['civic', 'iot', 'electronics'],
     era: 2,
     tier: 'medium',
@@ -698,7 +713,7 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'flood-warn',
     name: 'River Flood Early Warning',
-    category: 'civic',
+    category: 'comms',
     tags: ['civic', 'radio', 'iot'],
     era: 2,
     tier: 'medium',
@@ -715,13 +730,14 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'street-light',
     name: 'Adaptive Street Lighting',
-    category: 'civic',
+    category: 'comms',
+    secondary: 'electronics',
     tags: ['civic', 'iot', 'electronics'],
     era: 3,
     tier: 'large',
     teamSize: 5,
     blurb: 'Dim until somebody walks past. The council wants the power bill, the street wants the dark sky.',
-    work: { concept: 30, cad: 110, simulation: 58, assembly: 120, iterate: 44, release: 62 },
+    work: { concept: 32, cad: 125, simulation: 64, assembly: 136, iterate: 48, release: 70 },
     parts: [
       fdm('Controller Case', 7, 130),
       fdm('Sensor Head', 5, 90),
@@ -736,7 +752,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'prosthetic',
     name: 'Prosthetic Hand',
-    category: 'robotics',
+    category: 'mechanical',
+    secondary: 'electronics',
     tags: ['robotics', 'design', 'civic'],
     era: 2,
     tier: 'large',
@@ -758,7 +775,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'sat-tracker',
     name: 'Satellite Tracker Rotator',
-    category: 'radio',
+    category: 'comms',
+    secondary: 'mechanical',
     tags: ['radio', 'robotics', 'machining'],
     era: 2,
     tier: 'large',
@@ -779,7 +797,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'pinball',
     name: 'Pinball Restoration',
-    category: 'retro',
+    category: 'electronics',
+    secondary: 'mechanical',
     tags: ['retro', 'electronics', 'machining'],
     era: 2,
     tier: 'large',
@@ -800,7 +819,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'plotter',
     name: 'Pen Plotter',
-    category: 'tooling',
+    category: 'mechanical',
+    secondary: 'electronics',
     tags: ['machining', 'electronics', 'design'],
     era: 1,
     tier: 'medium',
@@ -823,10 +843,10 @@ const CATALOG_DATA: Draft[] = [
     tier: 'medium',
     teamSize: 2,
     blurb: 'One oscillator, one filter, and an argument about whether it should have MIDI.',
-    work: { concept: 13, cad: 34, simulation: 20, assembly: 58, iterate: 26, release: 18 },
+    work: { concept: 13, cad: 34, simulation: 20, assembly: 75, iterate: 26, release: 18 },
     parts: [fdm('Front Panel', 4, 75), fdm('Knob Set', 3, 40)],
     bomCost: 2200,
-    leadDays: 4,
+    leadDays: 7,
     requires: ['fdm', 'bench'],
     hype: 360,
     payout: 3200,
@@ -851,7 +871,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'coffee-roaster',
     name: 'Coffee Roaster',
-    category: 'home',
+    category: 'electronics',
+    secondary: 'mechanical',
     tags: ['food', 'electronics', 'machining'],
     era: 1,
     tier: 'medium',
@@ -868,7 +889,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'hydroponics',
     name: 'Hydroponic Wall',
-    category: 'home',
+    category: 'comms',
+    secondary: 'mechanical',
     tags: ['food', 'iot', 'design'],
     era: 2,
     tier: 'medium',
@@ -891,7 +913,7 @@ const CATALOG_DATA: Draft[] = [
     tier: 'medium',
     teamSize: 3,
     blurb: 'Eighty kilos of shopping behind a bicycle, and a hitch that must never, ever let go.',
-    work: { concept: 15, cad: 38, simulation: 28, assembly: 62, iterate: 24, release: 18 },
+    work: { concept: 15, cad: 32, simulation: 22, assembly: 50, iterate: 20, release: 16 },
     parts: [fdm('Hitch Body', 6, 140), fdm('Axle Mounts', 5, 120)],
     bomCost: 3800,
     leadDays: 5,
@@ -923,13 +945,13 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'sauna-ctl',
     name: 'Barrel Sauna Controller',
-    category: 'home',
+    category: 'electronics',
     tags: ['iot', 'woodworking', 'electronics'],
     era: 1,
     tier: 'small',
     teamSize: 2,
     blurb: 'Heat, humidity, and a hard cut-out. Somebody has to be the adult about the cut-out.',
-    work: { concept: 7, cad: 18, simulation: 10, assembly: 26, iterate: 10, release: 9 },
+    work: { concept: 6, cad: 14, simulation: 7, assembly: 19, iterate: 8, release: 7 },
     parts: [fdm('Panel Bezel', 3, 55)],
     bomCost: 1100,
     leadDays: 3,
@@ -940,7 +962,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'vending',
     name: 'Space Vending Machine',
-    category: 'tooling',
+    category: 'mechanical',
+    secondary: 'electronics',
     tags: ['machining', 'electronics', 'software'],
     era: 1,
     tier: 'medium',
@@ -957,7 +980,8 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'museum-kiosk',
     name: 'Museum Interactive Kiosk',
-    category: 'civic',
+    category: 'software',
+    secondary: 'electronics',
     tags: ['civic', 'software', 'design'],
     era: 2,
     tier: 'medium',
@@ -974,13 +998,13 @@ const CATALOG_DATA: Draft[] = [
   {
     id: 'quake-sensor',
     name: 'Neighbourhood Quake Sensors',
-    category: 'civic',
+    category: 'comms',
     tags: ['civic', 'iot', 'radio'],
     era: 3,
     tier: 'large',
     teamSize: 5,
     blurb: 'Forty accelerometers across the district, reporting to one map. The kind of thing a hackerspace is *for*.',
-    work: { concept: 34, cad: 107, simulation: 73, assembly: 105, iterate: 52, release: 75 },
+    work: { concept: 34, cad: 120, simulation: 80, assembly: 130, iterate: 52, release: 90 },
     parts: [
       fdm('Sensor Case', 6, 120),
       fdm('Wall Anchor', 4, 80),
@@ -996,8 +1020,41 @@ const CATALOG_DATA: Draft[] = [
 
 export const CATALOG: ProjectDef[] = CATALOG_DATA;
 
+/**
+ * "My own project" (design §6.2): the player names it and says how big it is; the numbers
+ * come from a representative brief of that wing and size, so an own idea costs and pays
+ * like the real thing. Never listed as a brief — the wizard offers them on their own card.
+ */
+const CUSTOM_BASE: Record<ProjectCategory, Record<ProjectTier, string>> = {
+  software: { small: 'space-site', medium: 'basic-cms', large: 'b2b-portal' },
+  electronics: { small: 'macropad', medium: 'nixie-clock', large: 'pinball' },
+  comms: { small: 'geiger', medium: 'aq-node', large: 'mesh-net' },
+  mechanical: { small: 'phone-stand', medium: 'plotter', large: 'pizza-oven' },
+};
+
+export const CUSTOM_DEFS: ProjectDef[] = (Object.keys(CUSTOM_BASE) as ProjectCategory[]).flatMap((wing) =>
+  (['small', 'medium', 'large'] as ProjectTier[]).map((tier) => {
+    const base = CATALOG.find((def) => def.id === CUSTOM_BASE[wing][tier])!;
+    return {
+      ...base,
+      id: `custom-${wing}-${tier}`,
+      name: 'Own project',
+      category: wing,
+      tier,
+      blurb: 'Your own idea. You name it; the crew builds it.',
+      secondary: undefined,
+      unlocksMachine: undefined,
+      custom: true,
+    };
+  }),
+);
+
+/** The template for an own project of this wing and size. */
+export const customDefId = (wing: ProjectCategory, tier: ProjectTier): string => `custom-${wing}-${tier}`;
+
+/** Every def by id — the catalogue, own-project templates and print orders. */
 export const CATALOG_MAP: Record<string, ProjectDef> = Object.fromEntries(
-  CATALOG.map((def) => [def.id, def]),
+  [...CATALOG, ...CUSTOM_DEFS, ...PRINT_JOBS].map((def) => [def.id, def]),
 );
 
 export function catalogForEra(era: number): ProjectDef[] {

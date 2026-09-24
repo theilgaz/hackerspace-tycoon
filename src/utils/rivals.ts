@@ -486,6 +486,14 @@ export const LOGOS: { icon: IconName; colour: string }[] = [
   { icon: 'wrench', colour: '#cbd3de' },
   { icon: 'gamepad', colour: '#f08fa4' },
   { icon: 'flame', colour: '#e0a83c' },
+  { icon: 'terminal', colour: '#4fd1a5' },
+  { icon: 'zap', colour: '#f5d547' },
+  { icon: 'rocket', colour: '#ff8a5c' },
+  { icon: 'bug', colour: '#9ae66e' },
+  { icon: 'flask', colour: '#56c2e6' },
+  { icon: 'atom', colour: '#7aa2f7' },
+  { icon: 'magnet', colour: '#ef6f6f' },
+  { icon: 'glider', colour: '#e8e8e8' },
 ];
 
 /**

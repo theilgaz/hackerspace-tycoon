@@ -2,6 +2,7 @@ import { MemberEntity } from './MemberEntity';
 import type { MemberData, PlayerSnapshot, SkillKey } from '@/game/types';
 import { MEMBER, PLAYER, PLAYER_SKILLS } from '@/utils/constants';
 import type { Tile } from '@/utils/grid';
+import { primaryWing } from '@/utils/categories';
 
 /**
  * You. A member like any other, except: you never drift, you can be told what to do, and
@@ -64,6 +65,7 @@ export class PlayerEntity extends MemberEntity {
 
   playerSnapshot(): PlayerSnapshot {
     return {
+      primary: primaryWing(this.data.skills, this.data.passions),
       present: this.present,
       activity: this.activity,
       hoursToday: this.hoursToday,
@@ -75,6 +77,7 @@ export class PlayerEntity extends MemberEntity {
       tile: this.tile,
       pos: { ...this.pos },
       seat: null,
+      spot: null,
       share: null,
       note: this.note,
       skills: { ...this.data.skills },

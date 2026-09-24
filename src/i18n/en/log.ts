@@ -14,6 +14,12 @@ import { num } from '../locale';
  */
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
 
+
+/** 1st, 2nd, 3rd, 11th — for the standings. */
+function ordinal(n: number): string {
+  const tail = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th';
+  return `${n}${tail}`;
+}
 export const log = {
   // --- The log ---------------------------------------------------------------
   'log.day1': 'Day 1. The garage smells of PLA and instant coffee.',
@@ -124,6 +130,16 @@ export const log = {
 
   'log.awards.won': (p: { won: number; total: number }) => `Awards night: you took ${p.won} of ${p.total}.`,
   'log.awards.none': 'Awards night: nothing for us this year.',
+  'log.awards.countdown': (p: { days: number; leading: string; race: string; rival: string }) =>
+    (p.days === 1 ? 'Awards night is tomorrow.' : `${p.days} days to awards night.`) +
+    (p.leading ? ` You lead ${p.leading}.` : ' You do not lead anything yet.') +
+    (p.race ? ` Closest race: ${p.race}, where ${p.rival} is ahead.` : ''),
+  'log.rank.up': (p: { from: number; to: number; space: string }) =>
+    `The month closes with you ${ordinal(p.to)} in the standings, up from ${ordinal(p.from)}` +
+    (p.space ? ` — past ${p.space}.` : '.'),
+  'log.rank.down': (p: { from: number; to: number; space: string }) =>
+    `The month closes with you ${ordinal(p.to)} in the standings, down from ${ordinal(p.from)}` +
+    (p.space ? ` — ${p.space} got past you.` : '.'),
 
   'log.applicant.via': (p: { name: string; via: string }) =>
     `${p.name} got in touch after seeing the ${p.via} write-up.`,

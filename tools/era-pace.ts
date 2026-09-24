@@ -2,7 +2,7 @@
 import { Simulation } from '@/systems/Simulation';
 import { store, emptyRuntime } from '@/game/store';
 import { rng } from '@/utils/rng';
-import { FILAMENT, VERB_HOURS } from '@/utils/constants';
+import { FILAMENT, VERB_HOURS, WORKDAY, isWorkingDay } from '@/utils/constants';
 import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 import { partsPending } from '@/systems/ProjectSystem';
 import { ECONOMY } from '@/utils/economy';
@@ -23,12 +23,17 @@ const rows: string[] = [];
 const standings: string[] = [];
 const firstNight: string[] = [];
 const outcomes: string[] = [];
+/** Days from pitch to ship of every build, by tier — what a real run takes, not the best case. */
+const lengths: Record<string, number[]> = { small: [], medium: [], large: [] };
+/** Where a shipped build's hours went, by tier: summed hours per bucket, and how many builds. */
+const where: Record<string, { n: number; hours: Record<string, number> }> = {};
 const SEEDS = Number(process.argv[2] ?? 4);
 /** How long a run is played for. Long enough to reach the first 1 December awards night. */
 const DAYS = Number(process.env.DAYS ?? 220);
 // Difficulty now sets the crew you start with and how fast more arrive, so it has to be
 // measurable here rather than assumed to be 'normal'.
-const LEVEL = (process.argv[3] ?? 'normal') as DifficultyKey;
+// One setting since the start screen stopped offering three (difficulty.ts).
+const LEVEL: DifficultyKey = 'normal';
 /** `NO_SHOP=1` plays the same run without buying a single comfort — the A/B that says
  *  whether the shop is worth its money, the way `hype-check` does for posting. */
 const SHOPS = process.env.NO_SHOP !== '1';
@@ -76,6 +81,10 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   // The board as it stood on the morning of the awards, read before the night resets the year.
   let eve: ScoreRow[] = [];
   let eveDay = 0;
+  // What each open build is doing, sampled once a sim-hour and banked when it ships.
+  const spent = new Map<string, Record<string, number>>();
+  let sampledHour = -1;
+  const banked = new Set<string>();
   // Past the first awards night (day 90) and well into the third year.
   while (sim.day <= DAYS) {
     if (sim.day !== eveDay) {
@@ -83,6 +92,37 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       eveDay = sim.day;
     }
     sim.tick(0.05, 4);
+    if (Math.floor(sim.totalHours) !== sampledHour) {
+      sampledHour = Math.floor(sim.totalHours);
+      const open = isWorkingDay(sim.day) && sim.time >= WORKDAY.start && sim.time < WORKDAY.end;
+      // A build leaves the list when it ships; bank it from the shipped records.
+      const live = new Set(sim.projects.map((p) => p.id));
+      for (const r of store.getState().shipped) {
+        if (banked.has(r.id) || live.has(r.id) || !spent.has(r.id)) continue;
+        banked.add(r.id);
+        const tier = CATALOG_MAP[r.defId]?.tier ?? 'small';
+        where[tier] ??= { n: 0, hours: {} };
+        where[tier].n += 1;
+        for (const [k, v] of Object.entries(spent.get(r.id)!)) where[tier].hours[k] = (where[tier].hours[k] ?? 0) + v;
+        spent.delete(r.id);
+      }
+      for (const p of sim.projects) {
+        if (p.shipped) continue;
+        const onIt = p.team.length > 0 || sim.player.project === p.id;
+        const bucket =
+          p.stage === 'fabrication' ? 'printing'
+          : p.stage === 'assembly' && partsPending(p, sim.totalHours) ? 'parts'
+          : !open ? 'closed'
+          : !onIt ? 'no crew'
+          : !p.kickedOff && p.required.concept > 0 ? 'kickoff'
+          : [...sim.members, sim.player].some((m) => m.present && m.activity === 'working' && (m.team === p.id || (m === sim.player && sim.player.project === p.id)))
+            ? 'hand work'
+            : [...sim.members].some((m) => m.team === p.id && m.present) ? 'crew in, not at it' : 'crew away';
+        const row = spent.get(p.id) ?? {};
+        row[bucket] = (row[bucket] ?? 0) + 1;
+        spent.set(p.id, row);
+      }
+    }
     if (sim.day === lastDay) {
       stuckTicks += 1;
       if (stuckTicks > 5000) {
@@ -273,6 +313,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
         .join('  ·  '),
   );
 
+  for (const r of store.getState().shipped) lengths[CATALOG_MAP[r.defId]?.tier ?? 'small']?.push(r.days);
   firstNight.push(`  seed ${seed}: ${night ?? 'no ceremony reached'}`);
   const over = store.getState().gameOver;
   const bills = store.getState().bills;
@@ -320,6 +361,19 @@ const wins = firstNight.reduce((n, line) => n + (line.match(/: US/g) ?? []).leng
 console.log(
   `\n  FIRST AWARDS NIGHT (day 90) — you took ${wins} of ${firstNight.length * AWARDS.length} across ${firstNight.length} runs\n` +
     firstNight.join('\n'),
+);
+const pct = (a: number[], q: number) => (a.length ? [...a].sort((x, y) => x - y)[Math.floor((a.length - 1) * q)] : 0);
+console.log(
+  '\n  BUILD LENGTH IN PLAY (days, pitch to ship)\n' +
+    Object.entries(lengths)
+      .map(([tier, a]) => `  ${tier.padEnd(7)} ${String(a.length).padStart(4)} ships · median ${pct(a, 0.5).toFixed(1)} · p10 ${pct(a, 0.1).toFixed(1)} · p90 ${pct(a, 0.9).toFixed(1)}`)
+      .join('\n'),
+);
+console.log(
+  '\n  WHERE A BUILD\'S DAYS GO (average days per shipped build)\n' +
+    Object.entries(where)
+      .map(([tier, w]) => `  ${tier.padEnd(7)} ` + Object.entries(w.hours).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(v / w.n / 24).toFixed(1)}`).join(' · '))
+      .join('\n'),
 );
 console.log('\n  THE BOOKS\n' + outcomes.join('\n'));
 console.log('\n  STANDINGS AT THE END\n' + standings.join('\n') + '\n');

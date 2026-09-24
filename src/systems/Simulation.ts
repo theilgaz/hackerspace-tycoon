@@ -2,6 +2,7 @@ import { store } from '@/game/store';
 import { caseLocale, msg, t, type Message, type MessageKey, type Text } from '@/i18n';
 import type {
   BacklogEntry,
+  BuyItem,
   DesignAxisId,
   MemberData,
   RivalState,
@@ -37,6 +38,8 @@ import {
   amenityMoveSafe,
   amenityTileFree,
   GRID,
+  isBlocked,
+  leisureSpots,
   wallColumnFree,
   wallColumn,
   placeStation,
@@ -53,20 +56,22 @@ import {
   installFurniture,
   furnitureFits,
   amenityRoom,
+  newAmenityFitsAt,
+  newStationFitsAt,
 } from '@/machines/layout';
 import {
   AXES,
-  CATEGORY_AXES,
   defaultPlan,
-  optionAvailable,
+  crewLevels,
+  wishMet,
   planProject,
   qualityHype,
   qualityPay,
   teamFit,
 } from '@/utils/design';
 import { coolMarket, driftMarket, warmMarket } from '@/utils/market';
-import { FURNITURE_MAP } from '@/utils/furniture';
-import { manhattan } from '@/utils/grid';
+import { FURNITURE_MAP, furnitureOf } from '@/utils/furniture';
+import { manhattan, sameTile, type Tile } from '@/utils/grid';
 import {
   BACKLOG,
   BOUNTY,
@@ -77,6 +82,11 @@ import {
   GHOST_DECAY,
   MACHINE,
   MEMBER,
+  LEISURE,
+  HOURS_OFF,
+  DESIGN,
+  STAGE_ORDER,
+  ORDERS,
   PERFECTIONIST_QUALITY_GATE,
   APPLICANTS,
   shuffleLadder,
@@ -95,6 +105,7 @@ import {
   TRAIN,
   ROLES,
   RESALE,
+  AWARDS_COUNTDOWN,
   VERB_HOURS,
   WORKDAY,
   ERAS,
@@ -105,8 +116,9 @@ import {
   WEEKLY_HOURS,
 } from '@/utils/constants';
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
+import { PRINT_JOBS } from '@/utils/printjobs';
 import { ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
-import { RIVAL_MAP, RISING_FLOOR } from '@/utils/rivals';
+import { AWARDS, RIVAL_MAP, RISING_FLOOR } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
 import type { SaveFile } from './SaveGame';
@@ -121,7 +133,15 @@ import {
   type Ledger,
   type LedgerKind,
 } from '@/utils/economy';
-import { amenityDef, comfortsOf, NO_COMFORTS, wallPrefer, wallWidth, type Comforts } from '@/utils/amenities';
+import {
+  amenityDef,
+  comfortsOf,
+  NO_COMFORTS,
+  wallPrefer,
+  wallWidth,
+  type AmenityUse,
+  type Comforts,
+} from '@/utils/amenities';
 import {
   decayHype,
   hypePressure,
@@ -164,6 +184,29 @@ const FAB_MACHINES: MachineType[] = ['fdm', 'cnc'];
  * This module must never import `three` or touch the DOM — it has to be runnable headless
  * so that balance can be tested.
  */
+/** A break at a comfort (§7b). `until` is in total sim-hours, so a break cannot wrap midnight. */
+interface Leisure {
+  amenityId: string | null;
+  kind: AmenityUse['kind'];
+  slot: number;
+  until: number;
+  tile: Tile;
+  seat: Seat | null;
+  /** The coffee on the way in, which comes before work. */
+  arrival: boolean;
+  pair: boolean;
+  /** Taken because they were worn out, so it lasts until they are not. */
+  rest?: boolean;
+  /** Sent by the owner for a drink: they drop what they are doing, and it lifts their mood. */
+  treat?: boolean;
+  /** They got there — a treat only counts once the cup is in hand. */
+  served?: boolean;
+}
+/** The genres a soldering and measurement bench's scope has anything to say about. */
+const ELECTRONIC_GENRES: ProjectData['category'][] = ['electronics', 'comms'];
+const LEISURE_ALL: AmenityUse['kind'][] = ['drink', 'sit', 'play', 'watch'];
+const LEISURE_REST: AmenityUse['kind'][] = ['sit', 'drink', 'watch'];
+
 export class Simulation {
   members: MemberEntity[] = [];
   player: PlayerEntity;
@@ -217,6 +260,21 @@ export class Simulation {
    * crew is going ahead without. Reset every morning, never saved.
    */
   private kickoffWatch = new Map<string, { best: string[]; progressed: boolean }>();
+  /**
+   * Breaks people are taking at the comforts (§7b) — a coffee on the way in, a game of
+   * table tennis, a sit on the sofa. `amenityId` null is the kettle by the old sofa, which
+   * every space has. Never saved: a break only means anything while somebody is in.
+   */
+  private leisure = new Map<string, Leisure>();
+  /** Who carried on with their break this tick; anybody else has gone and done something. */
+  private leisureKept = new Set<string>();
+  /** The last comfort each person used, so the next break is somewhere else. */
+  private leisureLast = new Map<string, string | null>();
+  /**
+   * When each person's last break ended. Free time between breaks is spent wandering, so
+   * whoever is on the sofa does not simply sit back down on it and the others get a go.
+   */
+  private leisureEnded = new Map<string, number>();
 
   constructor() {
     resetStations();
@@ -265,15 +323,27 @@ export class Simulation {
     }
   }
 
-  machineFor(type: MachineType): Machine | undefined {
+  /**
+   * Which machine a part goes to: **the one that would finish it first** — what it has on
+   * already plus this part, over its speed — and the more reliable of two that would finish
+   * together. An idle H2S takes the job before an idle A1; a small part goes to the A1 only
+   * when the H2S is busy enough that it would still be first. Never a starved machine while
+   * a fed one is free. It used to be the shortest queue, which sent a two-day print to the
+   * slowest printer on the floor because it happened to be empty.
+   */
+  machineFor(type: MachineType, hours = 0): Machine | undefined {
     const all = this.machines.filter((m) => m.type === type);
     if (all.length <= 1) return all[0];
-    // Shortest queue first, and never a starved machine while a fed one is free — otherwise
-    // buying a second printer does nothing but sit there.
+    const finish = (m: Machine) => {
+      const now = m.current ? m.current.hoursRequired - m.current.progress : 0;
+      const queued = m.queue.reduce((sum, job) => sum + job.hoursRequired, 0);
+      return (now + queued + hours) / Math.max(0.1, m.speed);
+    };
     return [...all].sort(
       (a, b) =>
         Number(a.starved) - Number(b.starved) ||
-        a.queue.length + (a.running ? 1 : 0) - (b.queue.length + (b.running ? 1 : 0)),
+        finish(a) - finish(b) ||
+        a.reliability - b.reliability,
     )[0];
   }
 
@@ -289,7 +359,7 @@ export class Simulation {
   // Clock
   // -------------------------------------------------------------------------
 
-  /** `dtReal` is real seconds; speed is the player's 1x/2x/4x. */
+  /** `dtReal` is real seconds; `speed` is in the sim's own unit (see `TIME.secondsPerHour`). */
   tick(dtReal: number, speed: number) {
     const dt = (dtReal * speed) / TIME.secondsPerHour; // sim-hours
 
@@ -304,6 +374,8 @@ export class Simulation {
       tickRivals(this.rivals, this.rivalPressure());
       this.runBilling();
       this.checkAwards();
+      this.tickStandings();
+      this.awardsCountdown();
       store.getState().setHype(decayHype(store.getState().hype));
       store.getState().setMarket(driftMarket(store.getState().market));
       this.checkSolvency();
@@ -311,6 +383,8 @@ export class Simulation {
       this.planDay();
       this.player.startDay();
       this.refreshBacklog();
+      this.refreshPrintOffers();
+      this.checkOrderDeadlines();
     }
 
     this.runRoles();
@@ -384,6 +458,68 @@ export class Simulation {
     return true;
   }
 
+  // -------------------------------------------------------------------------
+  // Build mode (§7b): choose a tile first, then pay
+  // -------------------------------------------------------------------------
+
+  /** What an item on the Build shelves costs, and its name, for the "buy it?" question. */
+  buyQuote(item: BuyItem): { name: string; price: number; upkeep: number } | null {
+    if (item.kind === 'furniture') {
+      const def = FURNITURE_MAP[item.id];
+      return def ? { name: def.name, price: def.price, upkeep: 0 } : null;
+    }
+    if (item.kind === 'printer') {
+      const model = PRINTER_MAP[item.id];
+      return model ? { name: model.name, price: model.price, upkeep: 0 } : null;
+    }
+    const def = amenityDef(item.id);
+    return def ? { name: def.name, price: def.price, upkeep: def.upkeep } : null;
+  }
+
+  /**
+   * Could this be put down on this tile? Asked before anything is paid for, for every tile
+   * while an item from the shelves is held, so the legal ones can be lit.
+   */
+  canPlaceNew(item: BuyItem, x: number, y: number): boolean {
+    void this.comforts; // the floor has to know about the comfort bought a moment ago
+    const tile = { x, y };
+    if (item.kind === 'furniture') {
+      const def = FURNITURE_MAP[item.id];
+      return !!def && newStationFitsAt(def.type, def.span ?? 1, tile);
+    }
+    if (item.kind === 'printer') {
+      return this.buyablePrinters().length > 0 && newStationFitsAt('fdm', 1, tile);
+    }
+    const def = amenityDef(item.id);
+    if (!def || store.getState().amenities.includes(item.id)) return false;
+    // A hung thing goes on the back wall above whatever tile was chosen.
+    if (def.mount === 'wall') return x >= 0 && x < GRID.width && y >= 0 && y < GRID.height;
+    return newAmenityFitsAt(tile);
+  }
+
+  /**
+   * Pay for it and put it where the player chose. The buy itself lands it wherever the room
+   * would have; the move to the chosen tile is the same one Build mode's rearranging uses,
+   * so a bought desk and a moved desk obey exactly the same rules.
+   */
+  buyAt(item: BuyItem, x: number, y: number, yaw: number): boolean {
+    if (!this.canPlaceNew(item, x, y)) return false;
+    const before = new Set(STATIONS.map((s) => s.id));
+    let bought = false;
+    if (item.kind === 'furniture') bought = this.buyFurniture(item.id);
+    else if (item.kind === 'printer') bought = this.buyPrinter(item.id);
+    else bought = this.buyAmenity(item.id);
+    if (!bought) return false;
+    if (item.kind === 'amenity') {
+      this.placeAmenity(item.id, x, amenityDef(item.id)?.mount === 'wall' ? 0 : y, yaw);
+    } else {
+      const station = STATIONS.find((s) => !before.has(s.id));
+      if (station) this.placeStation(station.id, x, y, yaw);
+    }
+    this.publish();
+    return true;
+  }
+
   placeAmenity(id: string, x: number, y: number, yaw: number): boolean {
     const def = amenityDef(id);
     const state = store.getState();
@@ -453,6 +589,9 @@ export class Simulation {
       this.log(msg('log.amenity.needsEra', { item: def.name, era: eraDef(def.era).name }), 'warn');
       return false;
     }
+    // A machine is a capability, and one is all a space needs — the same rule as building
+    // the tool twice (`installMachine`). The shelf already shows it as in the space.
+    if (FAB_MACHINES.includes(def.type) && stationOfType(def.type)) return false;
     // Sync the floor first: a comfort bought a moment ago has to count as in the way.
     void this.comforts;
     if (!furnitureFits(def.type, def.span)) {
@@ -463,13 +602,18 @@ export class Simulation {
       this.log(msg('log.amenity.cantAfford', { item: def.name }), 'bad');
       return false;
     }
-    const station = installFurniture(def.type, `${def.id}-${uid()}`, def.name, def.span);
+    const station = installFurniture(def.type, `${def.id}-${uid()}`, def.name, def.span, def.id);
     if (!station) {
       state.earn(def.price, 'kit');
       this.log(msg('build.log.noRoom', { item: def.name }), 'warn');
       return false;
     }
     state.ownMachine(def.type);
+    // A bought CNC cuts parts on the clock like a printer, so it needs a queue behind it.
+    if (FAB_MACHINES.includes(def.type)) {
+      this.machines.push(this.makeMachine(station));
+      this.applyPerks();
+    }
     // Where it landed is recorded as though the player had put it there, so a reload puts
     // it back on the same tile rather than wherever the room would choose today.
     state.placeStation(station.id, { x: station.tile.x, y: station.tile.y, yaw: yawOf(station) });
@@ -520,6 +664,7 @@ export class Simulation {
       }
       project.idleDays += 1;
       if (project.idleDays < SHELVE.afterIdleDays) continue;
+      for (const machine of this.machines) machine.dropProject(project.id);
       this.projects = this.projects.filter((p) => p.id !== project.id);
       this.seeded.delete(project.id);
       this.log(msg('log.shelved', { project: project.name, days: SHELVE.afterIdleDays }), 'bad');
@@ -532,8 +677,14 @@ export class Simulation {
    */
   private planDay() {
     this.kickoffWatch.clear();
+    this.treatedToday.clear();
     const working = isWorkingDay(this.day);
     for (const m of this.members) {
+      // Nobody sleeps here: a late one still in at midnight has gone home.
+      if (m.present) {
+        this.releaseSeat(m.id);
+        m.leave();
+      }
       if (!working) {
         this.plans.set(m.id, { attending: false, arriveAt: 0, leaveAt: 0 });
         m.leaveAt = 0;
@@ -548,8 +699,19 @@ export class Simulation {
       // which put the crew in the building after hours — the owner is the only one who stays
       // late. What a bounty buys now is effort inside the day (`BOUNTY.rateBonus`).
       const span = m.span;
-      this.plans.set(m.id, { attending, arriveAt: span.start, leaveAt: span.end });
-      m.leaveAt = span.end;
+      let arriveAt = span.start;
+      let leaveAt = span.end;
+      // **Now and then somebody stays on**, or opens up at six (§3d) — only with a build
+      // to get on with, and a Night Owl far more often. The owner is in from six anyway.
+      if (m.team) {
+        const owl = m.hasTrait('nightOwl');
+        if (rng.chance(owl ? HOURS_OFF.lateOwl : HOURS_OFF.late)) {
+          leaveAt = rng.range(HOURS_OFF.lateFrom, HOURS_OFF.lateUntil);
+        }
+        if (!owl && rng.chance(HOURS_OFF.early)) arriveAt = HOURS_OFF.earlyAt;
+      }
+      this.plans.set(m.id, { attending, arriveAt, leaveAt });
+      m.leaveAt = leaveAt;
     }
   }
 
@@ -664,6 +826,13 @@ export class Simulation {
         if (plan.attending && this.time >= plan.arriveAt && this.time < plan.leaveAt) {
           m.arrive(DOOR);
           m.note = t('note.justArrived');
+          // Sometimes a coffee — or a tea — before anything else. Never for a crew with a
+          // kickoff to hold: they are wanted at the table.
+          const kickoff = m.team ? this.project(m.team) : null;
+          const meeting = !!kickoff && !kickoff.kickedOff && kickoff.required.concept > 0;
+          if (!meeting && rng.chance(LEISURE.arrivalChance) && this.startLeisure(m, ['drink'], true)) {
+            this.leisureKept.add(m.id);
+          }
         }
         continue;
       }
@@ -685,8 +854,33 @@ export class Simulation {
       this.performActivity(m, dt);
       this.tickTraining(m, dt);
     }
+    // A break nobody carried on with this tick is over: they went to work, to lunch
+    // somewhere else, or home.
+    for (const id of [...this.leisure.keys()]) if (!this.leisureKept.has(id)) this.endLeisure(id);
+    this.leisureKept.clear();
 
     this.applyWork(dt);
+  }
+
+  /**
+   * What the furniture adds (§4d variants): the desk somebody is sitting at, or the table a
+   * kickoff is being held round. A plain station is 1.
+   */
+  private deskRate(who: MemberEntity, project: ProjectData): number {
+    if (!project.kickedOff && project.tableId) {
+      const table = STATION_MAP[project.tableId];
+      return (table && furnitureOf(table)?.kickoff) ?? 1;
+    }
+    const claim = this.claims.get(who.id);
+    const station = claim ? STATION_MAP[claim.stationId] : undefined;
+    return (station && furnitureOf(station)?.rate) ?? 1;
+  }
+
+  /** Energy burned at somebody's desk, against a plain one — the pro chair's one real perk. */
+  private deskFatigue(who: MemberEntity): number {
+    const claim = this.claims.get(who.id);
+    const station = claim ? STATION_MAP[claim.stationId] : undefined;
+    return (station && furnitureOf(station)?.fatigue) ?? 1;
   }
 
   /** Work is applied per project-stage, with diminishing returns for the crowd. */
@@ -714,7 +908,10 @@ export class Simulation {
     }
 
     for (const { project, workers } of groups.values()) {
-      const skill = stageSkill(project.category, project.stage);
+      // Karma projects hand their assembly to the secondary wing (design §4.1): the drone's
+      // boards are put together by whoever knows electronics.
+      const secondary = CATALOG_MAP[project.defId]?.secondary;
+      const skill = project.stage === 'assembly' && secondary ? secondary : stageSkill(project.category, project.stage);
       let total = 0;
       let craftSum = 0;
       let rateSum = 0;
@@ -725,7 +922,7 @@ export class Simulation {
           index === 0 ? 1 : MEMBER.extraWorkerFactor * Math.pow(MEMBER.crowdDecay, index - 1);
         // A live bounty on this stage is effort, not hours: the same day, worked harder.
         const bountied = project.bounties.includes(project.stage) && m !== this.player ? BOUNTY.rateBonus : 1;
-        const rate = m.workRate(skill, project.tags) * factor * this.comforts.focus * bountied;
+        const rate = m.workRate(skill, project.tags) * factor * this.comforts.focus * bountied * this.deskRate(m, project);
         total += rate * dt;
         rateSum += rate;
         // Each person's own share of the stage, for the bar over their head — and of the
@@ -750,6 +947,8 @@ export class Simulation {
     // Twelve to one, nobody works. The lounge exists for exactly this.
     if (isLunch(this.time)) {
       this.releaseSeat(m.id);
+      // Lunch is the hour the comforts earn their floor space: a game, the sofa, a coffee.
+      if (this.relax(m, LEISURE_ALL, 'resting')) return;
       m.note = t('note.lunch');
       if (this.atStation(m, 'lounge')) {
         m.activity = 'resting';
@@ -759,20 +958,26 @@ export class Simulation {
       return;
     }
 
-    if (m.activity === 'resting') {
+    // The coffee on the way in is finished before anything else is started.
+    if (this.leisure.get(m.id)?.arrival && this.relax(m, ['drink'], 'idle', false)) return;
+
+    if (m.activity === 'resting' || this.leisure.get(m.id)?.rest) {
       this.releaseSeat(m.id);
       if (m.data.energy >= 65) {
         m.activity = 'idle';
         m.note = t('note.backOnIt');
       } else {
+        if (this.relax(m, LEISURE_REST, 'resting', true, true)) return;
         if (!m.walking && !this.atStation(m, 'lounge')) m.walkTo(stationOfType('lounge')!.stand);
         return;
       }
     }
     if (m.data.energy < MEMBER.tiredThreshold) {
       this.releaseSeat(m.id);
-      m.activity = 'resting';
       m.note = t('note.needsSitDown');
+      // A sofa, a bean bag or the nap pod if the space has one; the old sofa if not.
+      if (this.relax(m, LEISURE_REST, 'resting', true, true)) return;
+      m.activity = 'resting';
       m.walkTo(stationOfType('lounge')!.stand);
       return;
     }
@@ -806,8 +1011,11 @@ export class Simulation {
       m.note = t('note.lostInterest');
     }
 
-    // Volunteers still volunteer: an unallocated member may join something themselves.
-    if (!m.team && !m.training) {
+    // Volunteers still volunteer: an unallocated member may join something themselves —
+    // once the game in hand is over. Signing up mid-rally cut every break to a moment.
+    const playing = this.leisure.get(m.id);
+    const midGame = !!playing && !playing.arrival && this.totalHours < playing.until;
+    if (!m.team && !m.training && !midGame) {
       let best: { project: ProjectData; appetite: number } | null = null;
       for (const project of this.joinableProjects()) {
         if (m.isCoolingOff(project.id)) continue;
@@ -829,6 +1037,10 @@ export class Simulation {
       const project = this.project(m.team)!;
       if (!project.kickedOff && project.required.concept > 0) {
         if (this.attendKickoff(m, project)) return;
+        // No table yet — the rest of the crew is not in, or every table is taken. They
+        // stay put for the meeting rather than wander off or start a game (§4d).
+        this.holdOn(m);
+        return;
       } else if (this.hasOpenWork(project)) {
         if (this.goToWork(m, project)) return;
       } else {
@@ -839,9 +1051,15 @@ export class Simulation {
       this.releaseSeat(m.id);
     }
 
+    // A game or a sit-down already going is finished first — fussing over a running printer
+    // used to pull people off the table-tennis table the moment they got there.
+    if (!m.team && this.leisure.has(m.id) && this.relax(m, LEISURE_ALL, 'idle', false)) return;
+
     // Nothing to build by hand? Somebody may fuss over the printer instead.
     const printer = this.printer;
-    if (printer.calibration < MACHINE.calibrationWarning || printer.running) {
+    // One person watches a print; a crowd round the printer is the whole crew doing nothing.
+    const watched = this.members.some((o) => o !== m && o.present && o.activity === 'babysitting');
+    if ((printer.calibration < MACHINE.calibrationWarning || printer.running) && !watched) {
       if (this.atStation(m, 'fdm')) {
         m.activity = 'babysitting';
         m.note = printer.calibration < MACHINE.calibrationWarning ? t('note.levelling') : t('note.watchingPrint');
@@ -850,6 +1068,14 @@ export class Simulation {
       }
       return;
     }
+
+    // **Free time is for people with nothing on.** Somebody on a crew waits for their
+    // build — the print, the parts — rather than start a game with a deadline coming.
+    if (m.team) {
+      this.holdOn(m);
+      return;
+    }
+    if (this.relax(m, LEISURE_ALL, 'idle')) return;
 
     if (!m.walking && m.activity !== 'idle') {
       m.activity = 'idle';
@@ -1155,6 +1381,15 @@ export class Simulation {
       return this.sellPrinter(id);
     }
     const name = amenityDef(id)?.name ?? station?.label ?? id;
+    // A machine takes its queue with it: whatever was on it goes back to waiting for one.
+    const machine = this.machines.find((m) => m.id === id);
+    if (machine) {
+      for (const job of [...machine.queue, ...(machine.current ? [machine.current] : [])]) {
+        const part = this.project(job.projectId)?.parts.find((p) => p.id === job.partId);
+        if (part) part.status = 'pending';
+      }
+      this.machines.splice(this.machines.indexOf(machine), 1);
+    }
     if (station) {
       for (const [who, claim] of [...this.claims]) if (claim.stationId === id) this.claims.delete(who);
       removeStation(id);
@@ -1198,6 +1433,8 @@ export class Simulation {
   /** Where somebody is sitting right now, for the renderer. Null when they are not seated. */
   private seatFor(who: MemberEntity): Seat | null {
     if (who.walking || !who.present) return null;
+    const spell = this.leisure.get(who.id);
+    if (spell) return spell.seat && sameTile(who.tile, spell.tile) ? spell.seat : null;
     if (who.activity !== 'working' && who.activity !== 'waiting') return null;
     const projectId = who === this.player ? this.player.project : who.team;
     const project = projectId ? this.project(projectId) : null;
@@ -1212,6 +1449,264 @@ export class Simulation {
     const station = claim ? STATION_MAP[claim.stationId] : null;
     if (claim && station && this.atStand(who, station)) return seatPosition(station, claim.seat);
     return null;
+  }
+
+  /**
+   * Waiting on your own build: stay where you are, or step off the floor's working tiles
+   * once, and do nothing else. The note has already said what they are waiting for.
+   */
+  private holdOn(m: MemberEntity) {
+    if (m.walking) return;
+    m.activity = 'idle';
+    const onStand = STATIONS.some((s) => sameTile(s.stand, m.tile) && !this.claims.has(m.id));
+    if (onStand || sameTile(m.tile, DOOR)) m.walkTo(rng.pick(IDLE_TILES));
+  }
+
+  // -------------------------------------------------------------------------
+  // Breaks (§7b): the comforts are used, not just owned
+  // -------------------------------------------------------------------------
+
+  /**
+   * Go and take a break somewhere, or carry on with the one already going. Returns false
+   * when there is nowhere to go, so the caller falls back to what it did before comforts
+   * were usable. `fresh` false only finishes a break — the coffee on the way in must not
+   * turn into a second one.
+   */
+  private relax(
+    m: MemberEntity,
+    kinds: AmenityUse['kind'][],
+    activity: 'idle' | 'resting',
+    fresh = true,
+    rest = false,
+  ): boolean {
+    let spell = this.leisure.get(m.id);
+    if (spell && (this.totalHours >= spell.until || !kinds.includes(spell.kind))) {
+      this.endLeisure(m.id);
+      spell = undefined;
+    }
+    if (!spell) {
+      if (!fresh) return false;
+      // Worn out or at lunch, straight to a seat; otherwise a wander first.
+      if (activity === 'idle' && this.totalHours - (this.leisureEnded.get(m.id) ?? -Infinity) < LEISURE.between) {
+        return false;
+      }
+      spell = this.startLeisure(m, kinds) ?? undefined;
+      if (!spell) return false;
+    }
+    spell.rest = rest;
+    this.leisureKept.add(m.id);
+    m.note = this.leisureNote(m.id, spell);
+    if (!sameTile(m.tile, spell.tile)) {
+      const heading = m.destination;
+      if (!heading || !sameTile(heading, spell.tile)) m.walkTo(spell.tile);
+      if (!m.walking) {
+        // Nobody can get next to it from here; try somewhere else next tick.
+        this.leisureKept.delete(m.id);
+        this.endLeisure(m.id);
+        return false;
+      }
+      return true;
+    }
+    m.activity = activity;
+    spell.served = true;
+    return true;
+  }
+
+  /** Who has been sent for a drink today — once a person a day. Cleared every morning. */
+  private treatedToday = new Set<string>();
+
+  /**
+   * Send somebody for a tea (§7b): they put down what they are doing, go to this comfort,
+   * and come back in a better mood. The owner's gesture, not a policy — once a person a day.
+   */
+  treatDrink(memberId: string, amenityId: string): boolean {
+    const m = this.member(memberId);
+    const use = amenityDef(amenityId)?.use;
+    if (!m || !m.present || !use || use.kind !== 'drink') return false;
+    if (!store.getState().amenities.includes(amenityId)) return false;
+    if (this.treatedToday.has(memberId)) {
+      this.log(msg('build.log.treatAgain', { member: m.name }), 'warn');
+      return false;
+    }
+    const busy = new Set([...this.leisure.values()].filter((o) => o.amenityId === amenityId).map((o) => o.slot));
+    const spots = leisureSpots(amenityId);
+    const slot = spots.findIndex((_, i) => !busy.has(i));
+    if (slot < 0) {
+      this.log(msg('build.log.treatBusy', { item: amenityDef(amenityId)!.name }), 'warn');
+      return false;
+    }
+    this.releaseSeat(m.id);
+    this.endLeisure(m.id);
+    const spot = spots[slot];
+    this.leisure.set(m.id, {
+      amenityId,
+      kind: 'drink',
+      slot,
+      until: this.totalHours + rng.range(...LEISURE.arrivalHours),
+      tile: spot.tile,
+      seat: spot.seat,
+      // A treat takes priority the way the coffee on the way in does.
+      arrival: true,
+      pair: false,
+      treat: true,
+    });
+    this.leisureKept.add(m.id);
+    this.treatedToday.add(memberId);
+    this.log(msg('build.log.treatSent', { member: m.name, item: amenityDef(amenityId)!.name }), 'info');
+    this.publish();
+    return true;
+  }
+
+  /** Pick a comfort with a free spot and claim it. Somebody waiting for a partner wins. */
+  private startLeisure(m: MemberEntity, kinds: AmenityUse['kind'][], arrival = false): Leisure | null {
+    this.endLeisure(m.id);
+    const now = this.totalHours;
+    const taken = new Map<string, Set<number>>();
+    for (const spell of this.leisure.values()) {
+      if (!spell.amenityId) continue;
+      if (!taken.has(spell.amenityId)) taken.set(spell.amenityId, new Set());
+      taken.get(spell.amenityId)!.add(spell.slot);
+    }
+    const last = this.leisureLast.get(m.id);
+    const options: { id: string; slot: number; weight: number; use: AmenityUse }[] = [];
+    for (const id of store.getState().amenities) {
+      const use = amenityDef(id)?.use;
+      if (!use || !kinds.includes(use.kind)) continue;
+      const spots = leisureSpots(id);
+      if (!spots.length) continue;
+      const busy = taken.get(id) ?? new Set<number>();
+      const slot = spots.findIndex((_, i) => !busy.has(i));
+      if (slot < 0) continue;
+      // A partner already waiting at the table is the best offer in the room.
+      let weight = use.pair ? (busy.size ? LEISURE.partnerPull : LEISURE.emptyTable) : 1;
+      if (id === last) weight *= LEISURE.sameAgain;
+      options.push({ id, slot, weight, use });
+    }
+    let spell: Leisure | null = null;
+    if (options.length) {
+      let roll = rng.float() * options.reduce((n, o) => n + o.weight, 0);
+      const pick = options.find((o) => (roll -= o.weight) < 0) ?? options[options.length - 1];
+      const spot = leisureSpots(pick.id)[pick.slot];
+      const [low, high] = arrival ? LEISURE.arrivalHours : pick.use.hours;
+      const partners = [...this.leisure.values()].filter((o) => o.amenityId === pick.id);
+      let until = now + rng.range(low, high);
+      if (pick.use.pair) {
+        if (!partners.length) {
+          until = now + LEISURE.partnerWait; // nobody comes, they go and do something else
+        } else {
+          for (const other of partners) other.until = until; // the game starts, and ends together
+        }
+      }
+      spell = { amenityId: pick.id, kind: pick.use.kind, slot: pick.slot, until, tile: spot.tile, seat: spot.seat, arrival, pair: !!pick.use.pair };
+    } else if (arrival) {
+      // No coffee machine yet, or somebody is at it: the kettle by the old sofa. Standing
+      // about on its tile is what the crowd spots are for.
+      const lounge = stationOfType('lounge');
+      if (!lounge) return null;
+      spell = { amenityId: null, kind: 'drink', slot: 0, until: now + rng.range(...LEISURE.arrivalHours), tile: lounge.stand, seat: null, arrival, pair: false };
+    }
+    if (!spell) return null;
+    this.leisure.set(m.id, spell);
+    this.leisureLast.set(m.id, spell.amenityId);
+    return spell;
+  }
+
+  private endLeisure(id: string) {
+    const spell = this.leisure.get(id);
+    if (!spell) return;
+    this.leisure.delete(id);
+    if (!spell.arrival) this.leisureEnded.set(id, this.totalHours);
+    if (spell.treat && spell.served) {
+      const who = this.member(id);
+      if (who) {
+        who.data.mood = Math.min(100, who.data.mood + LEISURE.treatMood);
+        this.log(msg('build.log.treatDone', { member: who.name }), 'good');
+      }
+    }
+    // Finished with nothing else to go to: up and about, rather than standing at the fridge
+    // under a line that says they are still at it.
+    const who = this.member(id);
+    if (who?.present && who.activity === 'idle' && !who.walking) {
+      who.note = t('note.hangingAround');
+      who.walkTo(rng.pick(IDLE_TILES));
+    }
+    // Table tennis on your own is not a game: whoever is left goes and does something else.
+    if (spell.pair) {
+      for (const other of this.leisure.values()) {
+        if (other.amenityId === spell.amenityId) other.until = Math.min(other.until, this.totalHours);
+      }
+    }
+  }
+
+  /** The line under their name while they are on a break. */
+  private leisureNote(id: string, spell: Leisure): string {
+    if (!spell.amenityId) return t('build.note.makingTea');
+    const def = amenityDef(spell.amenityId)!;
+    const partner = [...this.leisure.entries()].find(
+      ([other, o]) => other !== id && o.amenityId === spell.amenityId,
+    )?.[0];
+    const name = partner ? (this.member(partner)?.name ?? '') : '';
+    if (spell.kind === 'drink') {
+      if (def.shape === 'teamaker') return t('build.note.pouringTea');
+      return def.shape === 'coffee' || def.shape === 'espresso'
+        ? t('build.note.makingCoffee')
+        : t('build.note.grabbingDrink', { thing: def.name });
+    }
+    if (spell.pair) return name ? t('build.note.playingWith', { thing: def.name, partner: name }) : t('build.note.lookingForPartner', { thing: def.name });
+    if (name && spell.kind === 'play') return t('build.note.playingWith', { thing: def.name, partner: name });
+    return t('build.note.onBreak', { thing: def.name });
+  }
+
+  /**
+   * Where people standing on somebody else's tile are drawn instead. The lounge, the printer
+   * and the idle tiles are single tiles the whole crew walks to, and a crowd on one tile
+   * renders as one person. **This is a drawing position, like a seat** — the first to
+   * arrive keeps the tile, the rest are shown on the nearest free floor, and the sim
+   * never moves them, so no path, timing or balance number changes.
+   */
+  private crowdSpots(): Map<string, { x: number; y: number }> {
+    const out = new Map<string, { x: number; y: number }>();
+    const standing: { id: string; tile: { x: number; y: number } }[] = [];
+    const taken = new Set<string>();
+    const key = (x: number, y: number) => `${x},${y}`;
+    const everyone: [string, MemberEntity][] = [
+      ...this.members.map((m): [string, MemberEntity] => [m.id, m]),
+      ['player', this.player],
+    ];
+    for (const [id, who] of everyone) {
+      if (!who.present) continue;
+      taken.add(key(who.tile.x, who.tile.y));
+      if (who.walking || this.seatFor(who)) continue;
+      standing.push({ id, tile: who.tile });
+    }
+    const stands = new Set(STATIONS.map((s) => key(s.stand.x, s.stand.y)));
+    const holder = new Set<string>();
+    // Stable order, so nobody swaps places from one frame to the next.
+    standing.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    for (const { id, tile } of standing) {
+      const here = key(tile.x, tile.y);
+      if (!holder.has(here)) {
+        holder.add(here);
+        continue;
+      }
+      let best: { x: number; y: number; score: number } | null = null;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const x = tile.x + dx;
+          const y = tile.y + dy;
+          if (x < 0 || y < 0 || x >= GRID.width || y >= GRID.height) continue;
+          if (taken.has(key(x, y)) || isBlocked({ x, y })) continue;
+          if (x === DOOR.x && y === DOOR.y) continue;
+          // Nearest first, and off somebody's workstation stand where there is a choice.
+          const score = Math.hypot(dx, dy) + (stands.has(key(x, y)) ? 1.5 : 0);
+          if (!best || score < best.score) best = { x, y, score };
+        }
+      }
+      if (!best) continue;
+      taken.add(key(best.x, best.y));
+      out.set(id, { x: best.x, y: best.y });
+    }
+    return out;
   }
 
   /** Their share of the stage so far against an even split — the bar over their head. */
@@ -1234,7 +1729,7 @@ export class Simulation {
       case 'working': {
         const project = m.team ? this.project(m.team) : null;
         const stage = project ? STAGE_MAP[project.stage] : null;
-        m.data.energy = Math.max(0, m.data.energy - MEMBER.energyDrain * comfort.fatigue * dt);
+        m.data.energy = Math.max(0, m.data.energy - MEMBER.energyDrain * comfort.fatigue * this.deskFatigue(m) * dt);
         if (stage) m.interest -= DRIFT.decayPerHour * (1 - stage.appeal) * comfort.drift * dt;
         break;
       }
@@ -1250,7 +1745,7 @@ export class Simulation {
       }
       case 'babysitting': {
         const printer = this.printer;
-        printer.operatorSkill = Math.max(printer.operatorSkill, m.data.skills.machining);
+        printer.operatorSkill = Math.max(printer.operatorSkill, m.data.skills.mechanical);
         if (printer.calibration < 0.98) printer.calibrate(dt);
         m.data.energy = Math.max(
           0,
@@ -1314,9 +1809,11 @@ export class Simulation {
     if (!p.project && !p.calibrating && !this.ownerStopped) {
       // Never into somebody else's kickoff: a crew that has not sat down yet was planned
       // for its own chairs, and one more at a full table is a meeting that never starts.
+      // Never a build with no hand work left in it — a series print is the printer's job.
+      const handsWanted = (x: ProjectData) => STAGE_ORDER.some((k) => x.required[k] > (x.progress[k] ?? 0));
       const next =
-        this.projects.find((x) => !x.shipped && x.kickedOff) ??
-        this.projects.find((x) => !x.shipped && !x.team.length);
+        this.projects.find((x) => !x.shipped && x.kickedOff && handsWanted(x)) ??
+        this.projects.find((x) => !x.shipped && !x.team.length && handsWanted(x));
       if (next) {
         p.project = next.id;
         this.log(msg('build.log.ownerPicksUp', { project: next.name }), 'info');
@@ -1328,7 +1825,7 @@ export class Simulation {
       if (this.atStation(p, 'fdm')) {
         p.activity = 'babysitting';
         p.note = t('note.levelling');
-        printer.operatorSkill = Math.max(printer.operatorSkill, p.data.skills.machining);
+        printer.operatorSkill = Math.max(printer.operatorSkill, p.data.skills.mechanical);
         printer.calibrate(dt);
         this.spendPlayerTime(dt);
         if (printer.calibration >= 0.99) {
@@ -1373,10 +1870,12 @@ export class Simulation {
       } else {
         this.releaseSeat(p.id);
       }
-      // Nothing to do by hand right now — stay on the project and wait it out.
+      // Nothing to do by hand right now — stay on the project and wait it out, off the
+      // tile in front of somebody's desk rather than standing inside its chair.
       if (!p.walking) {
         p.activity = 'idle';
         if (!explained) p.note = t('note.nothingByHand', { project: project.name });
+        if (!this.claims.has(p.id) && STATIONS.some((st) => sameTile(st.stand, p.tile))) p.walkTo(rng.pick(IDLE_TILES));
       }
       p.advance(dt);
       return;
@@ -1524,7 +2023,11 @@ export class Simulation {
     }
 
     if (stage === 'test') {
-      const outcome = resolveTest(project);
+      // A measurement bench in the space catches the electronics faults before the test does.
+      const scope = ELECTRONIC_GENRES.includes(project.category)
+        ? Math.min(1, ...STATIONS.map((s) => furnitureOf(s)?.testRisk ?? 1))
+        : 1;
+      const outcome = resolveTest(project, scope);
       if (outcome.passed) {
         this.setStage(
           project,
@@ -1544,7 +2047,10 @@ export class Simulation {
       return;
     }
 
-    if (!stageComplete(project)) return;
+    // A hand stage with no hand work in it is done the moment it starts — a series print
+    // (STL supplied) goes straight from the files to the printer and out of the door.
+    const nothingToDo = project.required[stage] === 0 && STAGE_MAP[stage].skill !== null;
+    if (!nothingToDo && !stageComplete(project)) return;
 
     // Perfectionist gate: they will not sign off on shoddy work (CLAUDE.md §3).
     const blocker = this.members.find(
@@ -1616,6 +2122,12 @@ export class Simulation {
    */
   private finishKickoff(project: ProjectData) {
     const def = CATALOG_MAP[project.defId];
+    if (project.order) {
+      // Nothing to plan on a print order: straight to the files.
+      project.kickedOff = true;
+      this.setStage(project, 'cad', null);
+      return;
+    }
     const crew = project.team.length + (this.player.project === project.id ? 1 : 0);
     const fit = teamFit(crew, def.teamSize);
     project.bonus += fit.quality;
@@ -1653,6 +2165,9 @@ export class Simulation {
   private ship(project: ProjectData) {
     const def = CATALOG_MAP[project.defId];
     project.shipped = true;
+    // Whatever of it is still on a printer goes too — a shipped build printing on for ever
+    // was what `ship all` in the console showed.
+    for (const machine of this.machines) machine.dropProject(project.id);
     this.projects = this.projects.filter((p) => p.id !== project.id);
     this.seeded.delete(project.id);
     if (this.player.project === project.id) this.player.project = null;
@@ -1664,13 +2179,27 @@ export class Simulation {
       }
     }
 
-    const built = store.getState().shipped.filter((r) => r.defId === project.defId).length;
+    // An own project is new every time it has a new name; a brief is the same brief again.
+    const built = store.getState().shipped.filter(
+      (r) => r.defId === project.defId && (!def.custom || r.name === project.name),
+    ).length;
     const novelty = Math.max(REPEAT.floor, REPEAT.falloff ** built);
     // What it is worth now (§4d): the brief's price, what the market wants this week, how
     // well it was designed for that market, and how good it actually turned out.
     const demand = store.getState().market[project.category] ?? 1;
     const appeal = project.appeal ?? 1;
-    const payout = Math.round(def.payout * novelty * demand * appeal * qualityPay(project.quality));
+    // What the client asked for (design §5.4): each wish met adds to the pay and the hype.
+    const wishes = project.wishes ?? [];
+    const met = wishes.filter((wish) =>
+      wishMet(wish, { quality: project.quality, design: project.design, days: this.day - project.startedOnDay }),
+    ).length;
+    // A print order pays what was agreed — no market, no novelty, no design appeal.
+    const payout = project.order
+      ? project.order.pay
+      : Math.round(def.payout * novelty * demand * appeal * qualityPay(project.quality) * (1 + DESIGN.wishPay * met));
+    if (wishes.length) {
+      this.log(msg('build.log.wishes', { project: project.name, met, total: wishes.length }), met ? 'good' : 'info');
+    }
     if (payout > 0) {
       store.getState().earn(payout, 'work');
       this.incomeThisMonth += payout;
@@ -1688,11 +2217,11 @@ export class Simulation {
     this.recruit(project);
 
     const before = store.getState().era;
-    const hype = Math.round(
-      def.hype * project.hypeMultiplier * novelty * Math.sqrt(appeal) * qualityHype(project.quality),
-    );
-    // The market has one fewer thing to want.
-    store.getState().setMarket(coolMarket(store.getState().market, project.category));
+    const hype = project.order
+      ? def.hype
+      : Math.round(def.hype * project.hypeMultiplier * novelty * Math.sqrt(appeal) * qualityHype(project.quality) * (1 + DESIGN.wishHype * met));
+    // The market has one fewer thing to want. Somebody else's print order is not ours.
+    if (!project.order) store.getState().setMarket(coolMarket(store.getState().market, project.category));
     store.getState().recordShipped(hype, {
       id: project.id,
       defId: project.defId,
@@ -2020,7 +2549,7 @@ export class Simulation {
       // Bought furniture has no slot; it goes wherever there is room and the saved
       // arrangement below puts it back on its own tile.
       const def = station.furniture
-        ? installFurniture(station.type, station.id, station.label ?? MACHINE_LABEL[station.type], station.span ?? 1)
+        ? installFurniture(station.type, station.id, station.label ?? MACHINE_LABEL[station.type], station.span ?? 1, station.model)
         : installStation(station.type, station.id, station.model, station.label);
       if (def && FAB_MACHINES.includes(station.type)) this.machines.push(this.makeMachine(def));
     }
@@ -2445,6 +2974,78 @@ export class Simulation {
     return rows.sort((a, b) => b.reputation - a.reputation);
   }
 
+  /** Everybody's place on the table, by reputation — the order the standings are read in. */
+  private ranks(): Record<string, number> {
+    return Object.fromEntries(this.scoreboard().map((row, index) => [row.id, index + 1]));
+  }
+
+  /**
+   * The month's standings, for the arrows (§3c). On the bill day the table is photographed,
+   * and the Ranking panel's arrows measure everybody against that photograph, so they move
+   * as the month does. Where you went is said in the log once a month — every overtaking as
+   * it happened would be a line a day.
+   */
+  private tickStandings() {
+    const state = store.getState();
+    const now = this.ranks();
+    if (!Object.keys(state.rankPrev).length) {
+      state.setRankPrev(now);
+      return;
+    }
+    if ((this.day - 1) % ECONOMY.billEvery !== 0 || this.day === 1) return;
+    const was = state.rankPrev.player;
+    const is = now.player;
+    if (was && is && was !== is) {
+      // Who you passed, or who passed you: whoever stands where you used to.
+      const other = Object.entries(now).find(([id, rank]) => id !== 'player' && rank === was)?.[0];
+      this.log(
+        msg(is < was ? 'log.rank.up' : 'log.rank.down', {
+          from: was,
+          to: is,
+          space: other ? (RIVAL_MAP[other]?.name ?? other) : '',
+        }),
+        is < was ? 'good' : 'warn',
+      );
+    }
+    state.setRankPrev(now);
+  }
+
+  /**
+   * The run-up to awards night, a line at a time (`AWARDS_COUNTDOWN`). It says how the race
+   * stands rather than only the date: what you lead, and the category you are closest to
+   * taking off somebody — the one worth the next few weeks.
+   */
+  private awardsCountdown() {
+    const { length, dayOfYear } = this.season;
+    const days = length - dayOfYear;
+    if (!AWARDS_COUNTDOWN.includes(days)) return;
+    const rows = this.scoreboard();
+    const me = rows.find((row) => row.isPlayer);
+    const rivals = rows.filter((row) => !row.isPlayer);
+    if (!me || !rivals.length) return;
+    const leading: string[] = [];
+    let race: { label: string; rival: string; ratio: number } | null = null;
+    for (const award of AWARDS) {
+      const mine = award.value(me);
+      const best = rivals.reduce((top, row) => (award.value(row) > award.value(top) ? row : top));
+      const theirs = award.value(best);
+      if (mine > 0 && mine >= theirs) leading.push(award.label);
+      else if (theirs > 0) {
+        const ratio = Math.max(0, mine) / theirs;
+        if (!race || ratio > race.ratio) race = { label: award.label, rival: best.name, ratio };
+      }
+    }
+    this.log(
+      msg('log.awards.countdown', {
+        days,
+        leading: leading.join(', '),
+        race: race?.label ?? '',
+        rival: race?.rival ?? '',
+      }),
+      days <= 5 ? 'warn' : 'info',
+    );
+  }
+
   /** The awards night, once a year. */
   private checkAwards() {
     // Awards are held every October, so the award year runs October to October and the
@@ -2658,8 +3259,7 @@ export class Simulation {
           const dry = this.machines.find(
             (m) => m.consumableMax > 0 && m.consumable < FILAMENT.lowWarning,
           );
-          if (dry && store.getState().spend(this.refillCost(dry.id), 'filament')) {
-            dry.refill(dry.consumableMax);
+          if (dry && this.refillFromStockAndShop(dry)) {
             this.log(msg('log.role.loaded', { member: member.name, machine: dry.label }), 'good');
           }
           // And level a drifting bed between prints. This was a separate Technician for a
@@ -2774,7 +3374,7 @@ export class Simulation {
    * `draftTeam` is the crew picked on the pitch screen — each of them is *asked*, so some
    * may still say no (§3b).
    */
-  pitch(defId: string, offerId?: string, draftTeam: string[] = [], plan?: ProjectPlan): boolean {
+  pitch(defId: string, offerId?: string, draftTeam: string[] = [], plan?: ProjectPlan, name?: string): boolean {
     const state = store.getState();
     const def = CATALOG_MAP[defId];
     if (!def || !canBuild(def, state.ownedMachines)) {
@@ -2796,12 +3396,11 @@ export class Simulation {
       .map((id) => this.member(id))
       .filter((m): m is MemberEntity => !!m)
       .map((m) => ({ skills: m.data.skills }));
-    const chosen = plan ? { ...plan, design: { ...plan.design } } : defaultPlan(def, maxSeats, crewSkills);
-    for (const axis of CATEGORY_AXES[def.category]) {
-      let index = Math.round(chosen.design[axis] ?? 1);
-      while (index > 0 && !optionAvailable(axis, index, crewSkills)) index -= 1;
-      chosen.design[axis] = index;
-    }
+    // Nothing is locked any more (design §5.4): the crew's levels ride along with the plan
+    // and price whatever it reaches for. A harness pitching with no crew keeps the brief's
+    // numbers — nobody short, the middle technology, no ceiling.
+    const chosen = plan ? { ...plan, design: { ...plan.design } } : defaultPlan(def, maxSeats);
+    chosen.levels = crewSkills.length ? crewLevels(crewSkills) : chosen.levels;
     if (chosen.seats > maxSeats) {
       this.log(msg('build.log.crewTooBig', { count: chosen.seats }), 'warn');
       return false;
@@ -2838,6 +3437,9 @@ export class Simulation {
     const entry: BacklogEntry = offer ?? { id: uid('offer'), defId, source: 'catalog' };
     const project = startProject(entry, this.day, chosen, state.ownedMachines);
     project.spent += summary.tooling;
+    // Every build carries the name it was given (design §6.2) — the one the projects table
+    // ranks it by. The harnesses pass none and keep the brief's.
+    if (name?.trim()) project.name = name.trim().slice(0, 40);
 
     // Owning a reflow oven takes the misery out of electronics assembly.
     if (state.ownedMachines.includes('reflow') && def.category === 'electronics') {
@@ -2865,7 +3467,7 @@ export class Simulation {
     // project was busywork, and forgetting it only ever produced a stall, never a decision.
     if (project.bomCost > 0) {
       if (this.placeOrder(project)) {
-        this.log(msg('log.pitch.ordered', { item: def.name, cost: def.bomCost, days: def.leadDays }), 'info');
+        this.log(msg('log.pitch.ordered', { item: def.name, cost: project.bomCost, days: project.leadDays }), 'info');
       } else {
         this.log(msg('log.pitch.noCash', { item: def.name, cost: def.bomCost }), 'warn');
       }
@@ -2873,10 +3475,14 @@ export class Simulation {
       this.log(msg('log.pitch.plain', { item: def.name, blurb: def.blurb }), 'info');
     }
 
-    // Ask the crew you picked on the pitch screen. They can still decline.
+    // **The crew picked in the wizard is the crew** — no asking, no refusing. Asking used to
+    // let a pick decline, and the empty chair went to whoever volunteered, which was often
+    // the person the player had just unticked: the wizard said one crew and the build ran
+    // with another.
     for (const memberId of draftTeam) {
       if (project.team.length >= project.teamSize) break;
-      this.inviteMember(project.id, memberId);
+      const member = this.member(memberId);
+      if (member && !member.team) this.addToTeam(project, member);
     }
     return true;
   }
@@ -2898,6 +3504,20 @@ export class Simulation {
 
   calibratePrinter() {
     this.player.calibrating = true;
+  }
+
+  /**
+   * A maintenance round (§5): every bed levelled and nozzle wiped in one go, for one hour of
+   * your day — the per-printer button walks you to one machine and stands you there.
+   */
+  maintainAll(): boolean {
+    const due = this.machines.filter((m) => m.type === 'fdm' && m.calibration < 0.97);
+    if (!due.length) return false;
+    if (!this.chargeHours('maintain')) return false;
+    for (const machine of due) machine.calibration = Math.max(machine.calibration, 0.98);
+    this.log(msg('build.log.maintained', { count: due.length }), 'good');
+    this.publish();
+    return true;
   }
 
   /** Re-pitch: another go at tempting unallocated people onto the team. */
@@ -2991,7 +3611,7 @@ export class Simulation {
 
   expediteParts(projectId: string): boolean {
     const project = this.project(projectId);
-    if (!project || !project.partsOrdered) return false;
+    if (!project || !project.partsOrdered || project.expedited) return false;
     const remaining = project.partsArriveAt - this.totalHours;
     if (remaining <= 0) return false;
     const cost = expediteCost(project, this.totalHours);
@@ -3001,7 +3621,9 @@ export class Simulation {
       return false;
     }
     project.spent += cost;
+    // Once, and it halves what is left: four days become two, five become three.
     project.partsArriveAt = this.totalHours + remaining * SOURCING.expediteFactor;
+    project.expedited = true;
     this.log(msg('log.parts.expedited', { project: project.name }), 'good');
     return true;
   }
@@ -3019,7 +3641,7 @@ export class Simulation {
     const project = this.project(projectId);
     const part = project?.parts.find((p) => p.id === partId);
     if (!project || !part || part.status === 'done' || part.status === 'queued') return;
-    const machine = this.machineFor(part.machineType);
+    const machine = this.machineFor(part.machineType, part.hours);
     if (!machine) {
       this.log(msg('log.parts.noMachine', { machine: part.machineType, part: part.name }), 'bad');
       return;
@@ -3058,12 +3680,168 @@ export class Simulation {
     if (part) part.status = 'pending';
   }
 
-  /** What filling this machine from where it is would cost. */
+  /**
+   * What filling this machine from where it is would cost — **after the shelf** (§5): stock
+   * bought ahead is drawn on first, and only what the shelf cannot cover is bought.
+   */
   refillCost(machineId?: string): number {
     const machine = machineId ? this.machines.find((m) => m.id === machineId) : this.printer;
     if (!machine || machine.consumableMax <= 0) return 0;
     const short = machine.consumableMax - machine.consumable;
-    return Math.ceil(short / FILAMENT.spoolGrams) * FILAMENT.spoolCost;
+    const bought = Math.max(0, short - store.getState().filamentStock);
+    return Math.ceil(bought / FILAMENT.spoolGrams) * FILAMENT.spoolCost;
+  }
+
+  /** What filling every printer to the top would cost right now, the shelf shared between them. */
+  refillAllCost(): number {
+    let stock = store.getState().filamentStock;
+    let cost = 0;
+    for (const m of this.machines) {
+      if (m.consumableMax <= 0) continue;
+      const short = m.consumableMax - m.consumable;
+      const take = Math.min(short, stock);
+      stock -= take;
+      cost += Math.ceil((short - take) / FILAMENT.spoolGrams) * FILAMENT.spoolCost;
+    }
+    return cost;
+  }
+
+  /** Top a machine up: the shelf first, the shop for the rest. False if it cannot be paid for. */
+  private refillFromStockAndShop(machine: Machine): boolean {
+    const short = machine.consumableMax - machine.consumable;
+    if (short <= 0) return false;
+    const cost = this.refillCost(machine.id);
+    if (cost > 0 && !store.getState().spend(cost, 'filament')) return false;
+    const stock = store.getState().filamentStock;
+    store.getState().setFilamentStock(stock - Math.min(short, stock));
+    machine.refill(machine.consumableMax);
+    return true;
+  }
+
+  /** How much the shelves hold, in grams. No shelf, no stock. */
+  shelfCapacity(): number {
+    const shelves = store.getState().amenities.includes('filament-shelf') ? 1 : 0;
+    return shelves * FILAMENT.shelfSpools * FILAMENT.spoolGrams;
+  }
+
+  /**
+   * Buy spools for the shelf (§5): bought ahead, they sit on the rack where you can see them
+   * and every refill takes from them first. As many as asked, up to what the shelf holds.
+   */
+  buySpools(count: number): boolean {
+    const room = Math.floor((this.shelfCapacity() - store.getState().filamentStock) / FILAMENT.spoolGrams);
+    const n = Math.max(0, Math.min(count, room));
+    if (!n) return false;
+    if (!this.chargeHours('filament')) return false;
+    const cost = n * FILAMENT.spoolCost;
+    if (!store.getState().spend(cost, 'filament')) {
+      this.log(msg('build.log.filamentAllCantAfford', { cost }), 'bad');
+      return false;
+    }
+    store.getState().setFilamentStock(store.getState().filamentStock + n * FILAMENT.spoolGrams);
+    this.log(msg('build.log.spoolsStocked', { count: n, cost }), 'good');
+    this.publish();
+    return true;
+  }
+
+  /**
+   * Fill every printer at once — one trip for filament, one line in the log. With four
+   * printers on the wall, a button per printer was four trips and four half-hours.
+   */
+  buyAllFilament(): boolean {
+    const dry = this.machines.filter((m) => m.consumableMax > 0 && m.consumable < m.consumableMax);
+    if (!dry.length) return false;
+    const cost = this.refillAllCost();
+    if (!this.chargeHours('filament')) return false;
+    if (cost > 0 && !store.getState().spend(cost, 'filament')) {
+      this.log(msg('build.log.filamentAllCantAfford', { cost }), 'bad');
+      return false;
+    }
+    let stock = store.getState().filamentStock;
+    for (const machine of dry) {
+      const short = machine.consumableMax - machine.consumable;
+      stock -= Math.min(short, stock);
+      machine.refill(machine.consumableMax);
+    }
+    store.getState().setFilamentStock(stock);
+    this.log(msg('build.log.filamentAll', { count: dry.length, cost }), 'good');
+    return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // Print orders (§5)
+  // -------------------------------------------------------------------------
+
+  /** Offers go stale, and a morning may bring a new one while there is room on the board. */
+  private refreshPrintOffers() {
+    const state = store.getState();
+    if (!this.machines.some((m) => m.type === 'fdm')) return;
+    let offers = state.printOffers.filter((o) => o.expiresOnDay >= this.day);
+    if (offers.length < ORDERS.maxOffers && rng.chance(ORDERS.newPerDay)) {
+      const taken = new Set([...offers.map((o) => o.defId), ...this.projects.map((p) => p.defId)]);
+      const options = PRINT_JOBS.filter((def) => def.era <= state.era && !taken.has(def.id));
+      if (options.length) {
+        const def = rng.pick(options);
+        offers = [...offers, { id: uid('order'), defId: def.id, days: def.order!.days, expiresOnDay: this.day + ORDERS.offerDays }];
+        this.log(msg('build.log.orderIn', { item: def.name, client: def.order!.client }), 'info');
+      }
+    }
+    if (offers.length !== state.printOffers.length || offers.some((o, i) => o !== state.printOffers[i])) {
+      store.getState().setPrintOffers(offers);
+    }
+  }
+
+  /**
+   * Say yes to a print order. It goes on the bench like any build: anybody free may pick
+   * it up, and so may you. The price is fixed and paid on delivery; the date is counted
+   * from today.
+   */
+  acceptOrder(offerId: string): boolean {
+    const state = store.getState();
+    const offer = state.printOffers.find((o) => o.id === offerId);
+    const def = offer ? CATALOG_MAP[offer.defId] : null;
+    if (!offer || !def?.order) return false;
+    if (!canBuild(def, state.ownedMachines)) {
+      this.log(msg('log.pitch.cantBuild'), 'bad');
+      return false;
+    }
+    const project = startProject({ id: offer.id, defId: def.id, source: 'catalog' }, this.day, defaultPlan(def, 1), state.ownedMachines);
+    project.order = { pay: def.payout, client: def.order.client, dueDay: this.day + offer.days };
+    // A series print needs no hands: nobody volunteers for it and it holds no chair.
+    if (def.order.series) project.teamSize = 0;
+    this.projects.push(project);
+    store.getState().setPrintOffers(state.printOffers.filter((o) => o.id !== offerId));
+    this.log(msg('build.log.orderAccepted', { item: def.name, pay: def.payout, day: project.order.dueDay }), 'good');
+    return true;
+  }
+
+  /** Turn an offer down. It simply goes. */
+  declineOrder(offerId: string) {
+    const state = store.getState();
+    store.getState().setPrintOffers(state.printOffers.filter((o) => o.id !== offerId));
+  }
+
+  /**
+   * A print order past its date is gone: the client has found somebody else, whatever is on
+   * the printer is scrap, and it costs a little name. A due date that meant nothing would
+   * make every order free money.
+   */
+  private checkOrderDeadlines() {
+    for (const project of [...this.projects]) {
+      if (!project.order || this.day <= project.order.dueDay) continue;
+      for (const machine of this.machines) machine.dropProject(project.id);
+      this.projects = this.projects.filter((p) => p.id !== project.id);
+      this.seeded.delete(project.id);
+      if (this.player.project === project.id) this.player.project = null;
+      for (const m of this.members) {
+        if (m.team === project.id) {
+          m.team = null;
+          this.releaseSeat(m.id);
+        }
+      }
+      store.getState().recordReputation(-ORDERS.missedRep);
+      this.log(msg('build.log.orderMissed', { item: project.name, client: project.order.client }), 'bad');
+    }
   }
 
   /**
@@ -3073,14 +3851,12 @@ export class Simulation {
   buyFilament(machineId?: string): boolean {
     const machine = machineId ? this.machines.find((m) => m.id === machineId) : this.printer;
     if (!machine || machine.consumableMax <= 0) return false;
-    const cost = this.refillCost(machine.id);
-    if (cost <= 0) return false;
+    if (machine.consumable >= machine.consumableMax) return false;
     if (!this.chargeHours('filament')) return false;
-    if (!store.getState().spend(cost, 'filament')) {
+    if (!this.refillFromStockAndShop(machine)) {
       this.log(msg('log.filament.cantAfford', { machine: machine.label }), 'bad');
       return false;
     }
-    machine.refill(machine.consumableMax);
     this.log(msg('log.filament.loaded', { machine: machine.label }), 'good');
     return true;
   }
@@ -3093,12 +3869,15 @@ export class Simulation {
    * the clock next moved. Game wraps each UI handler in this.
    */
   publish() {
+    const spots = this.crowdSpots();
     const machines: MachineSnapshot[] = this.machines.map((m) => m.snapshot());
     store.getState().setRuntime({
       members: this.members.map((m) => {
         const snap = m.snapshot();
         for (const project of this.projects) snap.affinity[project.id] = m.passionMatch(project.tags);
         snap.seat = this.seatFor(m);
+        snap.spot = spots.get(m.id) ?? null;
+        snap.treated = this.treatedToday.has(m.id);
         snap.share = this.shareFor(m);
         return snap;
       }),
@@ -3111,6 +3890,20 @@ export class Simulation {
           projectId: this.projects.find((p) => p.tableId === s.id)?.id ?? null,
         }),
       ),
+      // A game is on when both ends of a pair comfort are in their places (§7b).
+      games: (() => {
+        const at = new Map<string, string[]>();
+        for (const [id, spell] of this.leisure) {
+          if (!spell.pair || !spell.served || !spell.amenityId) continue;
+          const who = this.member(id);
+          if (!who || !sameTile(who.tile, spell.tile)) continue;
+          at.set(spell.amenityId, [...(at.get(spell.amenityId) ?? []), id]);
+        }
+        return [...at].filter(([, ids]) => ids.length === 2).map(([amenityId, ids]) => ({
+          amenityId,
+          players: [ids[0], ids[1]] as [string, string],
+        }));
+      })(),
       waitingFor: [...this.wanting.values()].reduce<Partial<Record<MachineType, number>>>(
         (out, type) => ({ ...out, [type]: (out[type] ?? 0) + 1 }),
         {},
@@ -3132,6 +3925,7 @@ export class Simulation {
         const project = this.player.project ? this.project(this.player.project) : null;
         snap.stage = project ? project.stage : null;
         snap.seat = this.seatFor(this.player);
+        snap.spot = spots.get('player') ?? null;
         snap.share = this.shareFor(this.player);
         return snap;
       })(),

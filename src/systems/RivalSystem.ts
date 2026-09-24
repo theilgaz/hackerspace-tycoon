@@ -59,9 +59,17 @@ export function tickRivals(rivals: RivalState[], pressure: RivalPressure = { pac
       const standout = rng.chance(shape.chance) ? rng.range(shape.boost[0], shape.boost[1]) : 1;
       const impact = Math.round(earned * standout * standoutNorm(shape));
       rival.upvotes += Math.round(impact * RIVAL_UPVOTES_PER_REP * def.online * rng.range(0.5, 1.5));
+      const name = rng.pick(def.builds);
       if (!rival.bestBuild || impact > rival.bestBuild.score) {
-        rival.bestBuild = { name: rng.pick(def.builds), score: impact };
+        rival.bestBuild = { name, score: impact };
       }
+      // The loudest five of all time, one entry per build name, for the projects table.
+      const hits = (rival.hits ??= []);
+      const same = hits.find((h) => h.name === name);
+      if (same) same.score = Math.max(same.score, impact);
+      else hits.push({ name, score: impact });
+      hits.sort((a, b) => b.score - a.score);
+      hits.length = Math.min(hits.length, 5);
       rival.cash += Math.round(def.cashPerProject * rng.range(0.6, 1.4));
     }
 

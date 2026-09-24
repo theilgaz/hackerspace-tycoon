@@ -18,7 +18,6 @@ export interface CategoryProfile {
    */
   tags: Tag[];
   stageLabels?: Partial<Record<StageKey, string>>;
-  stageSkills?: Partial<Record<StageKey, SkillKey>>;
   stageStations?: Partial<Record<StageKey, MachineType>>;
 }
 
@@ -35,104 +34,43 @@ const SOFTWARE_STAGES: Partial<Record<StageKey, string>> = {
 };
 
 export const CATEGORY_PROFILES: Record<ProjectCategory, CategoryProfile> = {
-  electronics: {
-    label: 'Electronics',
-    icon: '🔌',
-    accent: '#f0b429',
-    blurb: 'Boards, power and solder.',
-    tags: ['electronics', 'design'],
-    stageStations: { assembly: 'bench' },
-  },
   software: {
     label: 'Software',
     icon: '💻',
     accent: '#5aa9f0',
     blurb: 'No parts to print, no queue to wait on — and it is what actually pays.',
-    tags: ['software', 'iot'],
+    tags: ['software', 'design'],
     stageLabels: SOFTWARE_STAGES,
-    stageSkills: { cad: 'software', simulation: 'software', assembly: 'software' },
     stageStations: { cad: 'cad-desk', assembly: 'cad-desk' },
+  },
+  electronics: {
+    label: 'Electronics',
+    icon: '🔌',
+    accent: '#f0b429',
+    blurb: 'Boards, power and solder — retro silicon and the gadgets people keep at home.',
+    tags: ['electronics', 'retro', 'design'],
+    stageStations: { assembly: 'bench' },
+  },
+  comms: {
+    label: 'Communications',
+    icon: '📡',
+    accent: '#8fd88f',
+    blurb: 'Radios, connected sensors and the smart city: things that talk to each other.',
+    tags: ['radio', 'iot', 'civic'],
+    stageLabels: { simulation: 'RF Sim', test: 'Field Test', release: 'Commission' },
+    stageStations: { assembly: 'bench' },
   },
   mechanical: {
     label: 'Mechanical',
     icon: '⚙️',
     accent: '#e2725b',
-    blurb: 'Frames, motion and things that take a load.',
-    tags: ['machining', 'fpv', 'cad'],
-  },
-  robotics: {
-    label: 'Robotics',
-    icon: '🦾',
-    accent: '#c58ef0',
-    blurb: 'Motion, control and a healthy respect for the emergency stop.',
-    tags: ['robotics', 'software', 'machining'],
-    stageSkills: { simulation: 'software' },
-  },
-  iot: {
-    label: 'IoT',
-    icon: '🌐',
-    accent: '#6fd0e0',
-    blurb: 'Small connected things that must never need rebooting.',
-    tags: ['iot', 'electronics', 'software'],
-    stageSkills: { simulation: 'software' },
-    stageStations: { assembly: 'bench' },
-  },
-  radio: {
-    label: 'Radio',
-    icon: '📡',
-    accent: '#8fd88f',
-    blurb: 'Antennas, range tests, and arguing about SWR.',
-    tags: ['radio', 'electronics'],
-    stageLabels: { simulation: 'RF Sim', test: 'Range Test' },
-    stageStations: { assembly: 'bench' },
-  },
-  tooling: {
-    label: 'Tooling',
-    icon: '🛠️',
-    accent: '#cbd3de',
-    blurb: 'Build the machine that builds the machines.',
-    tags: ['machining', 'electronics'],
-    stageLabels: { release: 'Commission' },
-  },
-  civic: {
-    label: 'Civic',
-    icon: '🤝',
-    accent: '#7fb2f0',
-    blurb: 'Low pay, heavy documentation, and the neighbourhood remembers.',
-    tags: ['civic', 'iot'],
-    stageLabels: { release: 'Publish' },
-    stageSkills: { release: 'docs' },
-    stageStations: { assembly: 'bench' },
-  },
-  retro: {
-    label: 'Retro',
-    icon: '🕹️',
-    accent: '#f08fa4',
-    blurb: 'Old silicon, warm glow, unreasonable effort.',
-    tags: ['retro', 'electronics', 'design'],
-    stageStations: { assembly: 'bench' },
-  },
-  home: {
-    label: 'Home',
-    icon: '🍕',
-    accent: '#e0c36a',
-    blurb: 'Things for the space itself, and for the people in it.',
-    tags: ['food', 'woodworking', 'design'],
+    blurb: 'Frames, motion, robots and the machines that build machines.',
+    tags: ['machining', 'fpv', 'robotics', 'cad'],
   },
 };
 
-export const CATEGORY_ORDER: ProjectCategory[] = [
-  'software',
-  'electronics',
-  'iot',
-  'radio',
-  'robotics',
-  'mechanical',
-  'retro',
-  'home',
-  'tooling',
-  'civic',
-];
+/** The wings, in the order the New Project wizard lays them out. */
+export const CATEGORY_ORDER: ProjectCategory[] = ['software', 'electronics', 'comms', 'mechanical'];
 
 export function profileOf(category: ProjectCategory): CategoryProfile {
   return CATEGORY_PROFILES[category];
@@ -151,6 +89,17 @@ export function categoryAffinity(
     0,
     ...tags.map((tag, index) => (passions[tag] ?? 0) * (TAG_WEIGHTS[index] ?? 0.5)),
   );
+}
+
+/**
+ * Somebody's **primary role** (design §3.1): the wing they are best at, their badge. On a
+ * tie, the wing they love more — a person as good at software as at electronics who lives
+ * for radios wears the radio.
+ */
+export function primaryWing(skills: Record<ProjectCategory, number>, passions: Partial<Record<Tag, number>>): ProjectCategory {
+  return [...CATEGORY_ORDER].sort(
+    (a, b) => (skills[b] ?? 0) - (skills[a] ?? 0) || categoryAffinity(passions, b) - categoryAffinity(passions, a),
+  )[0];
 }
 
 /** The two genres somebody is most drawn to — their visible specialism. */
@@ -176,9 +125,14 @@ export function stageLabel(category: ProjectCategory, stage: StageKey): string {
   return CATEGORY_PROFILES[category].stageLabels?.[stage] ?? STAGE_MAP[stage].label;
 }
 
+/**
+ * The role a stage leans on: **the wing's own** (design §4.1) — a software build's
+ * architecture wants a Yazılımcı, a drone's CAD a Makineci. Machine-driven stages (printing,
+ * the test) lean on nobody. Karma projects hand their assembly to the secondary wing; the
+ * sim applies that, since it needs the brief.
+ */
 export function stageSkill(category: ProjectCategory, stage: StageKey): SkillKey | null {
-  const override = CATEGORY_PROFILES[category].stageSkills?.[stage];
-  return override ?? STAGE_MAP[stage].skill;
+  return STAGE_MAP[stage].skill === null ? null : category;
 }
 
 export function stageStation(category: ProjectCategory, stage: StageKey): MachineType | null {

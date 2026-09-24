@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { caseLocale } from '@/i18n';
-import type { MachineType, RuntimeSnapshot, Seat } from '@/game/types';
+import type { BuyItem, MachineType, RuntimeSnapshot, Seat } from '@/game/types';
 import {
+  CHAIR_REACH,
   DOOR,
   GRID,
   STATIONS,
@@ -67,6 +68,14 @@ function personColor(id: string): string {
   let hash = 0;
   for (let i = 0; i < id.length; i += 1) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
   return palette[hash % palette.length];
+}
+
+/** How far forward of a seat's centre somebody sits, so the chair back stays behind them. */
+const SIT_FORWARD = 0.08;
+
+/** A colour a little darker (negative) or lighter — trousers under a shirt. */
+function shade(color: string, amount: number): string {
+  return `#${new THREE.Color(color).offsetHSL(0, 0, amount * 0.5).getHexString()}`;
 }
 
 function mat(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
@@ -171,6 +180,60 @@ interface MachineVisual {
   light: THREE.Mesh;
   bar: THREE.Mesh;
   head?: THREE.Object3D;
+  /** The machine's own group, and the height of its bed — where the print grows from. */
+  root?: THREE.Group;
+  bedTop?: number;
+  /** What is on the bed right now, and the job it belongs to. */
+  part?: THREE.Object3D;
+  partKey?: string;
+}
+
+/** A small stable hash, so the same job always prints the same thing. */
+function hashOf(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/** Filament colours a print can come out in. */
+const PRINT_COLOURS = ['#e2725b', '#5aa9f0', '#f0b429', '#8fd88f', '#e8ecf2', '#c58ef0', '#f08fa4', '#3a3f4a'];
+
+/**
+ * Something to print (§5): a box, a vase, a lamp shade, a hex organiser, a gear — picked by
+ * the job so it stays the same thing all the way up. Built one unit tall with its base at
+ * zero; the caller scales it to the height the print has reached.
+ */
+function printedThing(key: string): THREE.Object3D {
+  const h = hashOf(key);
+  const colour = PRINT_COLOURS[h % PRINT_COLOURS.length];
+  const material = new THREE.MeshStandardMaterial({ color: colour, flatShading: true, roughness: 0.7 });
+  let geometry: THREE.BufferGeometry;
+  switch ((h >>> 3) % 6) {
+    case 0:
+      geometry = new THREE.BoxGeometry(0.22, 1, 0.16);
+      break;
+    case 1: {
+      // A vase: a lathe profile, narrow at the neck.
+      const profile = [0, 0.2, 0.45, 0.7, 0.85, 1].map((y, i) => new THREE.Vector2([0.06, 0.1, 0.11, 0.08, 0.05, 0.065][i], y));
+      geometry = new THREE.LatheGeometry(profile, 14);
+      break;
+    }
+    case 2:
+      geometry = new THREE.CylinderGeometry(0.09, 0.07, 1, 16);
+      break;
+    case 3:
+      geometry = new THREE.CylinderGeometry(0.1, 0.1, 1, 6);
+      break;
+    case 4:
+      geometry = new THREE.ConeGeometry(0.12, 1, 14, 1, true);
+      break;
+    default:
+      geometry = new THREE.CylinderGeometry(0.13, 0.13, 1, 10);
+  }
+  if (!(geometry instanceof THREE.LatheGeometry)) geometry.translate(0, 0.5, 0);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = true;
+  return mesh;
 }
 
 /**
@@ -202,6 +265,12 @@ export class SpaceView {
   /** The comfort being moved, and the tiles it is allowed to go on. */
   private placing: string | null = null;
   private placingMarks: THREE.Object3D[] = [];
+  /** Build mode: the tiles the held catalogue item could go on, and its see-through preview. */
+  private buyMarks: THREE.Object3D[] = [];
+  private buyMarksKey = '';
+  private ghost: THREE.Object3D | null = null;
+  private ghostKey = '';
+  private ghostLegal = true;
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
@@ -483,10 +552,102 @@ export class SpaceView {
         tile: { x: 0, y: 0 },
         stand: { x: 0, y: 1 },
         span: def.span,
+        model: def.id,
       });
     }
     const def = amenityDef(id);
     return def ? this.buildProp(def) : null;
+  }
+
+  /**
+   * Build mode's placement (§7b): a dot on every tile the held item could go on, and a
+   * see-through copy of it on the tile under the cursor — tinted red where it cannot go.
+   * Nothing here is paid for; the click asks first. The dots are recomputed only when the
+   * item or the room changes, because each one is a trial placement with a flood fill.
+   */
+  setBuying(
+    item: BuyItem | null,
+    tile: { x: number; y: number } | null,
+    yaw: number,
+    legal: (x: number, y: number) => boolean,
+  ) {
+    const room = `${STATIONS.map((s) => `${s.tile.x},${s.tile.y}`).join(';')}|${this.amenityKey}|${GRID.width}`;
+    const marksKey = item ? `${item.kind}:${item.id}|${room}` : '';
+    if (marksKey !== this.buyMarksKey) {
+      this.buyMarksKey = marksKey;
+      this.clearMarks(this.buyMarks);
+      this.buyMarks = [];
+      if (item) {
+        const wall = item.kind === 'amenity' && amenityDef(item.id)?.mount === 'wall';
+        const geo = new THREE.BoxGeometry(TILE * 0.2, 0.02, TILE * 0.2);
+        for (let y = 0; y < GRID.height; y += 1) {
+          for (let x = 0; x < GRID.width; x += 1) {
+            if (wall ? y !== 0 : !legal(x, y)) continue;
+            const mark = new THREE.Mesh(geo.clone(), new THREE.MeshStandardMaterial({
+              color: '#5ecfc0', flatShading: true, transparent: true, opacity: 0.55,
+              emissive: new THREE.Color('#2f8f84'), emissiveIntensity: 0.6,
+            }));
+            mark.position.copy(toWorld(x, wall ? -0.35 : y, 0.014));
+            this.group.add(mark);
+            this.buyMarks.push(mark);
+          }
+        }
+      }
+    }
+
+    const key = item ? `${item.kind}:${item.id}` : '';
+    if (key !== this.ghostKey) {
+      this.ghostKey = key;
+      if (this.ghost) {
+        this.group.remove(this.ghost);
+        this.ghost = null;
+      }
+      const model = item ? this.previewModel(key) : null;
+      if (model) {
+        model.traverse((child) => {
+          if (!(child instanceof THREE.Mesh)) return;
+          child.castShadow = false;
+          child.material = [child.material].flat().map((m: THREE.Material) => {
+            const copy = m.clone() as THREE.MeshStandardMaterial;
+            copy.transparent = true;
+            copy.opacity = 0.55;
+            copy.depthWrite = false;
+            copy.userData.base = copy.color?.clone();
+            return copy;
+          });
+          if ((child.material as THREE.Material[]).length === 1) child.material = (child.material as THREE.Material[])[0];
+        });
+        this.ghost = model;
+        this.group.add(model);
+      }
+    }
+    if (!this.ghost) return;
+    this.ghost.visible = !!tile;
+    if (!tile) return;
+    const wallItem = item?.kind === 'amenity' && amenityDef(item.id)?.mount === 'wall';
+    const at = toWorld(tile.x, wallItem ? -0.35 : tile.y);
+    this.ghost.position.set(at.x, wallItem ? 1.3 : 0.02, at.z);
+    this.ghost.rotation.y = wallItem ? 0 : (yaw * Math.PI) / 2;
+    const ok = legal(tile.x, tile.y);
+    if (ok !== this.ghostLegal) {
+      this.ghostLegal = ok;
+      this.ghost.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        for (const m of [child.material].flat() as THREE.MeshStandardMaterial[]) {
+          const base = m.userData.base as THREE.Color | undefined;
+          if (!base || !m.color) continue;
+          m.color.copy(ok ? base : base.clone().lerp(new THREE.Color('#e5484d'), 0.7));
+        }
+      });
+    }
+  }
+
+  private clearMarks(marks: THREE.Object3D[]) {
+    for (const mark of marks) {
+      this.group.remove(mark);
+      (mark as THREE.Mesh).geometry.dispose();
+      ((mark as THREE.Mesh).material as THREE.Material).dispose();
+    }
   }
 
   /** Objects the camera can pick against for hover and for picking something up. */
@@ -510,6 +671,19 @@ export class SpaceView {
   }
 
   private buildStation(def: StationDef): THREE.Object3D {
+    // The furniture variants (§4d) draw as themselves; a plain one falls through to its kind.
+    switch (def.model) {
+      case 'pro-workstation':
+        return this.buildProDesk();
+      case 'long-bench':
+        return this.buildLongBench();
+      case 'pair-desk':
+        return this.buildPairDesk();
+      case 'solder-bench':
+        return this.buildSolderBench();
+      case 'meeting-corner':
+        return this.buildMeetingCorner();
+    }
     switch (def.type) {
       case 'fdm':
         return def.model && def.model !== 'a1-mini' ? this.buildCabinetPrinter(def.id, def.model) : this.buildPrinter(def.id);
@@ -524,7 +698,7 @@ export class SpaceView {
       case 'bench':
         return this.buildHardware();
       case 'lounge':
-        return this.buildLounge();
+        return this.buildLounge(def.span ?? 1);
       case 'table-small':
         return this.buildProjectTable(1);
       case 'table-large':
@@ -537,7 +711,7 @@ export class SpaceView {
   }
 
   /** Status light + progress bar: the at-a-glance machine readout. */
-  private addReadout(g: THREE.Group, id: string, height: number, head?: THREE.Object3D) {
+  private addReadout(g: THREE.Group, id: string, height: number, head?: THREE.Object3D, bedTop?: number) {
     const light = new THREE.Mesh(
       new THREE.SphereGeometry(0.075, 10, 8),
       new THREE.MeshStandardMaterial({ color: '#5a636f', emissive: '#000000', flatShading: true }),
@@ -557,7 +731,7 @@ export class SpaceView {
     bar.position.set(-0.4, height, -0.3);
     g.add(bar);
 
-    this.machineVisuals.set(id, { light, bar, head });
+    this.machineVisuals.set(id, { light, bar, head, root: g, bedTop });
   }
 
   private buildPrinter(id: string): THREE.Group {
@@ -591,7 +765,7 @@ export class SpaceView {
     bed.receiveShadow = true;
     g.add(bed);
 
-    this.addReadout(g, id, 1.42, head);
+    this.addReadout(g, id, 1.42, head, 0.275);
     return g;
   }
 
@@ -664,7 +838,7 @@ export class SpaceView {
     );
     panel.position.set(w * 0.28, 0.08, d / 2 + 0.01);
     g.add(panel);
-    this.addReadout(g, id, h + 0.18, head);
+    this.addReadout(g, id, h + 0.18, head, 0.22);
     return g;
   }
 
@@ -736,7 +910,191 @@ export class SpaceView {
     const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.025, 0.11), mat('#2b313b'));
     keyboard.position.set(0, 0.675, 0.1);
     g.add(keyboard);
-    g.add(this.chair(0, 0.52));
+    g.add(this.chair(0, CHAIR_REACH));
+    return g;
+  }
+
+  /** A desk top on four legs, `width` across and `depth` deep, at desk height. */
+  private deskTop(width: number, depth: number, tone = '#9c7048'): THREE.Group {
+    const g = new THREE.Group();
+    const top = new THREE.Mesh(new THREE.BoxGeometry(width, 0.08, depth), mat(tone));
+    top.position.y = 0.62;
+    top.castShadow = true;
+    g.add(top);
+    const lx = width / 2 - 0.05;
+    const lz = depth / 2 - 0.08;
+    for (const [sx, sz] of [[-lx, -lz], [lx, -lz], [-lx, lz], [lx, lz]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.62, 0.07), mat('#4c5360'));
+      leg.position.set(sx, 0.31, sz);
+      g.add(leg);
+    }
+    return g;
+  }
+
+  /** A screen on a stand, lit, at desk height; `width` wide, turned by `turn`. */
+  private monitor(x: number, width: number, turn = 0, glow = '#3f7ea8'): THREE.Group {
+    const g = new THREE.Group();
+    const screen = new THREE.Mesh(
+      new THREE.BoxGeometry(width, width * 0.62, 0.035),
+      new THREE.MeshStandardMaterial({ color: glow, emissive: '#12384d', flatShading: true }),
+    );
+    screen.position.set(0, 0.82 + width * 0.1, 0);
+    screen.rotation.set(-0.1, 0, 0);
+    g.add(screen);
+    const stand = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), mat('#2b313b'));
+    stand.position.set(0, 0.72, -0.02);
+    g.add(stand);
+    g.position.set(x, 0, -0.17);
+    g.rotation.y = turn;
+    return g;
+  }
+
+  /** Pro Workstation: three screens in an arc, a desk lamp, and a high-backed chair. */
+  private buildProDesk(): THREE.Group {
+    const g = this.deskTop(0.96, 0.62, '#6d4f36');
+    g.add(this.monitor(-0.32, 0.3, 0.35));
+    g.add(this.monitor(0, 0.34));
+    g.add(this.monitor(0.32, 0.3, -0.35));
+    const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.025, 0.11), mat('#1f242c'));
+    keyboard.position.set(0, 0.675, 0.1);
+    g.add(keyboard);
+    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.05, 0.28, 8), mat('#d9dde2'));
+    lamp.position.set(0.4, 0.8, 0.12);
+    g.add(lamp);
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.08, 10), mat('#f0b429', { emissive: '#f0b429', emissiveIntensity: 0.4 }));
+    shade.position.set(0.4, 0.96, 0.1);
+    g.add(shade);
+    // The chair that costs more than the desk: tall back, headrest, the station's accent.
+    const chair = this.chair(0, CHAIR_REACH, 0, '#1d2027');
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.06), mat('#5ecfc0'));
+    head.position.set(0, 0.76, 0.15);
+    chair.add(head);
+    g.add(chair);
+    return g;
+  }
+
+  /** Long Hacker Bench: one long desk across two tiles, three pairs of screens, three chairs. */
+  private buildLongBench(): THREE.Group {
+    const g = this.deskTop(1.9, 0.6, '#8a6a4a');
+    for (const x of [-0.6, 0, 0.6]) {
+      g.add(this.monitor(x - 0.1, 0.24, 0.15));
+      g.add(this.monitor(x + 0.12, 0.24, -0.15));
+      const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.025, 0.1), mat('#2b313b'));
+      keyboard.position.set(x, 0.675, 0.1);
+      g.add(keyboard);
+      g.add(this.chair(x, CHAIR_REACH));
+    }
+    // The cables everybody means to tidy.
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.04, 0.06), mat('#1f242c'));
+    tray.position.set(0, 0.5, -0.22);
+    g.add(tray);
+    return g;
+  }
+
+  /** Pair Programming Desk: one wide screen, two keyboards, two chairs side by side. */
+  private buildPairDesk(): THREE.Group {
+    const g = this.deskTop(0.96, 0.6, '#9c7048');
+    g.add(this.monitor(0, 0.56, 0, '#4a8fbf'));
+    for (const x of [-0.22, 0.22]) {
+      const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.025, 0.1), mat('#2b313b'));
+      keyboard.position.set(x, 0.675, 0.1);
+      g.add(keyboard);
+      g.add(this.chair(x, CHAIR_REACH, 0, '#3a4a66'));
+    }
+    return g;
+  }
+
+  /**
+   * Soldering & Measurement Bench: the hardware bench grown up — a four-channel scope, a
+   * fume arm over the board, a reel rack, and the good stool.
+   */
+  private buildSolderBench(): THREE.Group {
+    const g = this.deskTop(0.96, 0.62, '#5f6b52');
+    const mat2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.01, 0.32), mat('#2f7a8a'));
+    mat2.position.set(-0.05, 0.665, 0.06);
+    g.add(mat2);
+    const scope = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.2), mat('#d6d9de'));
+    scope.position.set(0.28, 0.76, -0.16);
+    g.add(scope);
+    const trace = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.12, 0.01),
+      new THREE.MeshStandardMaterial({ color: '#0d2b1c', emissive: '#3ddc84', emissiveIntensity: 0.5, flatShading: true }),
+    );
+    trace.position.set(0.25, 0.77, -0.055);
+    g.add(trace);
+    const station = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.14), mat('#2b313b'));
+    station.position.set(-0.32, 0.705, -0.14);
+    g.add(station);
+    // The fume arm reaching over the work.
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.36, 6), mat('#c9d1dd'));
+    post.position.set(-0.4, 0.84, -0.22);
+    g.add(post);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.34, 6), mat('#c9d1dd'));
+    arm.rotation.x = Math.PI / 2.6;
+    arm.position.set(-0.4, 1.0, -0.08);
+    g.add(arm);
+    const hood = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.07, 10), mat('#2b313b'));
+    hood.position.set(-0.4, 0.98, 0.07);
+    g.add(hood);
+    for (const [x, colour] of [[-0.12, '#b8764a'], [0.0, '#c9d1dd'], [0.12, '#d9a13a']] as [number, string][]) {
+      const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 10), mat(colour));
+      reel.rotation.x = Math.PI / 2;
+      reel.position.set(x, 0.73, -0.22);
+      g.add(reel);
+    }
+    g.add(this.chair(0, CHAIR_REACH, 0, '#3a3f4a'));
+    return g;
+  }
+
+  /**
+   * Meeting Corner: a three-seat sofa along the back, three armchairs along the front, a low
+   * table between them and a whiteboard on wheels at the end. Seats match `seatPosition`:
+   * across `-0.62, 0, 0.62`, half a tile either side of the middle.
+   */
+  private buildMeetingCorner(): THREE.Group {
+    const g = new THREE.Group();
+    const table = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 0.4), mat('#a67c52'));
+    table.position.y = 0.36;
+    table.castShadow = true;
+    g.add(table);
+    for (const x of [-0.66, 0.66]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.34, 0.3), mat('#4c5360'));
+      leg.position.set(x, 0.17, 0);
+      g.add(leg);
+    }
+    const papers = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.01, 0.2), mat('#e8ecf2'));
+    papers.position.set(-0.2, 0.395, 0.02);
+    papers.rotation.y = 0.3;
+    g.add(papers);
+    // The sofa along the back.
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.26, 0.42), mat('#3f6f8f'));
+    seat.position.set(0, 0.24, -0.62);
+    seat.castShadow = true;
+    g.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.44, 0.14), mat('#355f7a'));
+    back.position.set(0, 0.5, -0.8);
+    back.castShadow = true;
+    g.add(back);
+    // Three armchairs along the front, backs to the room.
+    for (const x of [-0.62, 0, 0.62]) {
+      const chair = new THREE.Group();
+      const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.24, 0.4), mat('#c46a4a'));
+      cushion.position.y = 0.22;
+      cushion.castShadow = true;
+      chair.add(cushion);
+      const rest = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.34, 0.1), mat('#a8573b'));
+      rest.position.set(0, 0.45, 0.17);
+      chair.add(rest);
+      chair.position.set(x, 0, 0.64);
+      g.add(chair);
+    }
+    // A whiteboard on wheels at the end, turned toward the table.
+    const board = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.5, 0.62), mat('#f3f4f6'));
+    board.position.set(1.08, 0.86, 0);
+    g.add(board);
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.6, 0.04), mat('#8a929e'));
+    legs.position.set(1.08, 0.3, 0);
+    g.add(legs);
     return g;
   }
 
@@ -768,8 +1126,8 @@ export class SpaceView {
       book.position.set(0.28 + i * 0.065, 0.735, 0.05);
       g.add(book);
     });
-    g.add(this.chair(-0.22, 0.52, 0, '#4a3f66'));
-    g.add(this.chair(0.22, 0.52, 0, '#4a3f66'));
+    g.add(this.chair(-0.22, CHAIR_REACH, 0, '#4a3f66'));
+    g.add(this.chair(0.22, CHAIR_REACH, 0, '#4a3f66'));
     return g;
   }
 
@@ -813,7 +1171,7 @@ export class SpaceView {
     const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.08, 8), mat('#f0b429'));
     hood.position.set(0.3, 1.0, -0.18);
     g.add(hood);
-    g.add(this.chair(0, 0.52, 0, '#3a3f4a'));
+    g.add(this.chair(0, CHAIR_REACH, 0, '#3a3f4a'));
     return g;
   }
 
@@ -880,32 +1238,126 @@ export class SpaceView {
     return g;
   }
 
-  private buildLounge(): THREE.Group {
+  /**
+   * The Sofa & Kettle — the space's first comfort, and it grows with the lease: a deep
+   * two-seater with the kettle on its arm in the garage; from Unit 4B a three-seater across
+   * two tiles with a side table, the kettle and a stack of tea glasses; a rug under it all
+   * from the warehouse. The front (+z) is the side people sit on.
+   */
+  private buildLounge(span = 1): THREE.Group {
     const g = new THREE.Group();
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.24, 0.62), mat('#a2564c'));
-    seat.position.y = 0.3;
+    const era = this.era;
+    const fabric = '#a2564c';
+    const dark = '#8f4a41';
+    const table = span > 1 ? 0.46 : 0;
+    const width = span * 0.98 - table - (span > 1 ? 0.08 : 0);
+    const cx = -table / 2 - (span > 1 ? 0.04 : 0);
+    const depth = 0.78;
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(width, 0.28, depth), mat(fabric));
+    seat.position.set(cx, 0.2, 0.02);
     seat.castShadow = true;
     g.add(seat);
-    const back = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.42, 0.16), mat('#8f4a41'));
-    back.position.set(0, 0.55, -0.24);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(width, 0.5, 0.2), mat(dark));
+    back.position.set(cx, 0.58, -0.3);
+    back.castShadow = true;
     g.add(back);
-    const kettle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.2, 8), mat('#cbd3de'));
-    kettle.position.set(0.42, 0.52, 0.22);
-    g.add(kettle);
+    for (const side of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.26, depth), mat(dark));
+      arm.position.set(cx + side * (width / 2 - 0.07), 0.47, 0.02);
+      arm.castShadow = true;
+      g.add(arm);
+    }
+    const seats = span > 1 ? 3 : 2;
+    const inner = width - 0.28;
+    for (let i = 0; i < seats; i += 1) {
+      const x = cx - inner / 2 + (inner / seats) * (i + 0.5);
+      const cushion = new THREE.Mesh(new THREE.BoxGeometry(inner / seats - 0.04, 0.1, depth - 0.24), mat('#b8695d'));
+      cushion.position.set(x, 0.39, 0.08);
+      g.add(cushion);
+      const pillow = new THREE.Mesh(new THREE.BoxGeometry(inner / seats - 0.1, 0.24, 0.1), mat('#c97c6d'));
+      pillow.position.set(x, 0.55, -0.16);
+      pillow.rotation.x = -0.2;
+      g.add(pillow);
+    }
+    for (const x of [cx - width / 2 + 0.06, cx + width / 2 - 0.06]) {
+      for (const z of [-0.32, 0.36]) {
+        const foot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), mat('#3a2e26'));
+        foot.position.set(x, 0.03, z);
+        g.add(foot);
+      }
+    }
+    const kettle = (x: number, y: number, z: number) => {
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.18, 10), mat('#cbd3de'));
+      pot.position.set(x, y + 0.09, z);
+      g.add(pot);
+      const lid = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), mat('#2a2f38'));
+      lid.position.set(x, y + 0.2, z);
+      g.add(lid);
+      const spout = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.1), mat('#cbd3de'));
+      spout.position.set(x, y + 0.12, z + 0.11);
+      spout.rotation.x = -0.6;
+      g.add(spout);
+    };
+    if (span > 1) {
+      // A side table at the end of the sofa: the kettle, and tea glasses on a tray.
+      const tx = cx + width / 2 + 0.04 + table / 2;
+      const top = new THREE.Mesh(new THREE.BoxGeometry(table, 0.05, 0.56), mat('#6b4a33'));
+      top.position.set(tx, 0.5, 0);
+      top.castShadow = true;
+      g.add(top);
+      const legs = new THREE.Mesh(new THREE.BoxGeometry(table - 0.08, 0.48, 0.48), mat('#57402f'));
+      legs.position.set(tx, 0.24, 0);
+      g.add(legs);
+      kettle(tx - 0.08, 0.525, -0.1);
+      const tray = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.015, 12), mat('#c9a44a'));
+      tray.position.set(tx + 0.06, 0.532, 0.12);
+      g.add(tray);
+      for (const [gx, gz] of [[0, 0.04], [0.06, -0.04], [-0.06, -0.04]]) {
+        const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.02, 0.08, 8), mat('#b5402a', { transparent: true, opacity: 0.85 }));
+        glass.position.set(tx + 0.06 + gx, 0.58, 0.12 + gz);
+        g.add(glass);
+      }
+    } else {
+      // In the garage the kettle lives on the arm, because there is nowhere else.
+      kettle(cx + width / 2 - 0.07, 0.6, 0.12);
+    }
+    if (era >= 3) {
+      const rug = new THREE.Mesh(new THREE.BoxGeometry(span * 0.98 + 0.2, 0.01, 1.1), mat('#5d6b8a'));
+      rug.position.set(0, 0.005, 0.18);
+      g.add(rug);
+    }
     return g;
   }
+
 
   private buildPerson(id: string, isPlayer: boolean): THREE.Group {
     const g = new THREE.Group();
     const color = isPlayer ? PLAYER_COLOR : (MEMBER_COLORS[id] ?? personColor(id));
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.56, 7), mat(color));
+    body.name = 'body';
     body.position.y = 0.28;
     body.castShadow = true;
     g.add(body);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), mat('#e8c9a6'));
+    head.name = 'head';
     head.position.y = 0.72;
     head.castShadow = true;
     g.add(head);
+    // Legs, only shown sitting: thighs out along the seat, shins down to the floor. Without
+    // them a seated person is a cone sunk into the sofa.
+    const legs = new THREE.Group();
+    legs.name = 'legs';
+    for (const x of [-0.08, 0.08]) {
+      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.28), mat(shade(color, -0.25)));
+      thigh.position.set(x, 0.045, 0.14);
+      legs.add(thigh);
+      const shin = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1, 0.09), mat(shade(color, -0.35)));
+      shin.name = 'shin';
+      shin.position.set(x, 0, 0.27);
+      legs.add(shin);
+    }
+    legs.visible = false;
+    g.add(legs);
     if (isPlayer) {
       // A ring so you can always find yourself in the room.
       const ring = new THREE.Mesh(
@@ -943,16 +1395,57 @@ export class SpaceView {
     const ease = arriving ? 1 : 0.25;
     node.position.x += (world.x - node.position.x) * ease;
     node.position.z += (world.z - node.position.z) * ease;
+    if (seat?.stand) {
+      this.pose(node, null);
+      // On their feet at a comfort — the end of the table-tennis table, the fridge — and
+      // facing it. Table tennis gets a rally's worth of bob and sway.
+      const look = toWorld(seat.look.x, seat.look.y);
+      node.rotation.y = Math.atan2(look.x - world.x, look.z - world.z) + Math.sin(this.elapsed * 6 + world.x) * 0.1;
+      node.position.y = Math.abs(Math.sin(this.elapsed * 5 + world.z)) * 0.03;
+      return;
+    }
     if (seat) {
-      // Sitting: lowered into the chair and turned to face the table or the screen.
+      // Sitting: on the seat at its own height, turned to face the table or the screen.
       const look = toWorld(seat.look.x, seat.look.y);
       node.rotation.y = Math.atan2(look.x - world.x, look.z - world.z) +
         (activity === 'working' ? Math.sin(this.elapsed * 2.5 + world.x) * 0.12 : 0);
-      node.position.y = -0.1;
+      this.pose(node, seat.height ?? 0.39);
       return;
     }
+    this.pose(node, null);
     node.position.y = activity === 'walking' ? Math.abs(Math.sin(this.elapsed * 9)) * 0.07 : 0;
     node.rotation.y = activity === 'working' ? Math.sin(this.elapsed * 2.5) * 0.18 : 0;
+  }
+
+  /**
+   * Standing, or sitting on a seat `height` above the floor: a shorter body resting on the
+   * seat, thighs along it and shins down to the floor. The node itself is lifted to the
+   * seat, so a sofa and a desk chair both read as somebody sitting on something.
+   */
+  private pose(node: THREE.Object3D, height: number | null) {
+    const body = node.getObjectByName('body');
+    const head = node.getObjectByName('head');
+    const legs = node.getObjectByName('legs');
+    if (!body || !head || !legs) return;
+    if (height === null) {
+      body.scale.set(1, 1, 1);
+      body.position.set(0, 0.28, 0);
+      head.position.set(0, 0.72, 0);
+      legs.visible = false;
+      return;
+    }
+    // A little forward of the seat's middle, toward whatever they face: centred on it, the
+    // body filled the chair and its back came out through their shoulders.
+    body.scale.set(0.8, 0.62, 0.8);
+    body.position.set(0, 0.175, SIT_FORWARD);
+    head.position.set(0, 0.5, SIT_FORWARD);
+    legs.position.z = SIT_FORWARD;
+    legs.visible = true;
+    for (const shin of legs.children.filter((c) => c.name === 'shin')) {
+      shin.scale.y = Math.max(0.05, height);
+      shin.position.y = -height / 2 + 0.04;
+    }
+    node.position.y = height;
   }
 
   // -------------------------------------------------------------------------
@@ -1113,7 +1606,11 @@ export class SpaceView {
    */
   private placeOnWall(node: THREE.Object3D, def: AmenityDef) {
     const back = toWorld((GRID.width - 1) / 2, -0.6);
-    node.position.z = back.z + 0.1;
+    // **Clear of the wall, and clear of the panels.** The wall's face is at +0.09 and the
+    // acoustic panels (a backdrop) stand proud of it to +0.125; the neon's dark board sat in
+    // the same few millimetres as both and flickered between them. Everything else hangs
+    // in front of the panels.
+    node.position.z = back.z + (def.shape === 'acoustics' ? 0.1 : 0.17);
     // Where along the wall is the layout's call now (`wallColumn`) — the player can move it,
     // and the layout keeps two things off one nail. Only the height is the item's own.
     node.position.x = toWorld(wallColumn(def.id) ?? (GRID.width - 1) / 2, 0).x;
@@ -1170,6 +1667,10 @@ export class SpaceView {
         return this.propNapPod(def.tone);
       case 'mate':
         return this.propMate(def.tone);
+      case 'teamaker':
+        return this.propTeaMaker(def.tone);
+      case 'spoolshelf':
+        return this.propSpoolShelf(def.tone);
       case 'lava':
         return this.propLava(def.tone);
       default:
@@ -1235,40 +1736,67 @@ export class SpaceView {
   }
 
   /** A low media unit, a telly on it, the console beside it and two pads on the floor. */
+  /**
+   * The PlayStation Corner: a low TV unit with a big screen at the back of the tile and two
+   * gaming chairs at the front, far enough apart for two people to sit in them — the break
+   * logic seats players at `x ±0.26, z 0.3` (see `AMENITIES`), so the chairs are built
+   * round those points with the backs behind them.
+   */
   private propConsole(tone: string): THREE.Group {
     const g = new THREE.Group();
-    const unit = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.34, 0.42), mat('#2a2f38'));
-    unit.position.set(0, 0.17, -0.22);
+    const unit = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.3, 0.36), mat('#2a2f38'));
+    unit.position.set(0, 0.15, -0.3);
     unit.castShadow = true;
     g.add(unit);
-    const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.52, 0.05), mat('#111317'));
-    bezel.position.set(0, 0.66, -0.3);
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.58, 0.05), mat('#111317'));
+    bezel.position.set(0, 0.62, -0.4);
     bezel.castShadow = true;
     g.add(bezel);
-    const glass = this.screen(0.8, 0.46);
-    glass.position.set(0, 0.66, -0.27);
+    const glass = this.screen(0.94, 0.52);
+    glass.position.set(0, 0.62, -0.37);
     g.add(glass);
     // The console itself: white shell, dark band, stood on its end the way everybody does.
     const shell = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.24), mat('#eef0f3'));
-    shell.position.set(0.36, 0.49, -0.2);
+    shell.position.set(0.38, 0.45, -0.28);
     g.add(shell);
     const band = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.3, 0.25), mat('#15171c'));
-    band.position.set(0.36, 0.49, -0.2);
+    band.position.set(0.38, 0.45, -0.28);
     g.add(band);
     const lamp = new THREE.Mesh(
       new THREE.BoxGeometry(0.11, 0.02, 0.02),
       new THREE.MeshStandardMaterial({ color: tone, emissive: new THREE.Color(tone), emissiveIntensity: 1 }),
     );
-    lamp.position.set(0.36, 0.35, -0.07);
+    lamp.position.set(0.38, 0.31, -0.15);
     g.add(lamp);
-    for (const [x, z, yaw] of [[-0.2, 0.22, 0.3], [0.14, 0.28, -0.4]]) {
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.1), mat('#e8ebef'));
-      pad.position.set(x, 0.02, z);
-      pad.rotation.y = yaw;
-      g.add(pad);
+    for (const x of [-0.26, 0.26]) {
+      const chair = new THREE.Group();
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.1, 0.34), mat('#1d2027'));
+      seat.position.set(0, 0.25, 0);
+      seat.castShadow = true;
+      chair.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.5, 0.08), mat('#1d2027'));
+      back.position.set(0, 0.52, 0.2);
+      back.rotation.x = 0.15;
+      back.castShadow = true;
+      chair.add(back);
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.48, 0.085), mat(tone));
+      trim.position.set(0, 0.53, 0.2);
+      trim.rotation.x = 0.15;
+      chair.add(trim);
+      for (const side of [-1, 1]) {
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.26), mat('#2c313a'));
+        arm.position.set(side * 0.19, 0.38, 0.02);
+        chair.add(arm);
+      }
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.12, 0.2, 8), mat('#3a414d'));
+      base.position.set(0, 0.1, 0);
+      chair.add(base);
+      chair.position.set(x, 0, 0.3);
+      g.add(chair);
     }
     return g;
   }
+
 
   /** Eighty-five inches, flat to the wall. */
   private propTv(tone: string): THREE.Group {
@@ -1318,65 +1846,272 @@ export class SpaceView {
    * wall sign (§11), for the same reason: letters are the one thing boxes cannot draw, and
    * a Mate fridge without the word on it is just a small yellow fridge.
    */
+  /**
+   * The Club-Mate fridge, the way the shops have them: a tall glass-door display fridge in
+   * a black frame with orange side panels, a lit MATE header, shelves of amber bottles you
+   * can see through the glass, and a stack of yellow crates beside it.
+   *
+   * **The cabinet is a shell, not a box.** A solid body with the glass in front of it hid
+   * every bottle behind black, and its top sat in the same plane as the header's and
+   * flickered. Back, sides and a plinth, with the header sitting on top of the sides.
+   */
   private propMate(tone: string): THREE.Group {
     const g = new THREE.Group();
-    const w = 0.46;
-    const h = 0.86;
-    const d = 0.42;
-    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat('#24282f'));
-    body.position.y = h / 2;
-    body.castShadow = true;
-    g.add(body);
-    const door = new THREE.Mesh(
-      new THREE.BoxGeometry(w - 0.08, h - 0.26, 0.04),
-      new THREE.MeshStandardMaterial({
-        color: '#9fd8c8',
-        flatShading: true,
-        transparent: true,
-        opacity: 0.45,
-        emissive: new THREE.Color('#6fb8a2'),
-        emissiveIntensity: 0.35,
-      }),
+    const orange = '#ec7424';
+    const black = '#16181d';
+    const w = 0.5;
+    const h = 1.46;
+    const d = 0.46;
+    const head = 0.2; // the lit header across the top
+    const body = h - head;
+    const plinth = 0.1;
+    const wall = 0.03;
+    const fx = -0.16; // the fridge stands left of centre, the crates to its right
+    const piece = (sx: number, sy: number, sz: number, x: number, y: number, z: number, colour: string) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat(colour));
+      mesh.position.set(fx + x, y, z);
+      mesh.castShadow = true;
+      g.add(mesh);
+      return mesh;
+    };
+    piece(w, body, wall, 0, body / 2, -d / 2 + wall / 2, black); // back
+    for (const side of [-1, 1]) {
+      piece(wall, body, d, side * (w / 2 - wall / 2), body / 2, 0, black);
+      // Orange panel on the outside, and the round badge on it.
+      piece(0.012, body - plinth - 0.1, d - 0.06, side * (w / 2 + 0.006), plinth + (body - plinth) / 2, 0, orange);
+      const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.014, 14), mat('#1f2a44'));
+      badge.rotation.z = Math.PI / 2;
+      badge.position.set(fx + side * (w / 2 + 0.014), body - 0.2, 0);
+      g.add(badge);
+    }
+    piece(w, plinth, d, 0, plinth / 2, 0, black); // plinth
+    // Lit from inside: a warm back panel, and bottles on shelves in front of it.
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(w - wall * 2, body - plinth, 0.01),
+      new THREE.MeshStandardMaterial({ color: '#fff1d6', emissive: new THREE.Color('#ffe1a8'), emissiveIntensity: 0.55, flatShading: true }),
     );
-    door.position.set(0, 0.35, d / 2 + 0.01);
-    g.add(door);
-    // Rows of amber bottles behind the glass.
-    for (const y of [0.16, 0.36, 0.56]) {
-      for (const x of [-0.12, -0.04, 0.04, 0.12]) {
-        const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.028, 0.15, 6), mat('#c98a1c'));
-        bottle.position.set(x, y + 0.075, 0.06);
+    glow.position.set(fx, plinth + (body - plinth) / 2, -d / 2 + wall + 0.006);
+    g.add(glow);
+    const shelves = 4;
+    const pitch = (body - plinth - 0.04) / shelves;
+    for (let i = 0; i < shelves; i += 1) {
+      const y = plinth + 0.02 + i * pitch;
+      piece(w - wall * 2, 0.012, d - wall - 0.04, 0, y, 0.01, '#9aa3ad');
+      for (const [x, z] of [[-0.15, 0.08], [-0.075, 0.08], [0, 0.08], [0.075, 0.08], [0.15, 0.08], [-0.11, -0.06], [0.04, -0.06]]) {
+        const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.031, 0.17, 7), mat('#c07a18'));
+        bottle.position.set(fx + x, y + 0.092, z);
         g.add(bottle);
+        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.022, 0.05, 6), mat('#c07a18'));
+        neck.position.set(fx + x, y + 0.2, z);
+        g.add(neck);
+        const label = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.06, 7), mat('#f3efe4'));
+        label.position.set(fx + x, y + 0.075, z);
+        g.add(label);
       }
     }
-    const sign = new THREE.Mesh(
-      new THREE.BoxGeometry(w + 0.02, 0.22, 0.03),
-      [mat(tone), mat(tone), mat(tone), mat(tone), new THREE.MeshStandardMaterial({ map: this.mateTexture(tone), emissive: new THREE.Color(tone), emissiveIntensity: 0.25, emissiveMap: this.mateTexture(tone) }), mat(tone)],
+    // The glass door, barely there, and its handle.
+    const glass = new THREE.Mesh(
+      new THREE.BoxGeometry(w - 0.02, body - plinth, 0.012),
+      new THREE.MeshStandardMaterial({ color: '#d8eef5', transparent: true, opacity: 0.12, flatShading: true, depthWrite: false }),
     );
-    sign.position.set(0, h - 0.12, d / 2 + 0.02);
+    glass.position.set(fx, plinth + (body - plinth) / 2, d / 2);
+    g.add(glass);
+    piece(0.025, 0.5, 0.03, w / 2 - 0.06, body / 2 + 0.05, d / 2 + 0.03, '#c9d1dd');
+    // The lit header on top of the cabinet: orange all round, MATE across the front.
+    const logo = new THREE.MeshStandardMaterial({
+      map: this.mateTexture(tone),
+      emissive: new THREE.Color('#ffffff'),
+      emissiveIntensity: 0.3,
+      emissiveMap: this.mateTexture(tone),
+    });
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(w, head, d), [
+      mat(orange), mat(orange), mat(orange), mat('#1a1c21'), logo, mat(orange),
+    ]);
+    sign.position.set(fx, body + head / 2, 0);
+    sign.castShadow = true;
     g.add(sign);
+    // Two yellow crates of bottles, stacked.
+    for (let i = 0; i < 2; i += 1) {
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.4), mat(tone));
+      crate.position.set(0.3, 0.11 + i * 0.23, 0.02);
+      crate.castShadow = true;
+      g.add(crate);
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.012), mat('#b88a00'));
+      slot.position.set(0.3, 0.16 + i * 0.23, 0.225);
+      g.add(slot);
+    }
+    for (const [x, z] of [[-0.08, -0.12], [0, -0.12], [0.08, -0.12], [-0.08, 0], [0, 0], [0.08, 0], [-0.08, 0.12], [0, 0.12], [0.08, 0.12]]) {
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, 0.07, 6), mat('#b8761a'));
+      cap.position.set(0.3 + x, 0.5, 0.02 + z);
+      g.add(cap);
+    }
     return g;
+  }
+
+  /**
+   * A Turkish tea maker on a small counter: the red hexagonal boiler with a gauge, a tap
+   * and a drip tray, two stainless pots side by side on top, and tulip glasses on saucers.
+   */
+  private propTeaMaker(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const steel = '#d3d9e0';
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.5, 0.5), mat('#3b4250'));
+    counter.position.y = 0.25;
+    counter.castShadow = true;
+    g.add(counter);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.04, 0.54), mat('#e6e8ea'));
+    top.position.y = 0.52;
+    g.add(top);
+    const bx = -0.1;
+    const boiler = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.46, 6), mat(tone));
+    boiler.position.set(bx, 0.79, -0.02);
+    boiler.rotation.y = Math.PI / 6;
+    boiler.castShadow = true;
+    g.add(boiler);
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.025, 6), mat('#b9c0c8'));
+    plate.position.set(bx, 1.03, -0.02);
+    plate.rotation.y = Math.PI / 6;
+    g.add(plate);
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.14), mat('#1b1d22'));
+    tray.position.set(bx, 0.555, 0.2);
+    g.add(tray);
+    const gauge = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.012, 12), mat('#f1f1ee'));
+    gauge.rotation.x = Math.PI / 2;
+    gauge.position.set(bx - 0.05, 0.9, 0.172);
+    g.add(gauge);
+    const tap = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.09, 0.07), mat(steel));
+    tap.position.set(bx - 0.05, 0.72, 0.2);
+    g.add(tap);
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.07, 0.03), mat('#1b1d22'));
+    handle.position.set(bx - 0.05, 0.79, 0.21);
+    g.add(handle);
+    for (const [y, colour] of [[0.86, '#8a2a22'], [0.8, '#2f7a3a']] as [number, string][]) {
+      const light = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.01, 8), mat(colour, { emissive: colour, emissiveIntensity: 0.6 }));
+      light.rotation.x = Math.PI / 2;
+      light.position.set(bx + 0.08, y, 0.172);
+      g.add(light);
+    }
+    // Two pots side by side: a squat body, a domed lid with a black knob, a curved spout.
+    for (const [px, turn] of [[-0.09, 0.4], [0.09, -0.4]]) {
+      const pot = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.1, 0.13, 12), mat(steel));
+      body.position.y = 0.065;
+      pot.add(body);
+      const lid = new THREE.Mesh(new THREE.SphereGeometry(0.085, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(steel));
+      lid.position.y = 0.13;
+      pot.add(lid);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), mat('#15171c'));
+      knob.position.y = 0.225;
+      pot.add(knob);
+      const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.02, 0.13, 6), mat(steel));
+      spout.position.set(0, 0.09, 0.1);
+      spout.rotation.x = 0.9;
+      pot.add(spout);
+      pot.position.set(bx + px, 1.045, -0.02);
+      pot.rotation.y = turn;
+      g.add(pot);
+    }
+    // Tulip glasses of tea on saucers.
+    for (const [x, z] of [[0.24, 0.1], [0.32, -0.06], [0.2, -0.12]]) {
+      const saucer = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.01, 12), mat('#f3f1ec'));
+      saucer.position.set(x, 0.545, z);
+      g.add(saucer);
+      const glass = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.028, 0.02, 0.085, 8),
+        mat('#a3301c', { transparent: true, opacity: 0.85 }),
+      );
+      glass.position.set(x, 0.595, z);
+      g.add(glass);
+    }
+    return g;
+  }
+
+  /**
+   * The Filament Shelf: a steel rack, four shelves of four spools. **The spools are the
+   * stock** — one drawn per kilo on the shelf (`setFilamentStock`), so buying ahead fills it
+   * and every refill empties it a spool at a time, bottom shelf last.
+   */
+  private propSpoolShelf(tone: string): THREE.Group {
+    const g = new THREE.Group();
+    const w = 0.9;
+    const d = 0.4;
+    for (const x of [-w / 2, w / 2]) {
+      for (const z of [-d / 2, d / 2]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.5, 0.04), mat(tone));
+        post.position.set(x, 0.75, z - 0.05);
+        post.castShadow = true;
+        g.add(post);
+      }
+    }
+    const colours = ['#e2725b', '#5aa9f0', '#f0b429', '#8fd88f', '#e8ecf2', '#1d2027', '#c58ef0', '#f08fa4'];
+    let index = 0;
+    for (let shelf = 0; shelf < 4; shelf += 1) {
+      const y = 0.08 + shelf * 0.36;
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.03, d + 0.02), mat('#5b636f'));
+      plank.position.set(0, y, -0.05);
+      g.add(plank);
+      for (let i = 0; i < 4; i += 1) {
+        const spool = new THREE.Group();
+        const colour = colours[(shelf * 4 + i * 3) % colours.length];
+        // The filament's colour is what reads from across the room, so the flanges are
+        // clear plastic and the winding nearly fills them.
+        const wound = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.115, 0.13, 16), mat(colour));
+        wound.rotation.x = Math.PI / 2;
+        spool.add(wound);
+        for (const side of [-0.07, 0.07]) {
+          const flange = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.12, 0.12, 0.01, 16),
+            new THREE.MeshStandardMaterial({ color: '#dfe6ee', transparent: true, opacity: 0.35, flatShading: true }),
+          );
+          flange.rotation.x = Math.PI / 2;
+          flange.position.z = side;
+          spool.add(flange);
+        }
+        spool.position.set(-0.33 + i * 0.22, y + 0.135, -0.05);
+        // Bottom shelf first to fill, last to empty: index 0 is the bottom-left spool.
+        spool.userData.spool = index++;
+        g.add(spool);
+      }
+    }
+    return g;
+  }
+
+  /** Show as many spools on the Filament Shelf as there are kilos in stock. */
+  setFilamentStock(grams: number) {
+    const node = this.amenityNodes.get('filament-shelf');
+    if (!node) return;
+    const spools = Math.ceil(grams / 1000);
+    node.traverse((child) => {
+      if (typeof child.userData.spool === 'number') child.visible = child.userData.spool < spools;
+    });
   }
 
   private mateCanvas: THREE.CanvasTexture | null = null;
 
-  /** MATE, dark on the brand yellow. Drawn once and shared by every Mate fridge. */
-  private mateTexture(tone: string): THREE.CanvasTexture {
+  /**
+   * MATE across the header, dark on orange. Big enough to read when you zoom in — about
+   * two thirds of the header's height — but inside a header a fifth of the fridge tall,
+   * not the billboard the first fridge carried.
+   */
+  private mateTexture(_tone: string): THREE.CanvasTexture {
     if (this.mateCanvas) return this.mateCanvas;
     const canvas = document.createElement('canvas');
     canvas.width = 256;
-    canvas.height = 88;
+    canvas.height = 104;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = tone;
+    ctx.fillStyle = '#ec7424';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#1b1e24';
-    ctx.font = "900 76px \"Arial Black\", Helvetica, sans-serif";
+    ctx.fillStyle = '#1f2a44';
+    ctx.font = "900 70px \"Arial Black\", Helvetica, sans-serif";
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('MATE', canvas.width / 2, canvas.height / 2 + 3);
+    ctx.fillText('MATE', canvas.width / 2, canvas.height / 2 + 4, canvas.width - 24);
     this.mateCanvas = new THREE.CanvasTexture(canvas);
     this.mateCanvas.colorSpace = THREE.SRGBColorSpace;
+    this.mateCanvas.anisotropy = 8;
     return this.mateCanvas;
   }
+
 
   /** A white egg on a plinth with a dark mouth, which is all a nap pod is. */
   private propNapPod(tone: string): THREE.Group {
@@ -1920,6 +2655,12 @@ export class SpaceView {
     // The comforts came in the van too, and their slots are derived from the new grid.
     this.amenityNodes.clear();
     this.placingMarks = [];
+    // The rallies and the placing preview went with the rest of the room.
+    this.rallies.clear();
+    this.buyMarks = [];
+    this.buyMarksKey = '';
+    this.ghost = null;
+    this.ghostKey = '';
     this.buildAmenities();
     this.markPlaceable();
     this.syncStations();
@@ -1941,12 +2682,14 @@ export class SpaceView {
     }
 
     for (const m of runtime.members) {
-      this.placePerson(m.id, false, m.present, m.seat ?? m.pos, m.activity, m.seat);
+      this.placePerson(m.id, false, m.present, m.seat ?? m.spot ?? m.pos, m.activity, m.seat);
     }
     if (runtime.player) {
       const p = runtime.player;
-      this.placePerson('player', true, p.present, p.seat ?? p.pos, p.activity, p.seat);
+      this.placePerson('player', true, p.present, p.seat ?? p.spot ?? p.pos, p.activity, p.seat);
     }
+
+    this.updateRallies(runtime);
 
     for (const machine of runtime.machines) {
       const visual = this.machineVisuals.get(machine.id);
@@ -1982,7 +2725,104 @@ export class SpaceView {
         const [lo, hi, rest] = (visual.head.userData.travel as number[] | undefined) ?? [0.34, 0.89, 0.62];
         visual.head.position.y = job ? lo + ratio * (hi - lo) : rest;
         visual.head.position.x = job ? Math.sin(this.elapsed * 6) * 0.12 : 0;
+        // The thing being printed grows up to meet the nozzle, a layer at a time.
+        if (visual.root && visual.bedTop !== undefined) {
+          const key = job ? `${machine.id}:${job.partName}:${job.hoursRequired}` : '';
+          if (key !== visual.partKey) {
+            if (visual.part) visual.root.remove(visual.part);
+            visual.part = key ? printedThing(key) : undefined;
+            visual.partKey = key;
+            if (visual.part) {
+              visual.part.position.set(0, visual.bedTop, -0.02);
+              visual.root.add(visual.part);
+            }
+          }
+          if (visual.part) {
+            const top = visual.head.position.y - 0.05;
+            visual.part.scale.y = Math.max(0.005, top - visual.bedTop);
+          }
+        }
       }
+    }
+  }
+
+  /**
+   * Table tennis (§7b): a bat floating in front of each player and a ball going between
+   * them — off one bat, a bounce on the far half, onto the other bat, and back. The bat
+   * swings as the ball arrives. Built when a game starts and taken down when it ends.
+   */
+  private rallies = new Map<string, { group: THREE.Group; ball: THREE.Mesh; bats: THREE.Group[] }>();
+
+  private updateRallies(runtime: RuntimeSnapshot) {
+    const live = new Set<string>();
+    for (const game of runtime.games ?? []) {
+      const [a, b] = game.players.map((id) => this.people.get(id));
+      if (!a || !b || !a.visible || !b.visible) continue;
+      live.add(game.amenityId);
+      let rally = this.rallies.get(game.amenityId);
+      if (!rally) {
+        const group = new THREE.Group();
+        const ball = new THREE.Mesh(
+          new THREE.SphereGeometry(0.045, 12, 10),
+          new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffe9c2', emissiveIntensity: 0.6, flatShading: true }),
+        );
+        group.add(ball);
+        const bats = [0, 1].map((i) => {
+          const bat = new THREE.Group();
+          const blade = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.075, 0.075, 0.016, 14),
+            mat(i ? '#1d2027' : '#c0392b'),
+          );
+          blade.rotation.x = Math.PI / 2;
+          blade.position.y = 0.09;
+          bat.add(blade);
+          const grip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.1, 0.025), mat('#a67c52'));
+          bat.add(grip);
+          group.add(bat);
+          return bat;
+        });
+        this.group.add(group);
+        rally = { group, ball, bats };
+        this.rallies.set(game.amenityId, rally);
+      }
+      // Each bat hangs in front of its player, at table height plus a little.
+      const ends = [a, b].map((p, i) => {
+        const other = i ? a : b;
+        const dir = new THREE.Vector3().subVectors(other.position, p.position).setY(0).normalize();
+        return p.position.clone().addScaledVector(dir, 0.28).setY(0.9);
+      });
+      const period = 0.9; // seconds per crossing
+      const phase = (this.elapsed / period) % 2;
+      const going = phase < 1; // a → b, then b → a
+      const u = going ? phase : phase - 1;
+      const from = going ? ends[0] : ends[1];
+      const to = going ? ends[1] : ends[0];
+      // Off the bat, down onto the far half at 65% of the way, up onto the other bat.
+      const bounceAt = 0.65;
+      const table = 0.78;
+      const pos = new THREE.Vector3().lerpVectors(from, to, u);
+      if (u < bounceAt) {
+        const k = u / bounceAt;
+        pos.y = THREE.MathUtils.lerp(from.y, table, k) + Math.sin(k * Math.PI) * 0.22;
+      } else {
+        const k = (u - bounceAt) / (1 - bounceAt);
+        pos.y = THREE.MathUtils.lerp(table, to.y, k) + Math.sin(k * Math.PI) * 0.12;
+      }
+      rally.ball.position.copy(pos);
+      rally.bats.forEach((bat, i) => {
+        bat.position.copy(ends[i]);
+        const facing = ends[1 - i].clone().sub(ends[i]);
+        bat.rotation.y = Math.atan2(facing.x, facing.z);
+        // The swing: this bat is hit when the ball arrives at it.
+        const arriving = (i === 1) === going ? u : 0;
+        bat.rotation.x = -0.3 + Math.sin(Math.min(1, arriving * 1.2) * Math.PI) * 0.7 * (arriving > 0.8 ? 1 : 0.2);
+        bat.position.y = ends[i].y + Math.sin(this.elapsed * 3 + i) * 0.02;
+      });
+    }
+    for (const [id, rally] of this.rallies) {
+      if (live.has(id)) continue;
+      this.group.remove(rally.group);
+      this.rallies.delete(id);
     }
   }
 

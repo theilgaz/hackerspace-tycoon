@@ -6,9 +6,11 @@ import { furnitureFits } from '@/machines/layout';
 import { Simulation } from '@/systems/Simulation';
 import { UI } from '@/ui/ui';
 import { store } from './store';
-import { STATIONS, STATION_MAP, amenityPlacement, yawOf } from '@/machines/layout';
-import { pct } from '@/utils/format';
-import type { MachineType } from './types';
+import { GRID, STATIONS, STATION_MAP, amenityPlacement, yawOf } from '@/machines/layout';
+import { pct, span } from '@/utils/format';
+import { CATEGORY_PROFILES } from '@/utils/categories';
+import { CATEGORY_ICON, icon } from '@/ui/icons';
+import type { MachineType, ProjectCategory } from './types';
 import { amenityDef } from '@/utils/amenities';
 import { runDevCommand } from '@/systems/DevConsole';
 import type { IconName } from '@/ui/icons';
@@ -27,7 +29,7 @@ const STATION_ROLE: Partial<Record<MachineType, string>> = {
 };
 import { LOGOS } from '@/utils/rivals';
 import { clearSave, readSave, writeSave, SAVE_VERSION, type SaveFile } from '@/systems/SaveGame';
-import { eraDef } from '@/utils/constants';
+import { TIME, eraDef } from '@/utils/constants';
 import { applyLocale } from '@/i18n/preference';
 import '@/ui/styles.css';
 
@@ -43,6 +45,8 @@ export class Game {
   /** Station under the cursor, for the hover label. */
   private hovered: string | null = null;
   private pointer = { x: 0, y: 0 };
+  /** Which way the item being placed from the Build shelves faces, in quarter turns. */
+  private placingYaw = 0;
   /** Where the last press landed, so a pan is not mistaken for a click. */
   private pressedAt: { x: number; y: number } | null = null;
 
@@ -66,7 +70,7 @@ export class Game {
         if (speed === 0) store.getState().setPaused(true);
         else store.getState().setSpeed(speed);
       },
-      pitch: (defId, offerId, team, plan) => act(() => sim.pitch(defId, offerId, team, plan)),
+      pitch: (defId, offerId, team, plan, name) => act(() => sim.pitch(defId, offerId, team, plan, name)),
       buyFurniture: (id) => act(() => sim.buyFurniture(id)),
       train: (memberId, skill) => act(() => sim.train(memberId, skill)),
       resaleOf: (id) => sim.resaleOf(id),
@@ -92,10 +96,36 @@ export class Game {
       cancelJob: (machineId, jobId) => act(() => sim.cancelJob(machineId, jobId)),
       buyFilament: (machineId) => act(() => sim.buyFilament(machineId)),
       refillCost: (machineId) => sim.refillCost(machineId),
+      buyAllFilament: () => act(() => sim.buyAllFilament()),
+      buySpools: (count) => act(() => sim.buySpools(count)),
+      shelfCapacity: () => sim.shelfCapacity(),
+      maintainAll: () => act(() => sim.maintainAll()),
+      refillAllCost: () => sim.refillAllCost(),
+      acceptOrder: (offerId) => act(() => sim.acceptOrder(offerId)),
+      declineOrder: (offerId) => act(() => sim.declineOrder(offerId)),
       buyPrinter: (modelId) => act(() => sim.buyPrinter(modelId)),
       buyAmenity: (id) => act(() => sim.buyAmenity(id)),
       turnAmenity: () => this.turnHeld(),
       stopMoving: () => store.getState().setMoving(null),
+      setBuildMode: (on) => store.getState().setBuildMode(on),
+      pickBuy: (item) => {
+        this.placingYaw = 0;
+        store.getState().setPlacingBuy(item);
+      },
+      buyQuote: (item) => sim.buyQuote(item),
+      // Yes: pay and put it down. A comfort is one of a kind, so the shelf lets go of it;
+      // a desk or a printer stays in hand for the next one.
+      confirmBuy: () =>
+        act(() => {
+          const ask = store.getState().buyConfirm;
+          if (!ask) return;
+          const item = { kind: ask.kind, id: ask.id };
+          const ok = sim.buyAt(item, ask.x, ask.y, ask.yaw);
+          store.getState().setBuyConfirm(null);
+          if (!ok || item.kind === 'amenity') store.getState().setPlacingBuy(null);
+        }),
+      cancelBuy: () => store.getState().setBuyConfirm(null),
+      treatDrink: (memberId, amenityId) => act(() => sim.treatDrink(memberId, amenityId)),
       devCommand: (line) => runDevCommand(sim, line).lines,
       // A preference, not an action on the run: it goes straight to the store and storage.
       setLocale: (locale) => applyLocale(locale),
@@ -234,6 +264,25 @@ export class Game {
   private clickRoom(clientX: number, clientY: number) {
     const state = store.getState();
     if (!state.started || state.gameOver) return;
+    // **Only in Build mode.** Outside it a click on a station means "show me this station" —
+    // the Learning Station opens its courses — and a click that sometimes lifts the bench
+    // instead would be a guess.
+    if (!state.buildMode) {
+      const hit = this.scene.pick(clientX, clientY, this.view.pickables);
+      if (hit && STATION_MAP[hit]?.type === 'learning') this.ui.openTraining();
+      // A tea maker, a coffee machine, a fridge: send somebody for one (§7b).
+      else if (hit && amenityDef(hit)?.use?.kind === 'drink') this.ui.openTreat(hit);
+      return;
+    }
+    // Placing something from the shelves: a legal tile asks "buy it?", nothing is paid yet.
+    if (state.placingBuy) {
+      if (state.buyConfirm) return;
+      const tile = this.scene.pickTile(clientX, clientY);
+      if (tile && this.sim.canPlaceNew(state.placingBuy, tile.x, tile.y)) {
+        store.getState().setBuyConfirm({ ...state.placingBuy, x: tile.x, y: tile.y, yaw: this.placingYaw });
+      }
+      return;
+    }
     const hit = this.scene.pick(clientX, clientY, this.view.pickables);
 
     // Already holding something: a click on a legal tile puts it down there, and a click
@@ -256,6 +305,11 @@ export class Game {
     }
 
     if (hit && this.movable(hit)) store.getState().setMoving(hit);
+  }
+
+  /** The floor's size, for the click suite to aim at a tile the way a player would. */
+  gridSize(): { width: number; height: number } {
+    return { width: GRID.width, height: GRID.height };
   }
 
   /** Anything on the floor can be picked up: a station, or a floor-standing comfort you own. */
@@ -302,6 +356,13 @@ export class Game {
         event.preventDefault();
         store.getState().togglePause();
       }
+      // Placing from the shelves: R turns the preview; Escape is the UI's (it unwinds the
+      // question, then the item, then Build mode itself).
+      if (store.getState().placingBuy && (event.key === 'r' || event.key === 'R')) {
+        event.preventDefault();
+        this.placingYaw = (this.placingYaw + 1) % 4;
+        return;
+      }
       // Rearranging: turn what you are holding, or put it down and stop.
       if (store.getState().moving) {
         if (event.key === 'r' || event.key === 'R') {
@@ -318,7 +379,7 @@ export class Game {
       }
       if (event.key === '1') store.getState().setSpeed(1);
       if (event.key === '2') store.getState().setSpeed(2);
-      if (event.key === '3') store.getState().setSpeed(4);
+      if (event.key === '3') store.getState().setSpeed(3);
     });
   }
 
@@ -329,7 +390,9 @@ export class Game {
 
     const state = store.getState();
     if (state.started && !state.paused && !state.gameOver) {
-      this.sim.tick(dt, state.speed);
+      // Game minutes per real second, turned into the sim's own speed unit.
+      const minutes = TIME.playMinutesPerSecond[state.speed] ?? 1;
+      this.sim.tick(dt, (minutes / 60) * TIME.secondsPerHour);
       if (this.sim.dayRolled) {
         this.sim.dayRolled = false;
         this.saveRun();
@@ -341,6 +404,17 @@ export class Game {
     // Everything bought from the Shop stands in the room the moment it is paid for.
     this.view.setAmenities(state.amenities, state.amenityRev);
     this.view.setPlacing(state.moving);
+    // The Filament Shelf shows the stock, a spool a kilo.
+    this.view.setFilamentStock(state.filamentStock);
+    // What is being placed from the shelves, where the cursor is, and which way it faces.
+    const buying = state.buildMode ? state.placingBuy : null;
+    const aim = buying ? (state.buyConfirm ?? this.scene.pickTile(this.pointer.x, this.pointer.y)) : null;
+    this.view.setBuying(
+      buying,
+      aim,
+      state.buyConfirm?.yaw ?? this.placingYaw,
+      (x, y) => (buying ? this.sim.canPlaceNew(buying, x, y) : false),
+    );
     // The badge and the name go on the wall the moment the doors open.
     this.view.setSign(
       state.identity?.name ?? '',
@@ -360,13 +434,24 @@ export class Game {
 
   /** Floating HTML labels over the 3D scene — cheaper and crisper than 3D text. */
   private renderLabels() {
-    const runtime = store.getState().runtime;
+    const { runtime, buildMode } = store.getState();
+    // Only Build mode picks things up (see `clickRoom`), so only Build mode says so.
+    const moveHint = buildMode ? '<span>click to move · R turns it</span>' : '';
     const parts: string[] = [];
 
     // A name, and under it their own share of the stage they are on (§4d): the stage is
     // pooled work, so the bar is what they have put in against an even split. Gold at a
     // kickoff, where everybody's share is the meeting itself.
-    const personLabel = (id: string, name: string, share: number | null, kind: '' | 'meeting' | 'learning') => {
+    // Left of the name, their primary role's icon in its wing's colour (design §3.1); under
+    // it, a thin mood bar that goes amber and then red as the day wears them down.
+    const personLabel = (
+      id: string,
+      name: string,
+      share: number | null,
+      kind: '' | 'meeting' | 'learning',
+      wing: ProjectCategory,
+      mood: number | null,
+    ) => {
       const world = this.view.personWorld(id);
       if (!world) return;
       const p = this.scene.project(world);
@@ -374,7 +459,10 @@ export class Game {
         share === null
           ? ''
           : `<span class="share ${kind}"><i style="width:${Math.round(share * 100)}%"></i></span>`;
-      parts.push(`<div class="label" style="left:${p.x}px;top:${p.y}px">${name}${bar}</div>`);
+      const tone = mood === null ? '' : mood < 35 ? 'bad' : mood < 55 ? 'warn' : '';
+      const moodBar = mood === null ? '' : `<span class="mood ${tone}"><i style="width:${Math.round(mood)}%"></i></span>`;
+      const badge = `<span class="wing" style="color:${CATEGORY_PROFILES[wing].accent}">${icon(CATEGORY_ICON[wing])}</span>`;
+      parts.push(`<div class="label" style="left:${p.x}px;top:${p.y}px"><span class="who">${badge}${name}</span>${moodBar}${bar}</div>`);
     };
 
     const atKickoff = (projectId: string | null) =>
@@ -386,15 +474,15 @@ export class Game {
       // the Learning Station — a bar on somebody walking to lunch says nothing.
       if (member.training && member.activity === 'working') {
         const done = 1 - member.training.hoursLeft / Math.max(1, member.training.total);
-        personLabel(member.id, member.name, Math.max(0, Math.min(1, done)), 'learning');
+        personLabel(member.id, member.name, Math.max(0, Math.min(1, done)), 'learning', member.primary, member.mood);
       } else {
-        personLabel(member.id, member.name, member.share, atKickoff(member.team) ? 'meeting' : '');
+        personLabel(member.id, member.name, member.share, atKickoff(member.team) ? 'meeting' : '', member.primary, member.mood);
       }
     }
     if (runtime.player?.present) {
       // Your own name if you gave one — the one person in the room the player picked.
       const you = store.getState().identity?.player || t('ui.you');
-      personLabel('player', you.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!), runtime.player.share, atKickoff(runtime.player.project) ? 'meeting' : '');
+      personLabel('player', you.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!), runtime.player.share, atKickoff(runtime.player.project) ? 'meeting' : '', runtime.player.primary, null);
     }
 
     // Machines that are doing something say so; everything else only speaks when pointed at.
@@ -405,7 +493,7 @@ export class Game {
       let tone = '';
       if (machine.current) {
         const left = machine.current.hoursRequired - machine.current.progress;
-        text = `${machine.current.partName} · ${left.toFixed(1)}h left`;
+        text = `${machine.current.partName} · ${span(left)}`;
         if (machine.risk > 0.3) tone = 'warn';
       }
       if (machine.consumableMax > 0 && machine.consumable <= 0) {
@@ -427,7 +515,7 @@ export class Game {
           const p = this.scene.project(world);
           parts.push(
             `<div class="label label--station" style="left:${p.x}px;top:${p.y}px">
-              <b>${comfort.name}</b><span>click to move · R turns it</span>
+              <b>${comfort.name}</b>${moveHint}
             </div>`,
           );
         }
@@ -447,7 +535,7 @@ export class Game {
         parts.push(
           `<div class="label label--station" style="left:${p.x}px;top:${p.y}px">
             <b>${station.label}</b>${detail ? `<span>${detail}</span>` : ''}
-            <span>click to move · R turns it</span>
+            ${moveHint}
           </div>`,
         );
       }

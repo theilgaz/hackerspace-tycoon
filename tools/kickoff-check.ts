@@ -18,7 +18,7 @@ import { STATION_MAP } from '@/machines/layout';
 rng.reseed(3);
 store.setState({
   difficulty: 'easy',
-  cash: DIFFICULTY_MAP.easy.startCash,
+  cash: DIFFICULTY_MAP.normal.startCash,
   log: [],
   era: 1,
   backlog: [],

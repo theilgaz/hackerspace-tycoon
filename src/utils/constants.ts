@@ -1,4 +1,4 @@
-import type { MachineType, MemberData, SkillKey, Skills, StageDef, StageKey, TraitKey } from '@/game/types';
+import type { LegacySkillKey, MachineType, MemberData, Skills, StageDef, StageKey, Tag, TraitKey, ProjectTier } from '@/game/types';
 
 // ---------------------------------------------------------------------------
 // BALANCE CONSTANTS — starting values for the open questions in CLAUDE.md §13.
@@ -7,10 +7,23 @@ import type { MachineType, MemberData, SkillKey, Skills, StageDef, StageKey, Tra
 // ---------------------------------------------------------------------------
 
 export const TIME = {
-  /** Real seconds per sim-hour at 1x speed. */
+  /**
+   * The sim's own unit: `tick(dtReal, speed)` advances `dtReal × speed / secondsPerHour`
+   * sim-hours. Harnesses drive the sim with it directly and are tuned to it, so it stays;
+   * how fast the game runs **on screen** is `playMinutesPerSecond` below.
+   */
   secondsPerHour: 2.5,
+  /**
+   * On screen, the clock is a clock: at 1× one game minute passes each real second, 17:10
+   * then 17:11 then 17:12. **2× is five times that and 3× thirty times** — the labels are
+   * the gears, not the ratio. 1× is for watching the room, 2× for a working day, and 3× for
+   * getting through a night or a quiet week: the crew's nine hours pass in eighteen seconds.
+   * It was 1 / 4 / 8, and the top gear still took two minutes a day, so waiting for a print
+   * or a delivery meant sitting through it.
+   */
+  playMinutesPerSecond: { 1: 1, 2: 5, 3: 30 } as Record<number, number>,
   hoursPerDay: 24,
-  speeds: [1, 2, 4] as const,
+  speeds: [1, 2, 3] as const,
   /** Sim writes its snapshot to the store at this rate (CLAUDE.md §11). */
   snapshotInterval: 0.2,
 };
@@ -22,6 +35,8 @@ export const FILAMENT = {
   spoolGrams: 1000,
   spoolCost: 450,
   lowWarning: 200,
+  /** Spools a Filament Shelf holds — stock bought ahead, drawn on before buying more. */
+  shelfSpools: 16,
 };
 
 // --- People -----------------------------------------------------------------
@@ -59,10 +74,73 @@ export function isLunch(hour: number): boolean {
   return hour >= WORKDAY.lunchStart && hour < WORKDAY.lunchEnd;
 }
 
+/**
+ * Breaks at the comforts (§7b). People use what the space owns in their own time — a
+ * coffee on the way in, table tennis, the sofa at lunch. How long a go lasts is the
+ * comfort's own (`AmenityUse.hours`); these are the rules about choosing one.
+ */
+export const LEISURE = {
+  /** How often somebody stops for a coffee or tea on the way in. */
+  arrivalChance: 0.4,
+  /**
+   * Sending somebody for a tea (§7b): mood gained once they have it. Once a person a day —
+   * a free mood button pressed on everybody every morning is not a decision.
+   */
+  treatMood: 14,
+  /** The coffee or tea on the way in, in sim-hours. */
+  arrivalHours: [0.2, 0.3] as [number, number],
+  /** How long somebody waits at an empty table-tennis table for a partner. */
+  partnerWait: 0.5,
+  /** Weight of joining somebody already waiting for a game, against 1 for anything else. */
+  partnerPull: 6,
+  /** Weight of starting at an empty table and hoping. */
+  emptyTable: 0.8,
+  /** The comfort they used last time, so the next break is usually somewhere else. */
+  sameAgain: 0.25,
+  /**
+   * Free time between two breaks, in sim-hours, spent wandering. Long on purpose: breaks
+   * are for people with nothing on, and even they should mostly be looking for something.
+   */
+  between: 2.5,
+};
+
+/**
+ * Print orders (§5): paid jobs that arrive in the Machines panel. A few at a time, a
+ * couple of days to say yes, and the due date is counted from the day you accept.
+ */
+export const ORDERS = {
+  /** Most offers on the board at once. */
+  maxOffers: 3,
+  /** Chance a morning brings a new one, while there is room on the board. */
+  newPerDay: 0.55,
+  /** Days an offer waits for an answer. */
+  offerDays: 3,
+  /** Reputation lost when an order misses its date and the client walks. */
+  missedRep: 40,
+};
+
+/**
+ * Hours outside nine to six (§3d). The day is still nine to six for everybody; these are
+ * the exceptions — somebody on a build staying on into the evening, or opening up at six.
+ */
+export const HOURS_OFF = {
+  /** Chance a day that somebody on a crew stays on late. */
+  late: 0.05,
+  /** The same for a Night Owl — the one trait this was waiting for. */
+  lateOwl: 0.45,
+  /** When they finally go home: somewhere between these hours. Midnight at the latest. */
+  lateFrom: 20,
+  lateUntil: 23.9,
+  /** Chance somebody on a crew is in at six. Rare. */
+  early: 0.02,
+  earlyAt: 6,
+};
+
 export const MEMBER = {
-  /** Tiles per sim-hour. Tuned so a cross-garage walk reads on screen (~1s at 1x)
-   * without eating the visit: at 2.6 it consumed 80% of every volunteer's day. */
-  walkSpeed: 22,
+  /** Tiles per sim-hour. At 2.6 it consumed 80% of every volunteer's day. Since the clock
+   * runs a game minute a second at 1× (`TIME.playMinutesPerSecond`), 60 is a tile a second
+   * on screen — a walk — and a small share of the day in the sim (`npm run time-budget`). */
+  walkSpeed: 60,
   /** Work units produced per sim-hour at skill 1, mood 50, full energy. */
   baseWorkRate: 1.0,
   /** Each skill level above 1 adds this much rate. */
@@ -206,7 +284,7 @@ export const STAGES: StageDef[] = [
   {
     key: 'cad',
     label: 'CAD',
-    skill: 'cad',
+    skill: 'mechanical',
     work: 70,
     optional: false,
     appeal: 0.7,
@@ -251,7 +329,7 @@ export const STAGES: StageDef[] = [
   {
     key: 'iterate',
     label: 'Iterate',
-    skill: 'cad',
+    skill: 'mechanical',
     work: 40,
     optional: false,
     appeal: 0.25,
@@ -260,7 +338,7 @@ export const STAGES: StageDef[] = [
   {
     key: 'release',
     label: 'Release',
-    skill: 'docs',
+    skill: 'software',
     work: 30,
     optional: false,
     appeal: 0.1,
@@ -315,7 +393,7 @@ export const PLAYER = {
   startHour: 6,
   endHour: 23,
   dayHours: 17,
-  walkSpeed: 22,
+  walkSpeed: 11,
 };
 
 /**
@@ -332,6 +410,7 @@ export const VERB_HOURS: Record<string, number> = {
   order: 1,
   expedite: 1,
   filament: 0.5,
+  maintain: 1,
   hire: 1,
 };
 
@@ -460,8 +539,8 @@ export const SHELVE = {
 export const SOURCING = {
   /** Expediting costs this multiple of the remaining order value... */
   expediteCostRatio: 0.8,
-  /** ...and cuts the remaining wait by this much. */
-  expediteFactor: 0.45,
+  /** ...and halves the remaining wait. Once per order: a second press was a slider, not a choice. */
+  expediteFactor: 0.5,
 };
 
 // --- Content: the roster ----------------------------------------------------
@@ -472,7 +551,11 @@ export const SOURCING = {
  * system — never mattered. The frame plate is the one that hurts to lose.
  */
 
-function skills(partial: Partial<Record<SkillKey, number>>): Record<SkillKey, number> {
+/**
+ * The roster is written in the six old skills, which read naturally for a person ("CAD 4,
+ * welding 2"); `rolesFrom` turns them into the four roles once, when this module loads.
+ */
+function skills(partial: Partial<Record<LegacySkillKey, number>>): Skills {
   return {
     cad: 1,
     electronics: 1,
@@ -481,6 +564,25 @@ function skills(partial: Partial<Record<SkillKey, number>>): Record<SkillKey, nu
     software: 1,
     docs: 1,
     ...partial,
+  } as unknown as Skills;
+}
+
+/**
+ * Six skills into four roles (design §3.2). Software and Electronics carry over; Mechanical
+ * is the best of CAD, machining and welding. **Communications is derived from passion**: it
+ * was never a skill, only something people loved, so whoever loves radio or IoT counts as a
+ * communications hand one level under their best of electronics and software — and
+ * everybody else starts at nothing.
+ */
+export function rolesFrom(old: Partial<Record<LegacySkillKey, number>>, passions: Partial<Record<Tag, number>>): Skills {
+  const software = old.software ?? 0;
+  const electronics = old.electronics ?? 0;
+  const talks = Math.max(passions.radio ?? 0, passions.iot ?? 0) >= 0.5;
+  return {
+    software,
+    electronics,
+    mechanical: Math.max(old.cad ?? 0, old.machining ?? 0, old.welding ?? 0),
+    comms: talks ? Math.max(1, Math.max(electronics, software) - 1) : 0,
   };
 }
 
@@ -493,7 +595,7 @@ export const ROSTER: MemberData[] = [
   {
     id: 'safa',
     name: 'Safa',
-    skills: skills({ software: 4, electronics: 3, docs: 3 }),
+    skills: skills({ software: 5, electronics: 5, machining: 3, docs: 3 }),
     passions: { iot: 0.8, software: 0.7, civic: 0.4 },
     energy: 85,
     mood: 72,
@@ -505,7 +607,7 @@ export const ROSTER: MemberData[] = [
   {
     id: 'abdullah',
     name: 'Abdullah',
-    skills: skills({ software: 3, electronics: 3, docs: 3 }),
+    skills: skills({ software: 5, cad: 5, electronics: 3, docs: 3 }),
     passions: { radio: 0.7, software: 0.6, civic: 0.5 },
     energy: 82,
     mood: 70,
@@ -673,6 +775,11 @@ export const APPLICANTS: MemberData[] = [
   },
 ];
 
+// The roster is written in skills; the game plays in roles (design §3.2).
+for (const member of [...ROSTER, ...APPLICANTS]) {
+  member.skills = rolesFrom(member.skills as unknown as Record<LegacySkillKey, number>, member.passions);
+}
+
 /**
  * Deal the applicants onto the ladder's rungs in a given order — or a fresh shuffle when no
  * order is given — and return the order so a save can put it back. Mutates `repRequired`
@@ -734,12 +841,10 @@ export const RECRUIT = {
 
 /** A capable generalist — good enough to unblock anything, not good enough to do it all. */
 export const PLAYER_SKILLS: Skills = {
-  cad: 3,
-  electronics: 3,
-  machining: 2,
-  welding: 1,
   software: 3,
-  docs: 2,
+  electronics: 3,
+  comms: 2,
+  mechanical: 3,
 };
 
 export const TRAIT_LABEL: Record<TraitKey, string> = {
@@ -770,6 +875,21 @@ export const GHOST_DECAY = 0.82;
 // --- Designing a project (§4d) ----------------------------------------------
 
 /**
+ * How long a build of each size takes (§4) — multipliers on the catalogue's hand work,
+ * print hours and delivery wait, applied once in `planProject`. **A week of a build is
+ * mostly nights and weekends**: the crew works nine to six on weekdays, so measured in
+ * play a small build spent seven of its days closed and only one and a half being worked
+ * on. The catalogue keeps its proportions — a cyberdeck is still assembly-heavy and a
+ * drone still print-heavy — and these set the scale: small in a day or two, bigger builds
+ * in four to ten. `npm run project-times` holds every entry to it.
+ */
+export const TIER_PACE: Record<ProjectTier, { work: number; print: number; lead: number }> = {
+  small: { work: 0.26, print: 0.42, lead: 0.15 },
+  medium: { work: 0.9, print: 0.8, lead: 0.55 },
+  large: { work: 0.7, print: 0.44, lead: 0.45 },
+};
+
+/**
  * How the New Project wizard's decisions land. The three-star option on every axis is the
  * catalogue's own numbers, so these only describe the *difference* a choice makes.
  */
@@ -791,6 +911,26 @@ export const DESIGN = {
   starBom: { 1: 0.9, 3: 1, 5: 1.12 } as Record<1 | 3 | 5, number>,
   /** Skill level somebody on the crew needs for each star rating. One star needs nobody. */
   starSkill: { 1: 0, 3: 2, 5: 4 } as Record<1 | 3 | 5, number>,
+  /**
+   * **A price, not a lock** (design §5.4): each level the crew is short of what an option
+   * asks multiplies the work and the test risk by these. The ambitious player can reach;
+   * the trained crew pays nothing.
+   */
+  shortWork: 1.3,
+  shortRisk: 1.35,
+  /** The quality ceiling a crew's best level sets: `ceilingBase + ceilingPerLevel × level`. */
+  ceilingBase: 0.35,
+  ceilingPerLevel: 0.13,
+  /**
+   * The technology a crew brings (design §5.4), by its best level — chosen by nobody. Tier 0
+   * up to level 1, tier 1 at 2-3, tier 2 at 4-5.
+   */
+  techQuality: [-0.06, 0, 0.06],
+  techRisk: [1.15, 1, 0.85],
+  techWork: [1.1, 1, 0.92],
+  /** What each client wish met at release adds to the pay and the hype. */
+  wishPay: 0.15,
+  wishHype: 0.1,
   /**
    * The kickoff is a meeting, not a stage of work: an afternoon round the table, not the
    * day and a half the old Concept stage took. That mattered less when every project could
@@ -867,6 +1007,12 @@ export const SEATS: Partial<Record<MachineType, number>> = {
  */
 /** What something bought for the room fetches when it is sold again. */
 export const RESALE = { share: 0.5 };
+
+/**
+ * Days before an awards night on which the log says how the race stands. Close together at
+ * the end on purpose: fifty days out is a reminder, five days out is a deadline.
+ */
+export const AWARDS_COUNTDOWN = [50, 30, 20, 10, 5, 1];
 
 /** Standing jobs (§3b). */
 export const ROLES = {

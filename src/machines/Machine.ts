@@ -79,6 +79,12 @@ export class Machine {
     this.queue.splice(target, 0, job);
   }
 
+  /** Drop every job of one project, the one on the bed included — a cancelled order. */
+  dropProject(projectId: string) {
+    this.queue = this.queue.filter((job) => job.projectId !== projectId);
+    if (this.current?.projectId === projectId) this.current = null;
+  }
+
   cancelJob(jobId: string): Job | null {
     const index = this.queue.findIndex((j) => j.id === jobId);
     if (index < 0) return null;

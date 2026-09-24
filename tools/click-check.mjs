@@ -179,6 +179,20 @@ async function ensureWorkInFlight() {
   `);
 }
 
+/**
+ * The run opens with two people now, so after one build is running there is nobody free to
+ * crew the next — and a wizard check fails on its precondition, not its feature. Take on
+ * applicants (paying their fee from a top-up, as the dev console does) until a few are free.
+ */
+async function ensureFreeHands(n = 3) {
+  await evaluate(`(() => { const sim = __game.sim;
+    for (const id of [...__store.getState().applicants]) {
+      if (sim.members.filter((m) => !m.team && !m.training).length >= ${n}) break;
+      __store.getState().earn(sim.hireCost(id)); sim.hire(id);
+    }
+    sim.publish(); })()`);
+}
+
 const results = [];
 /**
  * Every check runs with the clock stopped unless it says `{ live: true }`.
@@ -250,16 +264,35 @@ await check('a first run is shown round, and the tour gets out of the way', asyn
 }, { live: true });
 
 // Walk the New Project wizard the way a player does: genre, brief, crew, design, review.
+/** Tick people until the crew is as big as the size says — nobody is picked for you now. */
+async function pickCrew() {
+  for (let i = 0; i < 10; i += 1) {
+    const [picked, size] = ((await evaluate(`document.querySelector('#modal [data-crew]')?.dataset.crew`)) ?? '0/0')
+      .split('/')
+      .map(Number);
+    if (picked >= size) return;
+    if (!(await click('#modal .crew-pick[aria-pressed="false"]:not([disabled])'))) {
+      // Fewer free people than the size: take a size that fits.
+      await click('#modal [data-action="np-seats"][data-value="1"]');
+    }
+  }
+}
+
 async function walkWizard({ start = true } = {}) {
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
+  await pickCrew();
   await click('#modal [data-action="np-next"]');
   await click('#modal [data-action="np-next"]');
-  if (start) await click('#modal [data-action="np-start"]:not([disabled])');
+  if (start) {
+    // Every build is named now; the suggestion is a name like any other.
+    await click('#modal [data-action="np-name-suggest"]');
+    await click('#modal [data-action="np-start"]:not([disabled])');
+  }
 }
 await click('[data-action="new-open"]');
 await walkWizard();
-await evaluate(`window.__store.getState().setSpeed(4)`);
+await evaluate(`window.__store.getState().setSpeed(3)`);
 await sleep(500);
 
 await check('the wizard started a project', async () => (await evaluate(`__game.sim.projects.length`)) > 0);
@@ -268,6 +301,7 @@ await check('New Project opens while a project runs', async () => {
   return (await evaluate(`document.querySelectorAll('#modal .modal').length`)) === 1;
 });
 await check('a second project can be started with one already running', async () => {
+  await ensureFreeHands();
   await walkWizard();
   return (await evaluate(`__game.sim.projects.length`)) >= 2;
 });
@@ -282,6 +316,7 @@ await check('the wizard keeps one size across every step', async () => {
   await click('#modal [data-action="np-genre"]:not([disabled])');
   sizes.push(await box());
   await click('#modal [data-action="np-brief"]:not([disabled])');
+  await pickCrew();
   sizes.push(await box());
   await click('#modal [data-action="np-next"]');
   sizes.push(await box());
@@ -293,9 +328,11 @@ await check('the wizard keeps one size across every step', async () => {
 });
 
 await check('a design choice is a press, and it sticks', async () => {
+  await ensureFreeHands();
   await openWizard();
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
+  await pickCrew();
   await click('#modal [data-action="np-next"]');
   // One star is always available, whatever the crew can do, so it is the press to test.
   const target = `#modal [data-action="np-option"][data-id="0"]:not([disabled])`;
@@ -311,7 +348,7 @@ await check('a design choice is a press, and it sticks', async () => {
   return pressed === 'true' && others === 1;
 });
 
-await check('the crew step arrives with the best people already picked', async () => {
+await check('the crew step starts empty, and only a full crew moves on', async () => {
   // The projects started above can take everybody, and then there is nobody to suggest —
   // which is correct and tests nothing. Free one person first.
   await evaluate(`(() => { const sim = __game.sim;
@@ -323,21 +360,41 @@ await check('the crew step arrives with the best people already picked', async (
   await openWizard();
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
-  // The crew step comes straight after the brief now. The header states the count, and the toggles carry it — check both agree, so a
-  // suggestion that ticks buttons without reaching the start would still fail here.
-  // Read from a data attribute, not the words: the suite runs in Turkish too.
-  const label = await evaluate(`document.querySelector('#modal [data-crew]')?.dataset.crew`);
-  const pressed = await evaluate(
-    `document.querySelectorAll('#modal .crew-pick[aria-pressed="true"]').length`,
-  );
-  const free = await evaluate(`__game.sim.members.filter((m) => !m.team).length`);
-  const [picked, size] = (label ?? '0/0').split('/').map(Number);
-  const want = Math.min(size, free);
-  if (!(pressed === want && picked === want && want > 0)) {
-    console.log(`      picked ${picked}, pressed ${pressed}, wanted ${want} (seats ${size}, free ${free})`);
-  }
-  return pressed === want && picked === want && want > 0;
+  // Nobody is ticked for you (an auto-picked crew the player then edited ran builds with
+  // people nobody chose), and Next stays shut until the crew is as big as the size.
+  const pressed = await evaluate(`document.querySelectorAll('#modal .crew-pick[aria-pressed="true"]').length`);
+  const shutEmpty = await evaluate(`document.querySelector('#modal [data-action="np-next"]')?.disabled === true`);
+  await pickCrew();
+  const openFull = await evaluate(`document.querySelector('#modal [data-action="np-next"]')?.disabled === false`);
+  const ok = pressed === 0 && shutEmpty && openFull;
+  if (!ok) console.log(`      pre-picked ${pressed}, next shut while empty ${shutEmpty}, open once full ${openFull}`);
+  return ok;
 });
+
+await check('typing a build\'s name keeps the focus while the panel redraws', async () => {
+  // The review redraws several times a second and its Start button carries the name, so the
+  // input used to be replaced under the caret on every keystroke. Typed with real key
+  // events while the clock runs — the redraw is the whole point.
+  await evaluate(`__store.getState().setSpeed(4)`);
+  await evaluate(`__store.getState().setPaused(false)`);
+  await openWizard();
+  await click('#modal [data-action="np-genre"]:not([disabled])');
+  await click('#modal [data-action="np-brief"]:not([disabled])');
+  await pickCrew();
+  await click('#modal [data-action="np-next"]');
+  await click('#modal [data-action="np-next"]');
+  await click('#np-name');
+  for (const ch of 'Neon Kestrel') {
+    await send('Input.insertText', { text: ch });
+    await sleep(90);
+  }
+  const value = await evaluate(`document.querySelector('#np-name')?.value`);
+  const focused = await evaluate(`document.activeElement?.id`);
+  await click('#modal header [data-action="jobs-close"]');
+  const ok = value === 'Neon Kestrel' && focused === 'np-name';
+  if (!ok) console.log(`      value "${value}", focused ${focused}`);
+  return ok;
+}, { live: true });
 
 await check('a design the overdraft cannot pay for cannot be started', async () => {
   const before = await evaluate(`__store.getState().cash`);
@@ -348,6 +405,7 @@ await check('a design the overdraft cannot pay for cannot be started', async () 
   await openWizard();
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
+  await pickCrew();
   await click('#modal [data-action="np-next"]');
   const lockedFive = await evaluate(`document.querySelectorAll('#modal [data-action="np-option"][data-id="2"]:not([disabled])').length`);
   await click('#modal [data-action="np-next"]');
@@ -363,6 +421,7 @@ await check('breadcrumb jumps back to a completed step', async () => {
   await openWizard();
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
+  await pickCrew();
   await click('#modal [data-action="np-next"]');
   const onCrew = await evaluate(`document.querySelector('#modal .step.now')?.dataset.step`);
   // Jump straight past the crew and brief steps back to the first one.
@@ -509,17 +568,96 @@ await check('People: passing on a candidate removes them, and the roster fits wi
   return ok;
 });
 
-await check('Build: a workstation bought is standing in the room, with a picture on its card', async () => {
+/**
+ * Build mode (§7b): picking from the shelves buys nothing; a tile click asks, and only
+ * yes pays. The tile is chosen the way a player would — a real press on the canvas over a
+ * tile the sim says is legal.
+ */
+async function enterBuild() {
+  if (!(await evaluate(`__store.getState().buildMode`))) await openPanel('build-open');
+}
+async function leaveBuild() {
+  if (await evaluate(`__store.getState().buildMode`)) await click('#buildpanel [data-action="build-exit"]');
+}
+/** Press on the centre of a floor tile, through the game's own camera. */
+async function clickTile(x, y) {
+  const pt = JSON.parse(await evaluate(`(() => {
+    const V = __game.scene.camera.position.constructor;
+    const grid = __game.gridSize();
+    return JSON.stringify(__game.scene.project(new V(${x} - (grid.width - 1) / 2, 0, ${y} - (grid.height - 1) / 2)));
+  })()`));
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pt.x, y: pt.y });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+  await sleep(80);
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+  await sleep(200);
+}
+async function legalTile(kind, id) {
+  return JSON.parse(await evaluate(`(() => {
+    const g = __game.gridSize();
+    for (let y = 0; y < g.height; y++) for (let x = 0; x < g.width; x++)
+      if (__game.sim.canPlaceNew({ kind: '${kind}', id: '${id}' }, x, y)) return JSON.stringify({ x, y });
+    return 'null';
+  })()`));
+}
+
+await check('Build: picking a desk buys nothing; the tile asks, and yes puts it there', async () => {
   await evaluate(`__store.getState().earn(20000)`);
   const before = await evaluate(`__store.getState().runtime.seats['cad-desk'] ?? 0`);
-  await openPanel('build-open');
-  const pictures = await evaluate(`document.querySelectorAll('#modal .build-thumb img').length`);
-  await click('#modal [data-action="buy-furniture"][data-value="software-station"]:not([disabled])');
+  await enterBuild();
+  const pictures = await evaluate(`document.querySelectorAll('#buildpanel .build-thumb img').length`);
+  await click('#buildpanel [data-action="build-shelf"][data-value="work"]');
+  await click('#buildpanel [data-action="build-pick"][data-value="furniture:software-station"]:not([disabled])');
+  const cashPicked = await evaluate(`__store.getState().cash`);
+  const tile = await legalTile('furniture', 'software-station');
+  if (tile) await clickTile(tile.x, tile.y);
+  const asked = await evaluate(`!!document.querySelector('#buyconfirm [data-action="buy-yes"]')`);
+  const cashAsked = await evaluate(`__store.getState().cash`);
+  await click('#buyconfirm [data-action="buy-yes"]');
   await sleep(300);
   const after = await evaluate(`__store.getState().runtime.seats['cad-desk'] ?? 0`);
-  await click('#modal header [data-action="jobs-close"]');
-  const ok = after === before + 1 && pictures >= 5;
-  if (!ok) console.log(`      seats ${before} → ${after}, pictures ${pictures}`);
+  const landed = await evaluate(`Object.values(__store.getState().stationPlacements).some((p) => p.x === ${tile?.x ?? -1} && p.y === ${tile?.y ?? -1})`);
+  await leaveBuild();
+  const ok = after === before + 1 && pictures >= 5 && asked && cashAsked === cashPicked && landed;
+  if (!ok) console.log(`      seats ${before} → ${after}, pictures ${pictures}, asked ${asked}, cash moved before yes ${cashAsked !== cashPicked}, landed ${landed}`);
+  return ok;
+});
+
+await check('Build: saying no buys nothing, and outside Build nothing in the room lifts', async () => {
+  await enterBuild();
+  await click('#buildpanel [data-action="build-shelf"][data-value="decor"]');
+  await click('#buildpanel [data-action="build-pick"][data-value="amenity:rubber-duck"]:not([disabled])');
+  const cash = await evaluate(`__store.getState().cash`);
+  const tile = await legalTile('amenity', 'rubber-duck');
+  if (tile) await clickTile(tile.x, tile.y);
+  await click('#buyconfirm [data-action="buy-no"]');
+  const noDuck = await evaluate(`!__store.getState().amenities.includes('rubber-duck') && __store.getState().cash === ${cash}`);
+  await leaveBuild();
+  // A press on a bench outside Build mode must not pick it up. Aimed at a station that is
+  // actually standing in the room — a fresh run has no saved placements to read one from,
+  // and a check with nothing to click passed while the rule was broken.
+  const pt = JSON.parse(await evaluate(`(() => {
+    // One the canvas is actually on top at — a station under the bench panel takes no click.
+    // Aimed at its top, not its footprint: a ray to the floor under a desk goes between the
+    // legs and hits nothing, which is a check that clicks and never touches anything.
+    for (const node of __game.view.pickables) {
+      const p = __game.scene.project(node.position.clone().setY(0.6));
+      if (document.elementFromPoint(p.x, p.y)?.tagName !== 'CANVAS') continue;
+      if (__game.scene.pick(p.x, p.y, __game.view.pickables)) return JSON.stringify(p);
+    }
+    return 'null';
+  })()`));
+  if (pt) {
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pt.x, y: pt.y });
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+    await sleep(80);
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+    await sleep(200);
+  }
+  const lifted = await evaluate(`__store.getState().moving`);
+  await evaluate(`__store.getState().setMoving(null)`);
+  const ok = noDuck && !!pt && !lifted;
+  if (!ok) console.log(`      no duck ${noDuck}, aimed ${!!pt}, lifted outside Build ${lifted}`);
   return ok;
 });
 
@@ -692,22 +830,39 @@ await check('People: pressing a skill sends somebody on a course, and the bench 
     for (const m of __game.sim.members) if (m.team) __game.sim.releaseMember(m.team, m.id); __game.sim.publish(); })()`);
   await openPanel('people-open');
   const cell = await evaluate(`document.querySelector('#modal .skill-btn:not([disabled])')?.dataset.id ?? null`);
+  const skill = await evaluate(`document.querySelector('#modal .skill-btn:not([disabled])')?.dataset.value ?? null`);
+  // The cell opens the Learning Station with this person and skill picked — it does not
+  // start anything by itself. A second person for the other chair can be added there.
   await click('#modal .skill-btn:not([disabled])');
-  const onCourse = await evaluate(`__game.sim.members.some((m) => m.id === ${JSON.stringify(cell)} && m.training)`);
+  const opened = await evaluate(`!!document.querySelector('#modal .train-row.on[data-id=${JSON.stringify(cell)}]')`);
+  const notYet = await evaluate(`!__game.sim.members.some((m) => m.id === ${JSON.stringify(cell)} && m.training)`);
+  // The second chair: somebody else free for the same skill *and level* — a course is one
+  // level, and a pick in another level's group switches the course rather than adding to it.
+  const second = await evaluate(`document.querySelector('#modal .train-group--on .train-row:not(.on):not([disabled])')?.dataset.id ?? null`);
+  if (second) await click(`#modal .train-row[data-id="${second}"]`);
+  await click('#modal [data-action="train-start"]:not([disabled])');
+  const onCourse = await evaluate(`__game.sim.members.filter((m) => m.training?.skill === ${JSON.stringify(skill)}).length`);
   await click('#modal header [data-action="jobs-close"]');
   await sleep(300);
   const bench = await evaluate(`document.querySelectorAll('.bench-training .trainee').length`);
-  if (!(cell && onCourse && bench > 0)) console.log(`      cell ${cell}, on a course ${onCourse}, bench rows ${bench}`);
-  return Boolean(cell) && onCourse && bench > 0;
+  const ok = Boolean(cell) && opened && notYet && onCourse >= (second ? 2 : 1) && bench > 0;
+  if (!ok) console.log(`      cell ${cell}, opened ${opened}, waited ${notYet}, on the course ${onCourse} (second ${second}), bench rows ${bench}`);
+  return ok;
 });
 
 await check('Build: buying a printer puts one on the floor', async () => {
   await evaluate(`(() => { __store.getState().earn(60000); __game.sim.publish(); })()`);
-  await openPanel('build-open');
-  await click('#modal [data-action="build-tab"][data-value="printers"]');
+  await enterBuild();
+  await click('#buildpanel [data-action="build-shelf"][data-value="printers"]');
   const before = await evaluate(`__game.sim.machines.filter((m) => m.type === 'fdm').length`);
   // The A1 is on the shelf too now; the P2S is the one that holds more than a kilo.
-  await click('#modal [data-action="buy-printer"][data-value="p2s"]:not([disabled])');
+  await click('#buildpanel [data-action="build-pick"][data-value="printer:p2s"]:not([disabled])');
+  const held = await evaluate(`JSON.stringify(__store.getState().placingBuy)`);
+  const tile = await legalTile('printer', 'p2s');
+  if (tile) await clickTile(tile.x, tile.y);
+  const asked = await evaluate(`!!document.querySelector('#buyconfirm [data-action="buy-yes"]')`);
+  await click('#buyconfirm [data-action="buy-yes"]');
+  await leaveBuild();
   const after = JSON.parse(
     await evaluate(`(() => { const fdm = __game.sim.machines.filter((m) => m.type === 'fdm');
       return JSON.stringify({ n: fdm.length, cap: Math.max(...fdm.map((m) => m.consumableMax)),
@@ -715,14 +870,16 @@ await check('Build: buying a printer puts one on the floor', async () => {
   );
   // It arrives, it arrives full, and it holds a full four-spool load.
   const ok = after.n === before + 1 && after.cap >= 4000 && after.full;
-  if (!ok) console.log(`      printers ${before} -> ${after.n}, capacity ${after.cap}, full ${after.full}`);
+  if (!ok) console.log(`      printers ${before} -> ${after.n}, capacity ${after.cap}, full ${after.full}, held ${held}, tile ${JSON.stringify(tile)}, asked ${asked}`);
   return ok;
 });
 
 await check('a scrolled panel stays where it was while the sim redraws it', async () => {
-  await evaluate(`window.__store.getState().setSpeed(4)`);
-  await openPanel('build-open');
-  await click('#modal [data-action="build-tab"][data-value="decor"]');
+  await evaluate(`window.__store.getState().setSpeed(3)`);
+  // The Projects panel scrolls once there is a history in it; Build is not a panel now.
+  await evaluate(`(() => { for (let i = 0; i < 40; i++) __store.getState().pushLog('filler ' + i, 'info'); })()`);
+  await openPanel('machines-open');
+  await evaluate(`(() => { const b = document.querySelector('#modal .modal-body'); b.style.maxHeight = '120px'; })()`);
   await evaluate(`document.querySelector('#modal .modal-body').scrollTop = 400`);
   const before = await evaluate(`document.querySelector('#modal .modal-body').scrollTop`);
   await sleep(1500);
@@ -735,7 +892,7 @@ await check('a scrolled panel stays where it was while the sim redraws it', asyn
 await check('the move strip sells what you are holding, and says what it fetches', async () => {
   const id = await evaluate(`(() => { __store.getState().earn(20000); __game.sim.buyFurniture('assembly-table');
     const s = [...Object.keys(__store.getState().stationPlacements)].find((k) => k.startsWith('assembly-table'));
-    __store.getState().setMoving(s); __game.sim.publish(); return s; })()`);
+    __store.getState().setBuildMode(true); __store.getState().setMoving(s); __game.sim.publish(); return s; })()`);
   await sleep(300);
   const label = await evaluate(`document.querySelector('[data-action="sell-held"]')?.textContent.trim() ?? ''`);
   const cash = await evaluate(`__store.getState().cash`);
@@ -744,6 +901,7 @@ await check('the move strip sells what you are holding, and says what it fetches
   const after = await evaluate(`__store.getState().cash`);
   const ok = Boolean(id) && /₺/.test(label) && after > cash && gone;
   if (!ok) console.log(`      id ${id}, label "${label}", cash ${cash} -> ${after}, gone ${gone}`);
+  await evaluate(`__store.getState().setBuildMode(false)`);
   return ok;
 });
 
@@ -829,7 +987,7 @@ await check('a run survives a reload', async () => {
 });
 
 await check('unchanged panels keep their DOM (build menu and top bar)', async () => {
-  await evaluate(`window.__store.getState().setSpeed(4)`);
+  await evaluate(`window.__store.getState().setSpeed(3)`);
   const churn = await evaluate(`
     new Promise((resolve) => {
       const watch = ['#bottombar', '#topbar .speeds'].map((sel) => document.querySelector(sel));

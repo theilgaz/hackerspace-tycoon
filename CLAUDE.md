@@ -60,7 +60,10 @@ crew they could never sit down with. None of that was fun, and all of it is gone
 
 Hours come from the working day, not a dice roll. The only randomness left is whether somebody
 turns up at all, which is where mood and the Ghost still live. **Everybody is in at nine and
-heads for the door at six — no exceptions, no overtime.** Only the owner stays later.
+heads for the door at six — with two rare exceptions** (`HOURS_OFF`): somebody on a build
+now and then stays on into the evening, up to midnight (5% a day, 45% for a **Night Owl** —
+the trait finally does something), and once in a while somebody opens up at six. Only people
+with a build to get on with; the owner is in from six anyway. Nobody is still in at midnight.
 
 **A bounty therefore buys effort, not hours**: the crew on a bountied stage works it 30% harder
 (`BOUNTY.rateBonus`), on top of pulling volunteers and easing an ask. It used to buy overtime
@@ -198,13 +201,22 @@ run's training into the next).
 - **Brief** — the catalogue entry: what somebody wants built, the crew size it was
   *scoped for*, and its price before quality and the market. The catalogue is still the
   content (§4b); it is no longer the plan.
-- **Design** — three decisions per genre, each a ★ / ★★★ / ★★★★★ option. Software asks
-  *Tool* (Notepad / VS Code / Full IDE), *UI Design* (Template / Custom / Design system) and
-  *Architecture* (One big script / Framework / Services + CI); hardware genres draw from
-  Circuit, Firmware, Enclosure, Design tool, Material, Validation and Documentation
-  (`CATEGORY_AXES`). Every card spells out what it changes — quality, market appeal, work,
-  test risk, parts, printing, delivery, licence cost — and turns red where it costs you.
-- **Crew** — the size, from **1 / 2 / 3 / 4 / 5 / 10**, and who is asked. Size is capped by
+- **Design** — a plan, not a menu (design doc §5.4). **Approach** (Fast / Balanced /
+  Ambitious) on every wing, then one **scope** axis in the wing's own language: software
+  picks **platforms** (web always, Android / iOS / Desktop as toggles — a bitmask, the one
+  multi-select axis) and **distribution** (On-prem / Cloud / Hybrid); electronics picks
+  **power**, comms **range**, mechanical **drive** (`CATEGORY_AXES`). **Technology is not
+  a choice**: it is derived from the crew's best level in the wing (`techTier`,
+  `TECH_LABELS`), so training is how the stack gets better. **A reach has a price instead
+  of a lock**: an option above the crew's level (`shortBy`) is still pickable, but each
+  missing level costs `DESIGN.shortWork` work and `shortRisk` test risk, and the crew's
+  level caps quality (`ceilingFor`, stored on the project and applied in
+  `refreshQuality`). Only a missing machine or the overdraft locks a card. Above the
+  cards: a **forecast strip** (days, stars with ceiling, pay, hype — `npForecast`), the
+  **client's wishes** (`wishesFor`: one or two of stars / days / a platform / a scope,
+  each met one paying `DESIGN.wishPay` more at ship), and three **presets** — Fastest,
+  Best, Most profitable (`presetDesign`) — which only fill the cards in.
+- **Crew** — the size, from **1 / 2 / 4 / 6 / 8 / 10**, and who is asked. Size is capped by
   the biggest table the space owns: five and ten need the Large Project Table.
 - **Review** — the plan worked out: forecast quality in stars, market demand, likely pay
   and reputation, hand work, machine time, parts, licences, test risk, and which table it
@@ -263,6 +275,15 @@ lease — is what limits how much of it you can buy.
 
 | | Seats | Price |
 |---|---|---|
+**Variants** (`FurnitureDef.seats / rate / fatigue / kickoff / testRisk`, drawn by `model`):
+the same jobs done differently, each with its cost. Pro Workstation (₺4,500) works 15% faster
+and tires less; Long Hacker Bench (₺3,900, two tiles) seats three at 92%; Pair Programming
+Desk (₺2,600) seats two at 85%; Soldering & Measurement Bench (₺5,200) assembles 20% faster
+and, while the space owns one, electronics, IoT, radio and retro builds fail their test a
+quarter less; Meeting Corner (₺3,600, two tiles) seats six and kicks off 35% faster.
+`furnitureOf(station)` says which piece a station is — the kit the garage came with and
+anything from before variants is the plain one of its kind.
+
 | Small Project Table | 4 | 900 |
 | Large Project Table (two tiles) | 10 | 4,800 |
 | Software Station | 1 | 1,800 |
@@ -407,13 +428,36 @@ skipping Simulation to save time is a real, tempting, punishable decision.
 
 | Tier | Length | Team | Typical work | Lead time |
 |---|---|---|---|---|
-| **small** | 1-5 days | 1-2 | 27-76 units | 0-3 days |
-| **medium** | 5-10 days | 2-3 | 102-188 units | 4-6 days |
-| **large** | 10-30 days | 4-8 | 208-500 units | 7-12 days |
+| **small** | 1-2 days | 1-2 | 11-30 units | none |
+| **medium** | 4-7 days | 2-3 | 100-190 units | 2-4 days |
+| **large** | 6-10 days | 4-8 | 200-440 units | 1-5 days |
 
 Every `ProjectDef` declares its `tier`, and **`npm run project-times` measures every entry
-against it** — best case, with a full team, every machine and parts ordered on day one. Treat a
+against it** — best case, with a full team, every machine and parts ordered at the pitch,
+counted as the day of the build it ships on (out the door the same evening is one day). Treat a
 `TOO LONG` row as a build failure, not a matter of taste.
+
+**The tier sets the scale, the catalogue the proportions** (`TIER_PACE`, applied once in
+`planProject`). The catalogue's work, print hours and lead times are multiplied per tier, so a
+cyberdeck is still assembly-heavy and a drone still print-heavy, but a small build ships in a
+day or two and a bigger one in four to ten. It was 1-5 / 5-10 / 10-30, and measured in play
+(`era-pace`'s *where a build's days go*) **a small build spent seven of its days closed** —
+nights and weekends — and one and a half being worked on; a week-long weekend build is not a
+weekend build. Two things worth knowing:
+
+- **In play is two to three times best case, and mostly because of the calendar.** The crew
+  works nine to six on weekdays, so a build needing twenty working hours spans a weekend
+  whenever it is pitched on a Thursday. Measured on normal after the change: small median 4
+  days (was 6), medium 16 (was 20), large 22 (was 29). The rest is hands — a crew of two is
+  not the best case's full team.
+- **`project-times` used to lose day one.** People taken on in the harness are not on that
+  day's rota, so every best case included a day of nobody in. It now pitches at nine on day
+  two, with the whole crew walking in.
+
+Shorter builds ship more of them: normal went from ~190 to ~290 ships in 220 days, but
+reputation only +14% (`REPEAT` caps the novelty) and the first awards night did not move.
+Easy is where it shows — about three times the field by day 220 — and is the first thing to
+look at if the pace is tuned again.
 
 The measurement earned its keep immediately: it showed that a project's length was essentially
 its **lead time plus two days**, not its work content. Nixie Clock had a 21-day lead and took
@@ -432,8 +476,12 @@ project, which was busywork: forgetting it never produced an interesting decisio
 at Assembly that had to be unpicked. Pitching now spends the money there and then, so the pitch
 screen states the cost and what it leaves you with — a pitch is a cash commitment, and the player
 has to see that before committing. The manual Order button survives as a recovery path for the
-one case that still matters: pitching something you cannot yet afford the parts for. Expediting
-a slow delivery is unchanged and still a real decision.
+one case that still matters: pitching something you cannot yet afford the parts for.
+
+**Expediting is one press, once per order, and it halves what is left** (`SOURCING.expediteFactor`,
+`ProjectData.expedited`): four days become two, five become three. It used to cut by 55% and
+could be pressed again, which made it a slider rather than a decision. Deliveries are shown
+in whole days, rounded up — "1.4d" is a spreadsheet, "2 days" is a delivery.
 
 This is what makes the catalog's electronics projects play differently from its mechanical ones:
 a cyberdeck is print-light and spends three weeks waiting on an order, while a drone is
@@ -441,17 +489,21 @@ print-heavy and arrives in twelve days. The bottleneck moves.
 
 ## 3c. Starting, and the other spaces (§11)
 
-**Difficulty is chosen at the start, and what it changes is your crew** — how many people are
-on the books on day one, how fast more get in touch, how hard the other spaces push, and how
-much cash you open with. The *rules* never change: a stage costs the same work, a print takes
-the same hours, a bill charges the same rent, so intuition and advice still carry across. On
-top of it the rivals gain a yearly ramp, so a long game keeps tightening instead of settling.
+**There is one setting, and it is the old hard one — with money.** The start screen used to
+offer easy, normal and hard; the choice went, because picking how much the game pushes back is
+picking to play less of it. Everybody opens with **two people, somebody new every 35 days,
+the rivals at x1.00 with hard's steep yearly ramp (0.13), and ₺50,000** — normal's cash, not
+hard's ten, so the thin start is thin in people rather than in money (`difficulty.ts`, one
+entry; the sim and harnesses still read it by key, and save v20 moves easy/hard runs onto it).
+The measurements below are of the three old settings and are history until `era-pace` is run
+on this one.
 
-| | Crew on day one | Somebody new | Rivals | Opening cash |
+| (retired) | Crew on day one | Somebody new | Rivals | Opening cash |
 |---|---|---|---|---|
 | **Easy** | 10 | every 10 days | x0.95 | 100,000 |
 | **Normal** | 4 | every 30 days | x1.00 | 50,000 |
 | **Hard** | 2 | every 40 days | x1.00 | 10,000 |
+| **Now** | 2 | every 35 days | x1.00, ramp 0.13 | 50,000 |
 
 **Opening cash went up tenfold on easy and sevenfold on normal** (from 10,000 / 7,000 /
 5,000). Measured, 8 seeds: normal first 8/8 at about 1.6× the field and 17 of 40 first-night
@@ -891,18 +943,55 @@ Projects have a **category**, the way games have genres — and here the genre i
 well as cosmetic. A `CategoryProfile` carries the icon and accent colour, *and* renames stages,
 overrides which skill each stage leans on, and moves where in the space the work happens.
 
-| Genre | Character |
+**Four wings, not ten genres** (docs/design/roller-ve-kanatlar.md §1). Tooling, Civic,
+Home and Retro folded into the wing their work actually is; Radio and IoT became
+Communications, Robotics joined Mechanical. A `ProjectDef` may name a `secondary` wing —
+the drone's boards, the kiosk's screen — which the coming role system reads (design §5.3).
+Save v16 moves an old run's projects, shipped records and market onto the wings.
+
+| Wing | Character |
 |---|---|
 | 💻 **Software** | No parts, no print queue — and it is what actually pays |
-| 🔌 **Electronics** | Boards, power and solder |
-| 🌐 **IoT** | Small connected things that must never need rebooting |
-| 📡 **Radio** | Antennas, range tests, arguing about SWR |
-| 🦾 **Robotics** | Motion, control, and respect for the emergency stop |
-| ⚙️ **Mechanical** | Frames, motion, things that take a load |
-| 🕹️ **Retro** | Old silicon, warm glow, unreasonable effort |
-| 🍕 **Home** | Things for the space itself and the people in it |
-| 🛠️ **Tooling** | Build the machine that builds the machines |
-| 🤝 **Civic** | Low pay, heavy documentation, the neighbourhood remembers |
+| 🔌 **Electronics** | Boards, power and solder; retro silicon and home gadgets |
+| 📡 **Communications** | Radio, IoT, sensor networks and the smart city |
+| ⚙️ **Mechanical** | Frames, motion, robots, and the machines that build machines |
+
+**Four roles, not six skills** (design §3). `SkillKey` is now the wing: every person has a
+Software, Electronics, Communications and Mechanical level, 0-5 (Intern … Expert). The
+roster is still written in the old six skills and `rolesFrom` turns them into roles when the
+module loads — Mechanical is the best of CAD, machining and welding, and **Communications is
+derived from passion** (loving radio or IoT makes you one level under your best of
+electronics and software). Save v17 converts a saved crew the same way. A stage leans on the
+project's wing; a karma project's assembly leans on its `secondary` wing. Design options are
+gated by the crew's level **in the project's wing**, not by a skill per axis. Every person
+wears their **primary role** — the best one, love breaking ties — as a wing icon in the
+wing's colour beside their name, over a thin mood bar.
+
+**The crew is picked by hand, and the pick is the crew.** Nobody is pre-selected, Next waits
+for as many people as the size says (1, 2, 4, 6, 8 or 10), and the picked people join
+without being asked. Asking let a pick decline, the empty chair went to a volunteer — often
+the auto-suggested person the player had just unticked — and the build ran with a crew
+nobody chose.
+
+**Every build is named** (design §6.2), from a brief or as "My own project" (a template per
+wing and size, `CUSTOM_DEFS`, costed like a representative brief; its novelty counts by
+name). The Ranking panel's **Projects** tab ranks the loudest builds of every space by those
+names; rivals keep their five loudest (`RivalState.hits`).
+
+**Table tennis is played** (`SpaceView.updateRallies`): when both ends are in place the sim
+publishes a game, and the room hangs a bat in front of each player and sends a ball between
+them — off one bat, a bounce on the far half, onto the other. A break already going is
+finished before anybody fusses over a running printer; that rule used to pull players off
+the table the moment they got there.
+
+**Send somebody for a tea** (§7b): click a drink comfort in the room, pick who — they drop
+what they are doing, and come back `LEISURE.treatMood` happier. Once a person a day.
+
+**Durations are read in days, never hours** (design §2): `span()` for machine time (the
+clock runs round the day) and `workSpan()` for hand work and courses (the working day),
+rounded to the half day. The sim still counts hours inside; only the screen changed. The
+bench's stage counter ("21/24") is now "≈ half a day left in this stage", estimated by
+`crewHours` for the crew the build has.
 
 **Software is the load-bearing genre.** It has no bill of materials, no printed parts and no
 machine queue, so it runs beside a print-heavy build without contending for anything. It pays far
@@ -1050,6 +1139,49 @@ Job { id, projectId, partName, machineType, hoursRequired, material, materialCos
 
 Machine types: FDM printer · resin printer · laser cutter · CNC router · mill/lathe · soldering
 bench · welding bay · electronics bench · assembly table.
+
+### Print orders (`src/utils/printjobs.ts`)
+
+**Paid jobs that come in because the space has printers**, on a board in the Machines panel:
+a few on offer at a time, three days to say yes, a due date counted from the day you accept,
+and a fixed price paid on delivery. Say yes and it is an ordinary build on the bench —
+anybody free may pick it up, and so may you. Miss the date and the client walks, the print
+is scrap and it costs a little name (`ORDERS.missedRep`); a due date that meant nothing
+would make every order free money.
+
+**Their shape is the point: almost no hand work and long unbroken prints** — a library model
+is 52 hours on one bed, a museum bust 58. That is what makes a second printer worth more
+than it looks, and what makes two orders at once a real decision on a one-printer floor.
+They skip the kickoff and the simulation, carry no design budget and no parts, and
+`TIER_PACE` does not touch them: the client asked for fifty hours of print. A stage that
+needs no hand work never counts as done (`stageComplete`), so an order starts at the files
+rather than at a kickoff with nothing in it — the first version sat at "Kickoff 0/0" until
+its date passed. They are `ProjectDef`s with an `order`, in `CATALOG_MAP` but never in the
+wizard's `CATALOG`.
+
+**Filament for every printer is one button** (`buyAllFilament`): one trip, one half-hour of
+your day, one log line, however many printers are on the wall.
+
+**A part goes to the printer that would finish it first** (`machineFor`): what the machine
+has on plus this part, over its speed, the more reliable of two that tie. It was the
+shortest queue, which sent a two-day print to an idle A1 while an idle H2S stood beside it.
+When a build ships or is shelved, its jobs leave the printers with it (`dropProject`) —
+`ship all` in the console showed printers carrying on for builds that no longer existed.
+
+**Series prints** (`series()` in printjobs.ts): the client sends the STL, the space burns
+filament. Every hand stage is zero — and **a hand stage with no work in it is done the
+moment it starts**, so the order goes from accepted to the printer to delivered with nobody
+on it. It takes no chair (`teamSize` 0), nobody volunteers for it and the owner never picks
+it up on his own. Marked *STL supplied* on the orders board.
+
+**The Filament Shelf** (an amenity on the Printers shelf of Build): sixteen spools bought
+ahead (`store.filamentStock`, save v18). Every refill — one printer, *Fill all*, the Printer
+Keeper — takes from the shelf first and buys only the rest, and the rack in the room shows
+a spool per kilo in stock. **Level all** is a maintenance round: every drifting bed levelled
+for one hour of your day.
+
+**On the bed, the print** (`printedThing`): a box, a vase, a lamp shade, a hex organiser, a
+gear — chosen by the job, in a filament colour, growing a layer at a time up to the nozzle.
 
 ### Buying printers (`src/utils/printers.ts`)
 
@@ -1245,6 +1377,21 @@ to save money. The button stays, its meaning is inverted, and the People panel s
 
 ## 7b. The Shop — BUILT (`src/utils/amenities.ts`), now the Comforts shelf of **Build**
 
+**Build is a mode, not a panel** (Game `clickRoom`, UI `renderBuildPanel`). The catalogue
+docks along the bottom the way the Sims does its Buy mode — seven shelves by what a thing is
+for (Work, Printers, Drinks, Rest, Fun, Comfort, Decor; `amenityShelf`), what the picked item
+is and does, and a wall of pictures. **Picking an item buys nothing**: the room lights every
+tile it could go on (`canPlaceNew`, a trial placement per tile, before anything is paid), a
+see-through copy follows the cursor and turns red where it cannot go, R turns it, and a click
+on a tile asks "buy it?" with the price and what it leaves you. Only yes pays
+(`Simulation.buyAt`, which buys and then moves it with the same rules as rearranging).
+**Picking things up in the room only happens in Build mode** — outside it a click on a
+bench will mean "tell me about this station", and a click that sometimes lifts it instead
+would be a guess. Escape unwinds the question, then the item in hand, then the mode.
+`click-check` presses real tiles on the canvas for all of it, and was seen to fail with the
+Build-mode gate taken out — after first passing with it out, because it aimed at a desk's
+footprint and the ray went between the legs.
+
 **Build replaced the Shop on the menu** (§4d). It has four shelves: **Workspace** (tables,
 workstations and the Learning Station), **Printers** (moved here from the Machines panel,
 which is now only for watching what is on the floor), **Comforts** (everything below), and
@@ -1270,8 +1417,8 @@ white. The toolhead's travel is per model, so a cabinet never prints through its
 
 
 **Machines make parts; the Shop makes the place worth turning up to.** Nine comforts, gated
-by the lease, bought once and never sold back — a coffee machine and a water cooler in the
-garage, a drinks fridge, air conditioning, a table tennis table and an aquarium in Unit 4B,
+by the lease, bought once and never sold back — a coffee machine, a water cooler and a table
+tennis table in the garage, a drinks fridge, air conditioning and an aquarium in Unit 4B,
 an arcade cabinet and acoustic panels in the warehouse.
 
 | | Buys | Costs |
@@ -1319,11 +1466,48 @@ is untouched because it falls on day 69, before there is money for any of this. 
 documented day 102-118 is the no-shop pace**; a player who furnishes the place should expect
 the warehouse later and a better-run garage meanwhile.
 
-**The Old Factory has its own four** — the dearest comforts in the game: a **PlayStation
-Corner** (the biggest draw there is, and the biggest drain on the afternoon: mood +8, work
-−10%), a **Big-Screen TV** on the back wall, an **Espresso Bar** and a **Nap Pod**. They are
-the lease's answer to "what do sixty members of the public and a full crew do between
-builds", and the console is the table-tennis trade at factory scale.
+**The PlayStation Corner is in the garage** — a low unit, a big screen and **two gaming chairs** built round the seats players are drawn in
+(₺8,500, mood +5, work −6%): the table-tennis trade at a price the first month can reach. It
+was an Old Factory item, which put the one thing every real first hackerspace has behind
+four leases. **The Old Factory keeps three** — the dearest comforts in the game: a
+**Big-Screen TV** on the back wall, an **Espresso Bar** and a **Nap Pod**.
+
+**The comforts are used, not just owned** (`AmenityUse`, `Simulation.relax`) — **but only by
+people with nothing on.** Somebody on a crew never takes a break (lunch aside): with the
+print running or the parts in the post they wait for their build, and a crew with a kickoff
+to hold waits for the meeting rather than wander off. The first version let crews play
+while deadlines closed in, and it read exactly like that. Free people take a break now and
+then (`LEISURE.between`, two and a half hours of looking for something between breaks), and
+some stop for a coffee or a tea on the way in (`LEISURE.arrivalChance`). Breaks are at
+whatever the space owns: the sofa, the fish tank, the arcade, a drink from the fridge. **Table tennis needs two**: the first to the table
+waits half an hour with a bat, and somebody free is six times likelier to pick it than
+anything else while they do. Lunch and a sit-down when worn out go to the comforts first and
+the lounge only when every spot is taken. Four details:
+
+- **A spot is a drawing position, the tile beside it is where they walk.** A prop blocks its
+  own tile, so everybody paths to a free neighbour and the renderer puts them in the chair or
+  at the end of the table (`leisureSpots`, `Seat.stand`) — the project table's rule again.
+- **Only tiles reachable from the door are offered.** The tile between two props on the
+  bottom row is empty and walled in; the first version sent people there, they found no
+  path, gave up, and every lunch ended at the old sofa.
+- **A break is followed by a wander** (`LEISURE.between`). Without it, whoever held the
+  PlayStation sat straight back down on it and the rest of the room never got a go.
+- **A workstation's chair is where its user sits** (`CHAIR_REACH`, shared by the layout and
+  the renderer). People used to be seated on the stand tile, a full tile out, which put them
+  behind their own chair sitting on air; the assembly table has no chairs, so its crew now
+  work standing. A seated body sits a little forward of the seat's middle, so the chair back
+  stays behind their shoulders instead of coming out through them.
+- **Standing is on a floor tile, sitting is on the seat.** A standing spot is a free tile
+  beside the thing with a step toward it — drawn at the prop's edge, people stood half inside
+  the fridge, or outside the room when it was against a wall. A seat has a height
+  (`AmenityUse.spots[].sit`), and a seated person is drawn *on* it: a shorter body, thighs
+  along the seat, shins to the floor. Desk and table chairs use the same pose at 0.39.
+- **One person watches a print.** Every idle member used to fuss over the running printer,
+  which is where the whole crew stood all afternoon.
+
+Breaks cost about 7% of ships in `era-pace`, mostly the coffee on the way in; nothing about
+who works or how fast changed. People who share a tile anyway — the kettle, the lounge at a
+full lunch — are drawn on the nearest free floor (`crowdSpots`), never stacked on one spot.
 
 **They stand in the room, and you arrange them.** A comfort you cannot see is a number in a
 panel, and ₺22,000 of arcade cabinet should be in the building the moment it is paid for.
@@ -1352,7 +1536,16 @@ behind everything and clashes with nothing. **Moving one pins the rest**: unpinn
 the next default spot in order, so the first version shuffled the whiteboard into the gap the
 TV had just left. A placement on the wall is stored like a floor one, with `y: -1`.
 
-**The Club-Mate Fridge** is on the garage's shelf from day one (₺2,400, ₺350/mo, a little
+**The Turkish Tea Maker** (₺1,900, ₺180/mo) is the garage's other drink: the red hexagonal
+boiler with two pots stacked on it and tulip glasses on saucers. **The Sofa & Kettle grows
+with the lease** — a deep two-seater with the kettle on its arm in the garage, a three-seater
+across two tiles with a side table and tea glasses from Unit 4B (`span: 2`), a rug under it
+from the warehouse.
+
+**The Club-Mate Fridge** — a tall glass-door display fridge with orange side panels, a lit
+MATE header and a stack of yellow crates beside it — is on the garage's shelf from day one.
+**Its cabinet is a shell** (back, sides, plinth), not a box: a solid body behind the glass
+hid every bottle behind black, and its top sat in the header's plane and flickered (₺2,400, ₺350/mo, a little
 mood, less fatigue and drift): half the drinks fridge, bottles behind the glass, and MATE
 across the top — the game's second canvas texture after the wall sign, for the same reason.
 
@@ -1530,6 +1723,12 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   62% opacity; one that is waiting on you does not. The stage counter (`cad 21/24`) is detail
   and lives on the open card only — a folded row answers "does this need me", not "how far
   through the stage is it".
+- **The open card says each thing once.** It said the kickoff blocker twice (on the stage
+  line and again in a box), wrapped eight stage names onto two lines, and put the crew in a
+  box with its own heading — three lines of chrome around two names. Now: wing icon, name,
+  rating and % on one row; the bar; the stage and the days left; the pipeline as a row of
+  segments with the names on hover; **one** notice line for whatever is in the way; the crew
+  as a flat row of names with You among them; the verbs.
 - **A button that has finished its job should say so, not grey out.** "Queue pending" sat
   there disabled once every part had printed. It now reads `Queue 3`, `on the printer`, or
   `all printed`, which is the same information without the dead end.
@@ -1660,8 +1859,18 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   - **Uniform rows and cards.** Fixed icon-chip size, a two-line clamp on descriptions, counts
     as inline badges on the title row. Cards that vary in height are the single loudest sign
     that a screen was assembled rather than designed.
-- **Time:** 1 sim-hour = 2.5 real seconds at 1×. A day = 60 s at 1×. Speeds: pause / 1× / 2× / 4×.
+- **Time:** on screen the clock is a clock — **one game minute per real second at 1×**,
+  four at 2×, eight at 4× (`TIME.playMinutesPerSecond`, applied in `Game`'s loop only). The
+  sim's own unit (`secondsPerHour: 2.5`) is unchanged because every harness drives
+  `tick()` with it directly; the play pace is a conversion on top. It used to be an hour
+  every 2.5 s, a day a minute, and people crossed the garage in a blink — which is why
+  `MEMBER.walkSpeed` went to 60 tiles an hour (a tile a second at 1×) at the same time.
   Machine jobs advance on sim time regardless of member attendance.
+- **Notifications** (`UI.collectToasts`): every new warning or bad-news log line, and anybody
+  standing about for want of a seat, pops up beside the bench under the top bar for five
+  seconds (a press dismisses one early). They are appended and removed element by element,
+  never rendered, so a paused game still lets them go; history is marked seen on the first
+  render, not shown.
 - **Architecture rule (inherited from `etliekmek-tycoon`, keep it):**
   management data (cash, roster, machines owned, upgrades, hype, era) lives in the **store**;
   sim-time data (member positions, machine job progress, project stage work) lives in the

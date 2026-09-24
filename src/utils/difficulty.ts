@@ -1,13 +1,20 @@
 /**
- * Difficulty sets the pressure from the other spaces, how much rope you start with, and
- * **how many people you have and how fast more turn up**.
+ * **There is one setting, and it is the hard one.** The start screen used to offer easy,
+ * normal and hard; it was taken out because a choice of how much the game should push back
+ * is a choice to play less of it. Everybody starts as hard used to: two of you, somebody new
+ * every five weeks, and the rivals ramping up year on year — with ₺50,000 in the bank, which
+ * is normal's opening cash rather than hard's ten, so the thin start is thin in people and
+ * not in money. The shape below is kept because the sim and the harnesses read it by key.
+ *
+ * It sets the pressure from the other spaces, how much rope you start with, and **how many
+ * people you have and how fast more turn up**.
  *
  * The rules of your own pipeline never change: a stage costs the same work, a print takes
  * the same hours, a bill charges the same rent, so advice and intuition still carry across
  * settings. What changes is the size of the crew applying them — which is the honest lever
  * in a game where §13 established that hands in the building are the binding constraint.
  */
-export type DifficultyKey = 'easy' | 'normal' | 'hard';
+export type DifficultyKey = 'normal';
 
 export interface DifficultyDef {
   key: DifficultyKey;
@@ -46,45 +53,17 @@ export interface DifficultyDef {
 
 export const DIFFICULTIES: DifficultyDef[] = [
   {
-    key: 'easy',
-    label: 'Easy',
-    blurb: 'A crew of ten already, and a queue at the door. Room to make mistakes.',
-    intro: 'A full room, one printer, and a landlord. People already know the door; your job is giving them something to build.',
-    pressure: 1,
-    accent: '#7ac74f',
-    rivalPace: 0.95,
-    rivalRep: 0.95,
-    startCash: 100000,
-    startMembers: 10,
-    recruitEvery: 10,
-    yearRamp: 0.04,
-  },
-  {
     key: 'normal',
     label: 'Normal',
-    blurb: 'Four of you, and somebody new about once a month. Win an award and you earned it.',
-    intro: 'A handful of regulars, one printer, and a landlord. Everything else you will have to talk people into.',
-    pressure: 2,
-    accent: '#f0b429',
-    rivalPace: 1.0,
-    rivalRep: 1.0,
-    startCash: 50000,
-    startMembers: 4,
-    recruitEvery: 30,
-    yearRamp: 0.08,
-  },
-  {
-    key: 'hard',
-    label: 'Hard',
-    blurb: 'Two of you in a garage. People trickle in. Thin margins from day one.',
+    blurb: 'Two of you in a garage. People trickle in. Win an award and you earned it.',
     intro: 'Two of you, one printer, and a landlord who wants rent on the first. Every new face is one you earned.',
     pressure: 3,
     accent: '#e2725b',
     rivalPace: 1.0,
     rivalRep: 1.0,
-    startCash: 10000,
+    startCash: 50000,
     startMembers: 2,
-    recruitEvery: 40,
+    recruitEvery: 35,
     yearRamp: 0.13,
   },
 ];

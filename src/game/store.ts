@@ -1,6 +1,8 @@
 import { createStore } from 'zustand/vanilla';
 import type {
   BacklogEntry,
+  BuyItem,
+  PrintOffer,
   Identity,
   LogEntry,
   MachineType,
@@ -89,12 +91,33 @@ export interface GameState {
   amenityRev: number;
   /** The comfort currently being moved around the room, if any. Never saved. */
   moving: string | null;
+  /**
+   * Build mode (§7b): the catalogue along the bottom, and the only time things in the room
+   * can be picked up. Never saved — a reload opens on the room, not on a half-placed sofa.
+   */
+  buildMode: boolean;
+  /** Build mode stopped a running clock, so leaving it starts the clock again. Never saved. */
+  buildPaused: boolean;
+  /** What is being placed from the catalogue, before anything is paid for. */
+  placingBuy: BuyItem | null;
+  /** A tile has been chosen: the question "buy it?" is on screen. */
+  buyConfirm: (BuyItem & { x: number; y: number; yaw: number }) | null;
   /** Offers waiting to be pitched (CLAUDE.md §4a). */
   backlog: BacklogEntry[];
+  /** Print orders on offer in the Machines panel (§5). */
+  printOffers: PrintOffer[];
+  /** Filament on the shelf, in grams — bought ahead, drawn on before buying more (§5). */
+  filamentStock: number;
   /** The order applicants were dealt onto the reputation ladder this run. */
   ladder: string[];
   /** Seat licences the space owns, by option (§4c). Bought once, kept for good. */
   licences: Licences;
+  /**
+   * Where every space stood when the last month closed, by id — what the Ranking panel's
+   * arrows measure against. Taken on the bill day, and on the first day of a run.
+   */
+  rankPrev: Record<string, number>;
+  setRankPrev: (ranks: Record<string, number>) => void;
   grantLicences: (grants: { key: string; seats: number }[]) => void;
   /** What each genre is worth right now (§4d). Moves daily; multiplies payouts. */
   market: Market;
@@ -128,6 +151,8 @@ export interface GameState {
   pushLog: (text: Text, kind?: LogEntry['kind']) => void;
 
   setBacklog: (backlog: BacklogEntry[]) => void;
+  setPrintOffers: (offers: PrintOffer[]) => void;
+  setFilamentStock: (grams: number) => void;
   addOffer: (entry: BacklogEntry) => void;
   removeOffer: (id: string) => void;
   openApplicant: (id: string) => void;
@@ -141,6 +166,9 @@ export interface GameState {
   placeStation: (id: string, placement: StationPlacement) => void;
   clearStationPlacements: () => void;
   setMoving: (id: string | null) => void;
+  setBuildMode: (on: boolean) => void;
+  setPlacingBuy: (item: BuyItem | null) => void;
+  setBuyConfirm: (confirm: GameState['buyConfirm']) => void;
   disownMachine: (type: MachineType) => void;
   recordShipped: (hype: number, record: ShippedRecord) => void;
   recordReputation: (amount: number) => void;
@@ -160,6 +188,7 @@ export const emptyRuntime = (): RuntimeSnapshot => ({
   tables: [],
   waitingFor: {},
   seats: {},
+  games: [],
 });
 
 export const store = createStore<GameState>((set, get) => ({
@@ -190,9 +219,17 @@ export const store = createStore<GameState>((set, get) => ({
   stationPlacements: {},
   amenityRev: 0,
   moving: null,
+  buildMode: false,
+  buildPaused: false,
+  placingBuy: null,
+  buyConfirm: null,
   backlog: [],
+  printOffers: [],
+  filamentStock: 0,
   market: freshMarket(),
   licences: {},
+  rankPrev: {},
+  setRankPrev: (rankPrev) => set({ rankPrev }),
   grantLicences: (grants) =>
     set((s) => {
       const licences = { ...s.licences };
@@ -223,6 +260,7 @@ export const store = createStore<GameState>((set, get) => ({
       // A new run gets a new market, not whatever was rolled when the page loaded.
       market: freshMarket(),
       licences: {},
+      rankPrev: {},
       started: true,
       paused: false,
       speed: 1,
@@ -246,19 +284,29 @@ export const store = createStore<GameState>((set, get) => ({
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements, market, ladder, ledger, monthOpen, licences,
+      stationPlacements, market, ladder, ledger, monthOpen, licences, printOffers, filamentStock, rankPrev,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements, market, ladder, ledger, monthOpen, licences,
+      stationPlacements, market, ladder, ledger, monthOpen, licences, printOffers, filamentStock, rankPrev,
     };
   },
 
   hydrate: (data) =>
-    set({ ...(data as Partial<GameState>), paused: true, speed: 1, moving: null, amenityRev: 0 }),
+    set({
+      ...(data as Partial<GameState>),
+      paused: true,
+      speed: 1,
+      moving: null,
+      amenityRev: 0,
+      buildMode: false,
+      buildPaused: false,
+      placingBuy: null,
+      buyConfirm: null,
+    }),
 
   setSpeed: (speed) => set({ speed, paused: false }),
   togglePause: () => set((s) => ({ paused: !s.paused })),
@@ -292,6 +340,8 @@ export const store = createStore<GameState>((set, get) => ({
   },
 
   setBacklog: (backlog) => set({ backlog }),
+  setPrintOffers: (printOffers) => set({ printOffers }),
+  setFilamentStock: (filamentStock) => set({ filamentStock: Math.max(0, Math.round(filamentStock)) }),
   setMarket: (market) => set({ market }),
   addOffer: (entry) => set((s) => ({ backlog: [entry, ...s.backlog] })),
   removeOffer: (id) => set((s) => ({ backlog: s.backlog.filter((e) => e.id !== id) })),
@@ -342,6 +392,25 @@ export const store = createStore<GameState>((set, get) => ({
   // about the room. `applyEraLayout` drops it on its side; this drops it on ours.
   clearStationPlacements: () => set((s) => ({ stationPlacements: {}, amenityRev: s.amenityRev + 1 })),
   setMoving: (id) => set({ moving: id }),
+  // Build mode stops the clock: arranging the room is not something to do while a print fails
+  // behind you. Leaving it puts down whatever was held, forgets what was being placed, and
+  // starts the clock again only if it was Build mode that stopped it — and nothing modal,
+  // a bill or a ceremony, is still waiting to be read.
+  setBuildMode: (on) =>
+    set((s) =>
+      on
+        ? { buildMode: true, buildPaused: s.buildMode ? s.buildPaused : !s.paused, paused: true }
+        : {
+            buildMode: false,
+            buildPaused: false,
+            paused: s.buildPaused && !s.bill && !s.ceremony ? false : s.paused,
+            moving: null,
+            placingBuy: null,
+            buyConfirm: null,
+          },
+    ),
+  setPlacingBuy: (item) => set({ placingBuy: item, buyConfirm: null, moving: item ? null : get().moving }),
+  setBuyConfirm: (confirm) => set({ buyConfirm: confirm }),
 
   recordPost: (post, reputationDelta) =>
     set((s) => ({

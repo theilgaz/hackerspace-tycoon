@@ -5,7 +5,14 @@ import type { Tile } from '@/utils/grid';
 // People (CLAUDE.md §3)
 // ---------------------------------------------------------------------------
 
-export type SkillKey = 'cad' | 'electronics' | 'machining' | 'welding' | 'software' | 'docs';
+/**
+ * The four roles (docs/design/roller-ve-kanatlar.md §3), one per wing, each 0-5 — Stajyer
+ * to Uzman. They replaced six skills; `SkillKey` keeps its name so every `skills[...]` read
+ * now reads a role.
+ */
+export type SkillKey = ProjectCategory;
+/** The six skills the roster is still written in, turned into roles when it loads. */
+export type LegacySkillKey = 'cad' | 'electronics' | 'machining' | 'welding' | 'software' | 'docs';
 export type Skills = Record<SkillKey, number>;
 
 /** Passion tags — the currency of the influence model. */
@@ -94,6 +101,10 @@ export const ROLE_BLURB: Record<Role, string> = {
 export interface MemberSnapshot {
   id: string;
   name: string;
+  /** Their primary role's wing (design §3.1) — the badge beside their name. */
+  primary: ProjectCategory;
+  /** Sent for a drink already today (§7b) — once a person a day. */
+  treated?: boolean;
   role: Role | null;
   present: boolean;
   activity: MemberActivity;
@@ -111,6 +122,8 @@ export interface MemberSnapshot {
   pos: { x: number; y: number };
   /** Where they are sitting, when they are sitting somewhere. Drawn instead of `pos`. */
   seat: Seat | null;
+  /** Where they are drawn standing when somebody else already has their tile. */
+  spot: { x: number; y: number } | null;
   /** Their skills as they stand today — training changes them, so the roster data will not do. */
   skills: Skills;
   /** A course they are on at the learning station, if any. */
@@ -143,6 +156,10 @@ export interface Seat {
   y: number;
   /** The point they face — the middle of the table, or the bench in front of them. */
   look: { x: number; y: number };
+  /** On their feet rather than in a chair: the end of a table-tennis table, a fridge. */
+  stand?: boolean;
+  /** How high the seat is, so they sit on it rather than in it. A task chair when absent. */
+  height?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +167,7 @@ export interface Seat {
 // ---------------------------------------------------------------------------
 
 export interface PlayerSnapshot {
+  primary: ProjectCategory;
   present: boolean;
   activity: MemberActivity;
   /** Hours in today's budget, and how many are left. */
@@ -163,6 +181,7 @@ export interface PlayerSnapshot {
   tile: Tile;
   pos: { x: number; y: number };
   seat: Seat | null;
+  spot: { x: number; y: number } | null;
   share: number | null;
   note: string;
   skills: Skills;
@@ -210,17 +229,12 @@ export interface PartData {
 }
 
 /** The genre of a build. Drives look, stage names, and which skill each stage uses. */
-export type ProjectCategory =
-  | 'electronics'
-  | 'software'
-  | 'mechanical'
-  | 'robotics'
-  | 'iot'
-  | 'radio'
-  | 'tooling'
-  | 'civic'
-  | 'retro'
-  | 'home';
+/**
+ * The four wings (docs/design/roller-ve-kanatlar.md §1). There were ten genres; Tooling,
+ * Civic, Home and Retro folded into these by what the work actually is, and Radio, IoT and
+ * Robotics joined the wing that shares their hands.
+ */
+export type ProjectCategory = 'software' | 'electronics' | 'comms' | 'mechanical';
 
 /**
  * Declared size, and a promise about length (CLAUDE.md §4):
@@ -254,6 +268,34 @@ export interface ProjectDef {
   hype: number;
   /** Money on release. Placeholder until the Phase 3 economy lands. */
   payout: number;
+  /**
+   * A second wing the build leans on — the drone's boards, the kiosk's screen. Karma
+   * projects (design §5.3): some design options will want somebody from it on the crew.
+   */
+  secondary?: ProjectCategory;
+  /** A player's own idea (design §6.2): a template of a wing and a size, named by them. */
+  custom?: boolean;
+  /**
+   * A print order (§5): somebody else's job for a fixed price and a due date. Never in the
+   * New Project wizard — these arrive in the Machines panel.
+   */
+  order?: { client: string; days: number; series?: boolean };
+}
+
+/** Something on the Build panel's shelves: a workstation or table, a printer, or a comfort. */
+export interface BuyItem {
+  kind: 'furniture' | 'printer' | 'amenity';
+  id: string;
+}
+
+/** A print order on offer in the Machines panel, before anybody has said yes to it. */
+export interface PrintOffer {
+  id: string;
+  defId: string;
+  /** Days the client gives you from the day you accept. */
+  days: number;
+  /** The last day it can be accepted. */
+  expiresOnDay: number;
 }
 
 export type BacklogSource = 'catalog' | 'member' | 'sponsor' | 'trending';
@@ -273,7 +315,15 @@ export type DesignAxisId =
   | 'cadtool'
   | 'material'
   | 'validation'
-  | 'docs';
+  | 'docs'
+  // The design step as three questions (design §5.4): one approach for every wing, and the
+  // scope in each wing's own words. The axes above are kept for builds shipped before it.
+  | 'approach'
+  | 'distribution'
+  | 'platforms'
+  | 'power'
+  | 'range'
+  | 'drive';
 
 /** Option index per axis: 0 is the one-star choice, 2 the five-star one. */
 export type DesignChoice = Partial<Record<DesignAxisId, number>>;
@@ -283,7 +333,23 @@ export interface ProjectPlan {
   design: DesignChoice;
   /** Seats at the table — the crew size the project is planned for. */
   seats: number;
+  /**
+   * The crew's best level in each wing (design §5.4). It picks the technology, sets the
+   * quality ceiling, and prices every option above it. Absent, the crew is taken to be
+   * exactly what each option asks — the harnesses' default.
+   */
+  levels?: Partial<Record<ProjectCategory, number>>;
 }
+
+/**
+ * Something the client asked for (design §5.4): met at release, it adds to the pay; missed,
+ * it does not — never a penalty. What makes the design choices mean something.
+ */
+export type Wish =
+  | { kind: 'stars'; min: number }
+  | { kind: 'platform'; bit: number }
+  | { kind: 'scope'; axis: DesignAxisId; min: number }
+  | { kind: 'days'; within: number };
 
 /** How loudly you said it (§6). The claim is the decision; the room judges it. */
 export type ClaimKey = 'wip' | 'works' | 'bold';
@@ -352,6 +418,8 @@ export interface ProjectData {
   partsOrdered: boolean;
   /** Absolute sim-hour the order arrives. */
   partsArriveAt: number;
+  /** Expedited once already — the courier only goes faster the one time. */
+  expedited?: boolean;
   sponsorCash: number;
   hypeMultiplier: number;
   /** Everything this build has cost: parts, bounties, expediting. */
@@ -360,6 +428,12 @@ export interface ProjectData {
   startedOnDay: number;
   /** Consecutive days with nobody — crew or player — working on it. */
   idleDays: number;
+  /** The best quality the crew that pitched it can reach (design §4.2). */
+  ceiling?: number;
+  /** What the client asked for (design §5.4), judged at release. */
+  wishes?: Wish[];
+  /** A print order: the agreed price, whose it is, and the last day it can be handed over. */
+  order?: { pay: number; client: string; dueDay: number };
   /** How it was designed (§4d). */
   design: DesignChoice;
   /**
@@ -440,6 +514,8 @@ export interface MachineSnapshot {
 // ---------------------------------------------------------------------------
 
 export interface RuntimeSnapshot {
+  /** Games being played at the comforts right now — two players at one table (§7b). */
+  games?: { amenityId: string; players: [string, string] }[];
   members: MemberSnapshot[];
   machines: MachineSnapshot[];
   projects: ProjectData[];
@@ -487,6 +563,11 @@ export interface RivalState {
   upvotes: number;
   /** Their best single build since the last awards night, by hype. Cleared on the night. */
   bestBuild: { name: string; score: number } | null;
+  /**
+   * Their loudest builds of all time, a handful, for the projects table (design §6.2):
+   * spaces are ranked against each other, and so are the things they made.
+   */
+  hits?: { name: string; score: number }[];
 }
 
 /** One line of the leaderboard — the player and every rival share this shape. */

@@ -7,14 +7,15 @@
  * full team, parts ordered on day one, and a player who works every available hour. That
  * is the *best case* — the floor on a project's length. Targets (CLAUDE.md §4):
  *
- *   small  1-5 days   ·   medium  5-10 days   ·   large  10-30 days
+ *   small  1-2 days   ·   medium  4-7 days   ·   large  6-10 days
  *
  * Tune `catalog.ts` against this table rather than by guessing.
  */
 import { Simulation } from '@/systems/Simulation';
 import { store, emptyRuntime } from '@/game/store';
 import { rng } from '@/utils/rng';
-import { APPLICANTS, FILAMENT, STAGE_MAP, STAGE_ORDER } from '@/utils/constants';
+import { APPLICANTS, FILAMENT, STAGE_ORDER } from '@/utils/constants';
+import { defaultPlan, planProject } from '@/utils/design';
 import { CATALOG } from '@/utils/catalog';
 import { STAGE_STATION } from '@/machines/layout';
 import { partsPending } from '@/systems/ProjectSystem';
@@ -30,7 +31,7 @@ const ALL_MACHINES: MachineType[] = [
   'fdm', 'bench', 'assembly', 'cad-desk', 'lounge', 'cnc', 'reflow', 'drybox',
 ];
 
-const TARGETS = { small: [1, 5], medium: [5, 10], large: [10, 30] } as const;
+const TARGETS = { small: [1, 2], medium: [4, 7], large: [6, 10] } as const;
 
 function runProject(def: ProjectDef, seed: number): number | null {
   rng.reseed(seed);
@@ -64,6 +65,12 @@ function runProject(def: ProjectDef, seed: number): number | null {
   for (let i = 0; i < 3; i += 1) sim.buyFurniture('assembly-table');
   // Best case means everyone on a full contract.
   for (const data of APPLICANTS) sim.joinMember(data);
+  // People taken on today are not on today's rota, so a pitch on day one measured a day
+  // of nobody. Best case starts when the whole crew walks in: day two, nine o'clock.
+  while (sim.day < 2 || sim.time < 9) {
+    sim.tick(DT, SPEED);
+    if (store.getState().bill) store.getState().setBill(null);
+  }
   if (!sim.pitch(def.id)) return null;
 
   const project = sim.projects[0];
@@ -73,7 +80,8 @@ function runProject(def: ProjectDef, seed: number): number | null {
     sim.tick(DT, SPEED);
     // Best-case measurement: the books are not what is under test here.
     if (store.getState().bill) store.getState().setBill(null);
-    if (!sim.projects.length) return sim.day - startDay;
+    // Counted as the day of the build it ships on: out the door the same evening is one day.
+    if (!sim.projects.length) return sim.day - startDay + 1;
 
     if (!project.partsOrdered) sim.orderParts(project.id);
     if (project.stage === 'fabrication' && project.parts.some((p) => p.status === 'pending')) {
@@ -109,9 +117,11 @@ const rows = CATALOG.map((def) => {
   }
   const tier = def.tier;
   const avg = days.length ? days.reduce((a, b) => a + b, 0) / days.length : NaN;
-  const work = STAGE_ORDER.reduce((sum, key) => sum + (def.work[key] ?? STAGE_MAP[key].work), 0);
-  const machineHours = def.parts.reduce((sum, p) => sum + p.hours, 0);
-  return { def, tier, avg, min: Math.min(...days), max: Math.max(...days), work, machineHours };
+  // The build as planned, not as catalogued: the tier's pace (§4) scales all three.
+  const plan = planProject(def, defaultPlan(def));
+  const work = STAGE_ORDER.reduce((sum, key) => sum + plan.work[key], 0);
+  const machineHours = plan.parts.reduce((sum, p) => sum + p.hours, 0);
+  return { def, tier, avg, min: Math.min(...days), max: Math.max(...days), work, machineHours, lead: plan.leadDays };
 });
 
 console.log(`\n  BEST-CASE PROJECT LENGTH — ${SEEDS} seeds, full team, all machines, parts ordered day 1\n`);
@@ -128,7 +138,7 @@ for (const row of rows.sort((a, b) => a.avg - b.avg)) {
     `  ${row.def.name.padEnd(23)} ${row.tier.padEnd(8)} ` +
       `${row.avg.toFixed(1).padStart(5)} (${String(row.min).padStart(2)}-${String(row.max).padStart(3)})   ` +
       `${`${lo}-${hi}d`.padEnd(8)} ${String(row.work).padStart(5)} ${String(row.machineHours).padStart(7)}h ` +
-      `${String(row.def.leadDays).padStart(4)}d   ${verdict}`,
+      `${String(row.lead).padStart(4)}d   ${verdict}`,
   );
 }
 

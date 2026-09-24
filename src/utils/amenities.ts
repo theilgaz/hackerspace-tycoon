@@ -31,6 +31,28 @@ export interface AmenityEffect {
   draw?: number;
 }
 
+/**
+ * How people use a comfort in their own time (§7b). Everything is in the prop's own frame —
+ * `x` across it, `z` out of its front — and turned with the prop, so a sofa you rotate
+ * still has people sitting on it rather than beside it.
+ */
+export interface AmenityUse {
+  /** What they are doing there: it picks the line under their name and when it appeals. */
+  kind: 'drink' | 'sit' | 'play' | 'watch';
+  /**
+   * One per person it takes. `sit` is the seat's height and puts them in it; without it
+   * they stand on the free floor tile beside the thing, never inside or behind it.
+   */
+  spots: { x: number; z: number; look: { x: number; z: number }; sit?: number }[];
+  /** Nobody plays table tennis alone: it only starts once every spot is taken. */
+  pair?: boolean;
+  /** How long one go lasts, in sim-hours. */
+  hours: [number, number];
+}
+
+/** Standing in front of it, looking at it — a fridge, a fish tank, a bookshelf. */
+const front = (z = 0.62, x = 0): AmenityUse['spots'][number] => ({ x, z, look: { x, z: 0 } });
+
 export interface AmenityDef {
   id: string;
   /**
@@ -76,10 +98,50 @@ export interface AmenityDef {
     | 'tv'
     | 'espresso'
     | 'nappod'
-    | 'mate';
+    | 'mate'
+    | 'teamaker'
+    | 'spoolshelf';
   mount: 'floor' | 'wall';
   /** The prop's own colour; the room is otherwise deliberately grey. */
   tone: string;
+  /** How people use it on a break. Decor with no `use` is simply looked at. */
+  use?: AmenityUse;
+  /** Which Build shelf it sits on, when that is not where its use would put it. */
+  shelf?: BuildShelf;
+}
+
+/**
+ * The Build panel's shelves (§7b), by what a thing is for rather than by what it costs:
+ * where people work, what prints, what they drink, where they sit down, what they play,
+ * what makes the room bearable, and what is only there to look at.
+ */
+export type BuildShelf = 'work' | 'printers' | 'drinks' | 'rest' | 'fun' | 'comfort' | 'decor';
+
+export const BUILD_SHELVES: { key: BuildShelf; icon: IconName }[] = [
+  { key: 'work', icon: 'table' },
+  { key: 'printers', icon: 'printer' },
+  { key: 'drinks', icon: 'flame' },
+  { key: 'rest', icon: 'home' },
+  { key: 'fun', icon: 'gamepad' },
+  { key: 'comfort', icon: 'building' },
+  { key: 'decor', icon: 'star' },
+];
+
+/** Which shelf a comfort sits on: what it is used for, when it is used at all. */
+export function amenityShelf(def: AmenityDef): BuildShelf {
+  if (def.shelf) return def.shelf;
+  if (def.group === 'decor') return 'decor';
+  if (def.shape === 'tv') return 'fun';
+  switch (def.use?.kind) {
+    case 'drink':
+      return 'drinks';
+    case 'sit':
+      return 'rest';
+    case 'play':
+      return 'fun';
+    default:
+      return 'comfort';
+  }
 }
 
 export const AMENITIES: AmenityDef[] = [
@@ -95,6 +157,7 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'coffee',
     mount: 'floor',
     tone: '#8a5a3c',
+    use: { kind: 'drink', spots: [front(0.6, -0.14), front(0.6, 0.24)], hours: [0.2, 0.35] },
   },
   {
     id: 'water',
@@ -108,6 +171,7 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'water',
     mount: 'floor',
     tone: '#5aa9f0',
+    use: { kind: 'drink', spots: [front(0.55), front(0.45, 0.4)], hours: [0.15, 0.3] },
   },
   {
     id: 'couch',
@@ -121,6 +185,39 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'couch',
     mount: 'floor',
     tone: '#4f6f52',
+    use: { kind: 'sit', spots: [-0.24, 0.24].map((x) => ({ x, z: 0.1, look: { x, z: 1 }, sit: 0.47 })), hours: [0.4, 1] },
+  },
+  {
+    // The other drink every hackerspace here runs on: a boiler with two pots stacked on it,
+    // brewing all day, and tulip glasses on saucers. Cheaper than the coffee machine and
+    // drunk three times as often.
+    id: 'tea-maker',
+    name: 'Turkish Tea Maker',
+    blurb: 'A red boiler with two pots on top, brewing from nine to six. Somebody always asks who wants tea.',
+    icon: 'flame',
+    era: 1,
+    price: 1900,
+    upkeep: 180,
+    effect: { mood: 3, rest: 1.15, fatigue: 0.95 },
+    shape: 'teamaker',
+    mount: 'floor',
+    tone: '#c8322b',
+    use: { kind: 'drink', spots: [front(0.6, -0.1), front(0.6, 0.2)], hours: [0.15, 0.3] },
+  },
+  {
+    // Storage, not comfort: spools bought ahead, on a rack where you can watch them go down.
+    id: 'filament-shelf',
+    name: 'Filament Shelf',
+    blurb: 'A steel rack for sixteen spools. Buy filament ahead, and every refill takes from the shelf first.',
+    icon: 'package',
+    era: 1,
+    price: 1400,
+    upkeep: 0,
+    effect: {},
+    shape: 'spoolshelf',
+    mount: 'floor',
+    tone: '#8a929e',
+    shelf: 'printers',
   },
   {
     // The one drink every hackerspace runs on, in a fridge half the size of the real one.
@@ -135,6 +232,7 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'mate',
     mount: 'floor',
     tone: '#f2b705',
+    use: { kind: 'drink', spots: [front(0.6)], hours: [0.15, 0.3] },
   },
   {
     id: 'fridge',
@@ -148,6 +246,7 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'fridge',
     mount: 'floor',
     tone: '#3f7f8f',
+    use: { kind: 'drink', spots: [front(0.62), front(0.55, 0.42)], hours: [0.15, 0.3] },
   },
   {
     id: 'ac',
@@ -167,13 +266,21 @@ export const AMENITIES: AmenityDef[] = [
     name: 'Table Tennis',
     blurb: 'Nobody will ever work through a rally. Everybody will turn up for one.',
     icon: 'gamepad',
-    era: 2,
+    // From the garage: a table in the corner is what a first hackerspace has.
+    era: 1,
     price: 6800,
     upkeep: 0,
     effect: { mood: 6, focus: 0.95, draw: 1.08 },
     shape: 'pingpong',
     mount: 'floor',
     tone: '#2f6b4f',
+    use: {
+      kind: 'play',
+      spots: [-0.72, 0.72].map((x) => ({ x, z: 0, look: { x: 0, z: 0 } })),
+      pair: true,
+      // About twenty minutes a game — twenty seconds on screen at 1×.
+      hours: [0.28, 0.42],
+    },
   },
   {
     id: 'aquarium',
@@ -187,6 +294,7 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'aquarium',
     mount: 'floor',
     tone: '#2f8fa8',
+    use: { kind: 'watch', spots: [front(0.6, -0.2), front(0.6, 0.22)], hours: [0.3, 0.7] },
   },
   {
     id: 'arcade',
@@ -200,6 +308,7 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'arcade',
     mount: 'floor',
     tone: '#c058a0',
+    use: { kind: 'play', spots: [front(0.62)], hours: [0.28, 0.42] },
   },
   {
     id: 'acoustics',
@@ -215,22 +324,28 @@ export const AMENITIES: AmenityDef[] = [
     tone: '#5a5f6b',
   },
   // --- The Old Factory (§8): the lease with room for the public ------------------
-  // A factory floor holds the things a garage never could. They are the dearest comforts in
-  // the game and the loudest: the console is the biggest draw there is and the biggest drain
-  // on the afternoon, which is the table-tennis trade at factory scale.
+  // The console moved to the garage: two chairs and a telly are what a first hackerspace
+  // actually has, and it is the table-tennis trade — mood and word of mouth for a slice of
+  // the afternoon — at a price the first month can reach.
   {
     id: 'console-corner',
     name: 'PlayStation Corner',
-    blurb: 'A console, a telly and four controllers. The "quick game after lunch" that is never quick.',
+    blurb: 'A console, a telly and two gaming chairs. The "quick game after lunch" that is never quick.',
     icon: 'gamepad',
-    era: 4,
-    price: 28000,
-    upkeep: 700,
-    effect: { mood: 8, focus: 0.9, draw: 1.18 },
+    era: 1,
+    price: 8500,
+    upkeep: 300,
+    effect: { mood: 5, focus: 0.94, draw: 1.08 },
     shape: 'console',
     mount: 'floor',
     tone: '#2b3f8f',
+    use: {
+      kind: 'play',
+      spots: [-0.26, 0.26].map((x) => ({ x, z: 0.28, look: { x, z: -0.4 }, sit: 0.3 })),
+      hours: [0.28, 0.42],
+    },
   },
+  // A factory floor holds the things a garage never could: the dearest comforts in the game.
   {
     id: 'big-tv',
     name: 'Big-Screen TV',
@@ -256,6 +371,7 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'espresso',
     mount: 'floor',
     tone: '#8a5a3c',
+    use: { kind: 'drink', spots: [front(0.6, -0.16), front(0.6, 0.26)], hours: [0.2, 0.35] },
   },
   {
     id: 'nap-pod',
@@ -269,6 +385,7 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'nappod',
     mount: 'floor',
     tone: '#e4e7eb',
+    use: { kind: 'sit', spots: [{ x: 0, z: 0.05, look: { x: 0, z: 1 }, sit: 0.24 }], hours: [0.6, 1.2] },
   },
   // --- Decor (§4d): the room as somewhere you would want to be ---------------
   {
@@ -354,6 +471,7 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'bookshelf',
     mount: 'floor',
     tone: '#8a5a3c',
+    use: { kind: 'watch', spots: [front(0.55)], hours: [0.3, 0.8] },
   },
   {
     id: 'beanbags',
@@ -368,6 +486,14 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'beanbag',
     mount: 'floor',
     tone: '#c0584a',
+    use: {
+      kind: 'sit',
+      spots: [
+        { x: -0.2, z: 0.04, look: { x: -0.2, z: 1 }, sit: 0.28 },
+        { x: 0.24, z: -0.08, look: { x: 0.24, z: 1 }, sit: 0.28 },
+      ],
+      hours: [0.4, 1],
+    },
   },
   {
     id: 'server-rack',
@@ -438,6 +564,7 @@ export const AMENITIES: AmenityDef[] = [
     shape: 'terminal',
     mount: 'floor',
     tone: '#d8cfb8',
+    use: { kind: 'play', spots: [front(0.62)], hours: [0.28, 0.42] },
   },
 ];
 

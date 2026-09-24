@@ -57,6 +57,7 @@ const PATHS = {
     '<path d="M10 14h4v3h-4zM8 20h8"/><path d="M12 17v3"/>',
   /* A plain arrow survives 11px where a stylised upvote chevron turns to mush. */
   arrowUp: '<path d="M12 20V5"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5"/>',
+  alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   printer:
     '<path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/>' +
@@ -101,6 +102,38 @@ const PATHS = {
   dish:
     '<circle cx="12" cy="12" r="8.5"/><path d="M12 12 18.2 5.8"/>' +
     '<path d="M7.6 12A4.4 4.4 0 0 1 12 7.6"/>',
+  // --- Badges for the start screen: things a hackerspace would paint on its door ---
+  terminal: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/>',
+  zap:
+    '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 ' +
+    '.78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+  rocket:
+    '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/>' +
+    '<path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/>' +
+    '<path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
+  bug:
+    '<path d="m8 2 1.88 1.88M14.12 3.88 16 2"/><path d="M9 7.13v-1a3 3 0 1 1 6 0v1"/>' +
+    '<path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/>' +
+    '<path d="M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4"/>' +
+    '<path d="M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4"/>',
+  flask:
+    '<path d="M10 2v7.53a2 2 0 0 1-.21.9L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.07-10.12' +
+    'A2 2 0 0 1 14 9.53V2"/><path d="M8.5 2h7M7 16h10"/>',
+  atom:
+    '<circle cx="12" cy="12" r="1"/>' +
+    '<path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 ' +
+    '4.54 4.52 9.87 6.54 11.9 4.5Z"/>' +
+    '<path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 ' +
+    '11.9 2.03 2.04 7.36.02 11.9-4.5Z"/>',
+  magnet:
+    '<path d="m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15"/>' +
+    '<path d="m5 8 4 4M12 15l4 4"/>',
+  // The hacker emblem: Conway's glider, five cells of a three-by-three. Drawn as outlined
+  // squares, not filled, because a data-URL copy for the wall sign has no currentColor fill.
+  glider:
+    '<rect x="9.5" y="3.5" width="5" height="5" rx=".8"/><rect x="15.5" y="9.5" width="5" height="5" rx=".8"/>' +
+    '<rect x="3.5" y="15.5" width="5" height="5" rx=".8"/><rect x="9.5" y="15.5" width="5" height="5" rx=".8"/>' +
+    '<rect x="15.5" y="15.5" width="5" height="5" rx=".8"/>',
 } satisfies Record<string, string>;
 
 export type IconName = keyof typeof PATHS;
@@ -127,12 +160,6 @@ export function iconDataUrl(name: IconName, colour: string, size = 128, stroke =
 export const CATEGORY_ICON: Record<ProjectCategory, IconName> = {
   software: 'code',
   electronics: 'cpu',
-  iot: 'wifi',
-  radio: 'antenna',
-  robotics: 'bot',
+  comms: 'antenna',
   mechanical: 'cog',
-  retro: 'gamepad',
-  home: 'home',
-  tooling: 'wrench',
-  civic: 'users',
 };
