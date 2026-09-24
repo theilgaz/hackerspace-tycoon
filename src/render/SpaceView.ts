@@ -316,12 +316,63 @@ export class SpaceView {
     left.receiveShadow = true;
     this.group.add(left);
 
-    this.buildSign(h);
+    // The door first: the sign paints the badge onto its glass.
     this.buildDoor(h);
+    this.buildSign(h);
   }
 
   /** The front door's swinging leaf, opened by whoever is standing at it. */
   private doorLeaf: THREE.Object3D | null = null;
+  /** Its glass, with the space's badge on it once there is one. */
+  private doorPane: THREE.Mesh | null = null;
+  private doorPaneKey = '';
+
+  /**
+   * The space's badge on the door's glass, in dark grey — the same mark as on the wall, but
+   * the badge's own colour disappeared into the frosted glass. The icon is an image, so it
+   * lands a moment later; the key stops a late one painting over a newer badge.
+   */
+  private paintDoorPane() {
+    const pane = this.doorPane;
+    const badge = this.signBadge;
+    const key = badge ?? '';
+    if (!pane || key === this.doorPaneKey) return;
+    this.doorPaneKey = key;
+    const material = pane.material as THREE.MeshStandardMaterial;
+    if (!badge) {
+      material.map?.dispose();
+      material.map = null;
+      material.color.set('#cfe3f0');
+      material.emissive.set('#3a5566');
+      material.needsUpdate = true;
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 160;
+    canvas.height = 128;
+    const img = new Image();
+    img.onload = () => {
+      if (this.doorPaneKey !== key || this.doorPane !== pane) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      // Frosted glass with the badge on it. The texture carries the colour, so the material
+      // goes white — tinted glass and a glow on top washed the mark out.
+      ctx.fillStyle = '#c3d9e6';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const size = 108;
+      ctx.drawImage(img, (canvas.width - size) / 2, (canvas.height - size) / 2, size, size);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      material.map?.dispose();
+      material.map = texture;
+      material.color.set('#ffffff');
+      material.emissive.set('#1a2530');
+      material.needsUpdate = true;
+    };
+    // Dark grey, whatever the badge's own colour: a pale or mid-tone mark vanished into the
+    // frosted glass, and a dark one reads on it every time.
+    img.src = iconDataUrl(badge, '#23282f', 128, 2.8);
+  }
 
   /**
    * The way in (§10). Everybody arrives and leaves through the same tile, so it gets a real
@@ -358,6 +409,8 @@ export class SpaceView {
     );
     pane.position.set(0.03, 1.08, 0.38);
     hinge.add(pane);
+    this.doorPane = pane;
+    this.doorPaneKey = '';
     g.add(hinge);
     this.doorLeaf = hinge;
     const lamp = new THREE.Mesh(
@@ -385,6 +438,8 @@ export class SpaceView {
       this.sign.geometry.dispose();
       this.sign = null;
     }
+    // The door's glass carries the badge whether or not there is a name to paint.
+    this.paintDoorPane();
     if (!this.signName.trim()) return;
 
     this.signToken += 1;
@@ -3423,3 +3478,4 @@ function drawConsoleGame(ctx: CanvasRenderingContext2D, game: ConsoleGame, t: nu
     ctx.fillText('KO?', W / 2 - 9, 13);
   }
 }
+
