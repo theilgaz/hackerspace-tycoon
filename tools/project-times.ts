@@ -61,7 +61,7 @@ function runProject(def: ProjectDef, seed: number): number | null {
   // seat for every pair of hands, so what is measured is the work and not the queue.
   sim.buyFurniture('table-large');
   for (let i = 0; i < 6; i += 1) sim.buyFurniture('software-station');
-  for (let i = 0; i < 4; i += 1) sim.buyFurniture('hardware-station');
+  for (let i = 0; i < 4; i += 1) sim.buyFurniture('solder-bench');
   for (let i = 0; i < 3; i += 1) sim.buyFurniture('assembly-table');
   // Best case means everyone on a full contract.
   for (const data of APPLICANTS) sim.joinMember(data);

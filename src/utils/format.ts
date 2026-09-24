@@ -6,6 +6,18 @@ export function uid(prefix = 'id'): string {
   return `${prefix}_${counter.toString(36)}`;
 }
 
+/**
+ * Move the counter past every id a loaded save already holds. It is a plain counter that
+ * restarts at zero with the page, so after a reload the next build was handed `proj_5` while
+ * a saved build still had it — two cards on the bench opened, closed and said "you" together.
+ */
+export function uidPast(saved: string) {
+  for (const match of saved.matchAll(/"[a-z]+_([0-9a-z]+)"/g)) {
+    const n = parseInt(match[1], 36);
+    if (Number.isFinite(n) && n > counter && n < 1e9) counter = n;
+  }
+}
+
 export function money(value: number): string {
   return `₺${num(Math.round(value))}`;
 }

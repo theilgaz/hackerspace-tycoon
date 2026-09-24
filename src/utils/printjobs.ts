@@ -1,4 +1,5 @@
 import type { ProjectDef, StageKey } from '@/game/types';
+import { ORDERS } from '@/utils/constants';
 
 /**
  * Print orders (CLAUDE.md §5) — paid jobs that come in because the space has printers.
@@ -54,7 +55,8 @@ function order(
     leadDays: 0,
     requires: ['fdm'],
     hype: 15,
-    payout: pay,
+    // Somebody draws the files first, and that is what the client is paying for (§5).
+    payout: Math.round((pay * ORDERS.cadPremium) / 50) * 50,
     order: { client, days },
   };
 }
@@ -76,6 +78,8 @@ function series(
 ): ProjectDef {
   const def = order(id, name, client, blurb, parts, [0, 0, 0], pay, days, era);
   def.work = { ...def.work, iterate: 0 };
+  // The file is theirs: the price is machine time and filament, nothing else.
+  def.payout = pay;
   def.order = { ...def.order!, series: true };
   return def;
 }

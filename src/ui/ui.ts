@@ -11,6 +11,7 @@ import type {
   ProjectDef,
   ClaimKey,
   ShippedRecord,
+  FailedRecord,
   SkillKey,
   DesignAxisId,
   StageKey,
@@ -35,6 +36,7 @@ import {
   FILAMENT,
   MACHINE,
   PLAYER,
+  ORDERS,
   REPEAT,
   ROSTER,
   STAGE_MAP,
@@ -52,7 +54,7 @@ import {
 } from '@/utils/constants';
 import { TOUR, hasToured, rememberToured } from './tour';
 import { awardsDay, clock, dayName, hours, money, pct, shortDate, span, workSpan } from '@/utils/format';
-import { LOCALES, getLocale, num, say, t, type Locale, type MessageKey, type Text } from '@/i18n';
+import { LOCALES, getLocale, msg, num, say, t, type Locale, type MessageKey, type Text } from '@/i18n';
 import {
   AMENITIES,
   BUILD_SHELVES,
@@ -95,7 +97,7 @@ import {
   type DesignOption,
 } from '@/utils/design';
 import { demandLabel } from '@/utils/market';
-import { FURNITURE, FURNITURE_MAP, furnitureOf, furnitureSeats, type FurnitureDef } from '@/utils/furniture';
+import { FURNITURE, FURNITURE_MAP, furnitureOf, furnitureSeats, type FurnitureCorner, type FurnitureDef } from '@/utils/furniture';
 import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { AWARDS, LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import type { DifficultyKey } from '@/utils/difficulty';
@@ -140,7 +142,11 @@ export interface UIHandlers {
   buyQuote(item: BuyItem): { name: string; price: number; upkeep: number } | null;
   confirmBuy(): void;
   cancelBuy(): void;
-  treatDrink(memberId: string, amenityId: string): void;
+  treat(memberIds: string[], amenityId: string): void;
+  /** A notification's toast has gone: write it to the log. */
+  retireNotice(id: string): void;
+  /** A toast that was never a log line (a seat short): write it to the log as it goes. */
+  logToast(text: Text, kind: 'info' | 'good' | 'bad' | 'warn'): void;
   refillAllCost(): number;
   buySpools(count: number): void;
   shelfCapacity(): number;
@@ -421,11 +427,13 @@ export class UI {
   private buildEl!: HTMLElement;
   /** A drink comfort clicked in the room: who is being sent for one (§7b). */
   private treatAmenity: string | null = null;
+  /** Who is picked, when the comfort takes more than one (table tennis, the console). */
+  private treatPick = new Set<string>();
   private treatEl!: HTMLElement;
   private buyConfirmEl!: HTMLElement;
 
   /** Which group of projects is on screen. Falls through when the chosen one is empty. */
-  private projectsTab: 'all' | 'on' | 'done' = 'all';
+  private projectsTab: 'all' | 'on' | 'done' | 'failed' = 'on';
   /** The project whose detail is open in the Projects panel, running or shipped. */
   private projectDetail: string | null = null;
 
@@ -640,7 +648,8 @@ export class UI {
     this.toastEl = this.root.querySelector('#toasts')!;
     // A toast goes when it is pressed, as well as after its five seconds.
     this.toastEl.addEventListener('pointerdown', (event) => {
-      (event.target as HTMLElement).closest('.toast')?.remove();
+      const el = (event.target as HTMLElement).closest<HTMLElement>('.toast');
+      if (el) this.retireToast(el);
     });
     this.buyConfirmEl = this.root.querySelector('#buyconfirm')!;
     this.treatEl = this.root.querySelector('#treat')!;
@@ -854,7 +863,7 @@ export class UI {
           this.rerender();
           break;
         case 'projects-tab':
-          this.projectsTab = (value as 'all' | 'on' | 'done') ?? 'all';
+          this.projectsTab = (value as 'all' | 'on' | 'done' | 'failed') ?? 'on';
           this.projectDetail = null;
           this.rerender();
           break;
@@ -1193,9 +1202,24 @@ export class UI {
           h.setBuildMode(!this.lastState?.buildMode);
           this.rerender();
           break;
-        case 'treat':
-          if (id && this.treatAmenity) h.treatDrink(id, this.treatAmenity);
+        case 'treat': {
+          const def = this.treatAmenity ? AMENITIES.find((a) => a.id === this.treatAmenity) : null;
+          if (!id || !def?.use) break;
+          // One seat: the click is the choice. More: the click picks, and Send sends.
+          if (def.use.spots.length === 1) {
+            h.treat([id], def.id);
+            this.treatAmenity = null;
+          } else {
+            if (this.treatPick.has(id)) this.treatPick.delete(id);
+            else if (this.treatPick.size < def.use.spots.length) this.treatPick.add(id);
+          }
+          this.rerender();
+          break;
+        }
+        case 'treat-send':
+          if (this.treatAmenity && this.treatPick.size) h.treat([...this.treatPick], this.treatAmenity);
           this.treatAmenity = null;
+          this.treatPick.clear();
           this.rerender();
           break;
         case 'treat-close':
@@ -1338,22 +1362,50 @@ export class UI {
       this.toastSeen.add(entry.id);
       if (entry.kind === 'warn' || entry.kind === 'bad') this.toast(say(entry.text), entry.kind);
     }
-    // A kind of seat newly short, or more people waiting for one than a moment ago.
+    // Notifications proper: a toast now, and the log once it has gone.
+    for (const notice of state.notices ?? []) {
+      if (this.toastSeen.has(notice.id)) continue;
+      this.toastSeen.add(notice.id);
+      this.toast(say(notice.text), notice.kind, notice.kind === 'info' ? 'trophy' : undefined, () =>
+        this.handlers.retireNotice(notice.id),
+      );
+    }
+    // A kind of seat newly short, or more people waiting for one than a moment ago. It was
+    // never a log line, so it becomes one as the toast goes.
     for (const [type, count] of Object.entries(state.runtime.waitingFor)) {
       if (!count || count <= (this.seatWaits[type] ?? 0)) continue;
-      this.toast(t('build.toast.needSeat', { count, station: MACHINE_LABEL[type as MachineType] }), 'warn', 'hammer');
+      const line = msg('build.toast.needSeat', { count, station: MACHINE_LABEL[type as MachineType] });
+      this.toast(say(line), 'warn', 'hammer', () => this.handlers.logToast(line, 'warn'));
     }
     this.seatWaits = { ...state.runtime.waitingFor };
   }
 
-  private toast(text: string, kind: 'warn' | 'bad', glyph: IconName = kind === 'bad' ? 'x' : 'clock') {
+  /** What each toast on screen does when it goes: a notification is written to the log. */
+  private toastGone = new WeakMap<HTMLElement, () => void>();
+
+  private toast(
+    text: string,
+    kind: 'info' | 'good' | 'warn' | 'bad',
+    glyph: IconName = kind === 'bad' ? 'x' : 'clock',
+    onGone?: () => void,
+  ) {
     // Four at most; the oldest makes room.
-    while (this.toastEl.children.length >= 4) this.toastEl.firstElementChild?.remove();
+    while (this.toastEl.children.length >= 4) this.retireToast(this.toastEl.firstElementChild as HTMLElement);
     const el = document.createElement('div');
     el.className = `toast toast--${kind}`;
     el.innerHTML = `${icon(glyph)}<span>${esc(text)}</span>`;
+    if (onGone) this.toastGone.set(el, onGone);
     this.toastEl.appendChild(el);
-    window.setTimeout(() => el.remove(), 5000);
+    window.setTimeout(() => this.retireToast(el), 5000);
+  }
+
+  /** Take a toast down — timed out, pressed, or pushed out — and do what it asked on the way. */
+  private retireToast(el: HTMLElement | null) {
+    if (!el?.isConnected) return;
+    el.remove();
+    const gone = this.toastGone.get(el);
+    this.toastGone.delete(el);
+    gone?.();
   }
 
   /**
@@ -1384,10 +1436,14 @@ export class UI {
         ${icon(shelf.icon, 'ui-icon')}<span>${t(`build.mode.shelf.${shelf.key}` as MessageKey)}</span>
       </button>`,
     ).join('')}</div>`;
-    const tiles = items
-      .map((it) => {
-        const on = held?.kind === it.item.kind && held.id === it.item.id;
-        return `<button class="build-tile ${on ? 'on' : ''} ${it.owned ? 'owned' : ''}" data-action="build-pick"
+    // **The Work shelf is three corners, not one heap** (§4d): screens and keyboards, irons
+    // and pegboards, and the tables a crew sits down at. Each corner is a block — its label
+    // over its own tiles — and the blocks sit side by side and wrap, so three corners fit the
+    // panel's height rather than each taking a row of its own. Other shelves carry no group
+    // and draw as one grid, exactly as before.
+    const tile = (it: (typeof items)[number]) => {
+      const on = held?.kind === it.item.kind && held.id === it.item.id;
+      return `<button class="build-tile ${on ? 'on' : ''} ${it.owned ? 'owned' : ''}" data-action="build-pick"
           data-value="${it.item.kind}:${it.item.id}" ${it.blocked ? 'disabled' : ''}>
           ${this.thumb(`${it.item.kind}:${it.item.id}`, it.icon)}
           <span class="build-tile__name">${esc(it.name)}</span>
@@ -1395,8 +1451,18 @@ export class UI {
             ${it.locked ? icon('clock') : it.owned ? icon('check') : ''}${it.owned && it.once ? t('build.card.owned') : money(it.price)}
           </span>
         </button>`;
-      })
-      .join('');
+    };
+    const grouped = items.some((it) => it.group);
+    const tiles = grouped
+      ? [...new Set(items.map((it) => it.group))]
+          .map(
+            (group) => `<div class="build-corner">
+              <div class="build-group">${t(`build.mode.corner.${group}` as MessageKey)}</div>
+              <div class="build-corner__tiles">${items.filter((it) => it.group === group).map(tile).join('')}</div>
+            </div>`,
+          )
+          .join('')
+      : items.map(tile).join('');
     // What the info column reads out: the tile under the cursor, else the one in hand.
     const hover = this.buildHover ? items.find((it) => `${it.item.kind}:${it.item.id}` === this.buildHover) : null;
     const inHand = held ? items.find((it) => it.item.kind === held.kind && it.item.id === held.id) : null;
@@ -1408,7 +1474,7 @@ export class UI {
          <span class="build-info__price">${money(picked.price)}${
            picked.upkeep ? ` · ${t('build.card.perMonth', { upkeep: picked.upkeep })}` : ''
          }</span>
-         <p class="ui-desc ui-clamp-2">${esc(picked.blurb)}</p>
+         <p class="ui-desc ui-clamp-3">${esc(picked.blurb)}</p>
          <div class="ui-row__meta build-info__badges">${picked.badges.join('')}</div>
          ${picked.blocked ? `<p class="build-info__why">${esc(picked.blocked)}</p>` : ''}
          ${
@@ -1433,7 +1499,9 @@ export class UI {
       `${shelves}<button class="ui-btn ui-btn--primary ui-btn--sm build-exit" data-action="build-exit">${icon('check')}${t('ui.done')}</button>`,
     );
     this.setHTML(this.buildEl.querySelector<HTMLElement>('.build-info')!, 'build-info', info);
-    this.setHTML(this.buildEl.querySelector<HTMLElement>('.build-tiles')!, 'build-tiles', tiles);
+    const tilesEl = this.buildEl.querySelector<HTMLElement>('.build-tiles')!;
+    tilesEl.classList.toggle('build-tiles--grouped', grouped);
+    this.setHTML(tilesEl, 'build-tiles', tiles);
   }
 
   /** Seats per kind of workstation, and how many people are queueing for one. */
@@ -1461,6 +1529,8 @@ export class UI {
       owned: boolean;
       /** One per space: once it is in, the card says so instead of a price. */
       once?: boolean;
+      /** A heading the shelf is split under — the Work shelf's corners. */
+      group?: FurnitureCorner;
       locked: boolean;
       blocked: string | null;
       badges: string[];
@@ -1493,6 +1563,7 @@ export class UI {
           icon: def.icon,
           owned: owned > 0,
           once: machine,
+          group: def.corner,
           locked,
           blocked: why(locked ? def.era : null, this.affordable(state, def.price), room, machine && owned > 0),
           badges: [
@@ -4359,6 +4430,62 @@ export class UI {
     return { text: t('build.kick.at', { table: table?.label ?? t('build.kick.theTable') }), tone: '' };
   }
 
+  /**
+   * How many calendar days until it ships, roughly: the hand work left in every stage for
+   * the crew it has (weekends included), the prints still to run spread over the printers,
+   * or the parts in the post if that is longer. Null when nobody is on something that
+   * still needs hands — then it never finishes, and "nobody on it" says so already.
+   */
+  private finishDays(project: ProjectData, state: GameState): number | null {
+    const crew = project.team.length + (state.runtime.player?.project === project.id ? 1 : 0);
+    const from = STAGE_ORDER.indexOf(project.stage);
+    let hand = 0;
+    for (const key of STAGE_ORDER.slice(from)) {
+      if (key === 'test' || key === 'fabrication') continue;
+      hand += Math.max(0, project.required[key] - (key === project.stage ? project.progress[key] : 0));
+    }
+    if (hand > 0 && crew === 0) return null;
+    const handDays = hand > 0 ? (crewHours(hand, crew) / 8) * (7 / 5) : 0;
+    const printers = Math.max(1, state.runtime.machines.filter((m) => m.type === 'fdm').length);
+    const printHours = project.parts.filter((part) => part.status !== 'done').reduce((sum, part) => sum + part.hours, 0);
+    const beforeAssembly = from <= STAGE_ORDER.indexOf('assembly');
+    const waitDays = beforeAssembly ? partsEta(project, this.handlers.totalHours()) / 24 : 0;
+    const days = Math.max(handDays + printHours / printers / 24, waitDays);
+    return Math.max(0.5, Math.ceil(days * 2) / 2);
+  }
+
+  /**
+   * The dates that matter to a build, in one row: when it will be done, and when it is due
+   * (a print order's date, a client's "within N days").
+   * A date you cannot see is not a deadline, it is an ambush.
+   */
+  private benchDates(project: ProjectData, state: GameState): { html: string; stop: { text: string; tone: string } | null } {
+    const eta = this.finishDays(project, state);
+    const chips: string[] = [];
+    let stop: { text: string; tone: string } | null = null;
+    const chip = (iconName: IconName, text: string, tone: string, hint: string) =>
+      `<span class="bench-date ${tone}" title="${esc(hint)}">${icon(iconName)}${esc(text)}</span>`;
+    if (eta !== null) chips.push(chip('clock', t('ui.bench.eta', { span: span(eta * 24) }), '', t('ui.bench.etaHint')));
+    if (project.order) {
+      const left = project.order.dueDay - state.day;
+      const late = eta !== null && eta > left + 1;
+      const tone = late || left <= 0 ? 'bad' : left <= 1 ? 'warn' : '';
+      const text = t('ui.bench.due', { days: left });
+      chips.push(chip('alert', text, tone, t('ui.bench.dueHint', { client: project.order.client, day: project.order.dueDay, rep: ORDERS.missedRep })));
+      if (tone) stop = { text, tone };
+    }
+    const within = project.wishes?.find((w): w is Extract<Wish, { kind: 'days' }> => w.kind === 'days');
+    if (within) {
+      const left = project.startedOnDay + within.within - state.day;
+      if (left >= 0) {
+        const tone = eta !== null && eta > left + 1 ? 'warn' : '';
+        chips.push(chip('star', t('ui.bench.wishBy', { days: left }), tone, t('ui.bench.wishHint')));
+      }
+    }
+    // The awards night is not a date of this build's: the countdown comes as a notification.
+    return { html: `<div class="bench-dates">${chips.join('')}</div>`, stop };
+  }
+
   private projectCard(project: ProjectData, state: GameState, expanded = true): string {
     const player = state.runtime.player;
     const currentIndex = STAGE_ORDER.indexOf(project.stage);
@@ -4536,7 +4663,10 @@ export class UI {
     // card needs to say beyond its name and its bar.
     const shelving = project.idleDays >= SHELVE.warnAfterIdleDays;
     const kickoff = this.kickoffStatus(project, state);
-    const stop = shelving
+    const dates = this.benchDates(project, state);
+    const stop = dates.stop?.tone === 'bad'
+      ? dates.stop
+      : shelving
       ? { text: t('ui.stop.shelvedIn', { days: SHELVE.afterIdleDays - project.idleDays }), tone: 'bad' }
       : kickoff?.tone
         ? kickoff
@@ -4610,6 +4740,7 @@ export class UI {
     return `<div class="project project--open">
       ${header}
       <div class="pipe">${strip}</div>
+      ${dates.html}
       ${extras ? `<div class="row wrap" style="gap:5px;margin-bottom:8px">${extras}</div>` : ''}
       ${
         notice
@@ -4681,6 +4812,7 @@ export class UI {
   /** A drink comfort was clicked in the room: ask who is having one. */
   openTreat(amenityId: string) {
     this.treatAmenity = amenityId;
+    this.treatPick.clear();
     this.rerender();
   }
 
@@ -4691,31 +4823,54 @@ export class UI {
    */
   private renderTreat(state: GameState) {
     const def = this.treatAmenity ? AMENITIES.find((a) => a.id === this.treatAmenity) : null;
-    if (!def || state.buildMode) {
+    if (!def?.use || state.buildMode) {
       this.treatAmenity = null;
+      this.treatPick.clear();
       this.setHTML(this.treatEl, 'treat', '');
       this.treatEl.classList.remove('on');
       return;
     }
     const people = state.runtime.members.filter((m) => m.present).sort((a, b) => a.mood - b.mood);
+    for (const id of [...this.treatPick]) if (!people.some((m) => m.id === id)) this.treatPick.delete(id);
+    const max = def.use.spots.length;
+    const need = def.use.pair ? max : 1;
+    const many = max > 1;
+    const kind = def.use.kind === 'drink' ? 'drink' : def.use.pair ? 'pair' : many ? 'many' : 'one';
+    const ready = this.treatPick.size >= need && this.treatPick.size <= max;
     this.treatEl.classList.add('on');
     this.setHTML(
       this.treatEl,
       'treat',
-      `<div class="treat-head"><b>${esc(t('build.treat.title', { item: def.name }))}</b>
+      `<div class="treat-head"><b>${esc(
+         kind === 'drink'
+           ? t('build.treat.title.drink', { item: def.name, n: max })
+           : kind === 'pair'
+             ? t('build.treat.title.pair', { item: def.name, n: max })
+             : kind === 'many'
+               ? t('build.treat.title.many', { item: def.name, n: max })
+               : t('build.treat.title.one', { item: def.name, n: max }),
+       )}</b>
          <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="treat-close">${icon('x')}</button></div>
        <p class="ui-desc">${t('build.treat.hint')}</p>
        <div class="treat-list">${people
          .map((m) => {
            const tone = m.mood < 35 ? 'bad' : m.mood < 55 ? 'warn' : '';
-           return `<button class="treat-row" data-action="treat" data-id="${m.id}" ${m.treated ? 'disabled' : ''}>
+           const picked = this.treatPick.has(m.id);
+           return `<button class="treat-row ${picked ? 'picked' : ''}" data-action="treat" data-id="${m.id}"
+               ${m.treated || (!picked && many && this.treatPick.size >= max) ? 'disabled' : ''} aria-pressed="${picked}">
              <span class="wing" style="color:${CATEGORY_PROFILES[m.primary].accent}">${icon(CATEGORY_ICON[m.primary])}</span>
              <b>${esc(m.name)}</b>
              <span class="treat-mood ${tone}"><i style="width:${Math.round(m.mood)}%"></i></span>
              <span class="ui-desc">${m.treated ? t('build.treat.had') : Math.round(m.mood)}</span>
            </button>`;
          })
-         .join('')}</div>`,
+         .join('')}</div>
+       ${
+         many
+           ? `<button class="ui-btn ui-btn--primary ui-btn--sm ui-btn--block" data-action="treat-send" ${ready ? '' : 'disabled'}
+                style="margin-top:8px">${t('build.treat.send', { picked: this.treatPick.size, need, max })}</button>`
+           : ''
+       }`,
     );
   }
 
@@ -5100,6 +5255,7 @@ export class UI {
     const active = state.runtime.projects;
     const mine = (p: ProjectData) => state.runtime.player?.project === p.id;
     const done = [...state.shipped].reverse();
+    const failed = [...(state.failed ?? [])].reverse();
     const nowHours = this.handlers.totalHours();
 
     /** What is actually stopping this one, if anything. Order matters: worst first. */
@@ -5178,6 +5334,16 @@ export class UI {
         <td class="chev">${icon('chevronRight')}</td>
       </tr>`;
 
+    // What never shipped: how far it got, why it stopped, and what it cost.
+    const failedRow = (record: FailedRecord) => `<tr>
+        ${nameCell(record.category, record.name)}
+        <td class="num">${t('ui.projects.failedOn', { day: record.day, reason: record.reason })}</td>
+        ${barCell(record.progress, 'bad')}
+        <td class="note bad">${t('ui.projects.failedWhy', { reason: record.reason, rep: record.rep })}</td>
+        <td class="note ${record.spent > 0 ? 'bad' : ''}">${record.spent > 0 ? `−${money(record.spent)}` : '—'}</td>
+        <td></td>
+      </tr>`;
+
     // Blocked first, then whatever is nearest to shipping: the two reasons to look.
     const urgency = (p: ProjectData) => {
       const stop = stopFor(p);
@@ -5188,10 +5354,16 @@ export class UI {
       .map(activeRow);
 
     const filters = [
-      { key: 'all' as const, label: t('ui.people.tab.all'), count: active.length + done.length },
       { key: 'on' as const, label: t('ui.projects.tab.on'), count: active.length },
       { key: 'done' as const, label: t('ui.projects.tab.done'), count: done.length },
+      { key: 'failed' as const, label: t('ui.projects.tab.failed'), count: failed.length },
+      { key: 'all' as const, label: t('ui.people.tab.all'), count: active.length + done.length + failed.length },
     ];
+    // In progress is where it opens; an empty tab falls through to one with something in it
+    // rather than stranding you on nothing.
+    if (!filters.find((f) => f.key === this.projectsTab)?.count) {
+      this.projectsTab = filters.find((f) => f.count)?.key ?? 'on';
+    }
     const chips = `<div class="ui-segmented" style="margin-bottom:11px">
       ${filters
         .map(
@@ -5208,7 +5380,9 @@ export class UI {
         ? done.map(doneRow)
         : this.projectsTab === 'on'
           ? runningRows
-          : [...runningRows, ...done.map(doneRow)];
+          : this.projectsTab === 'failed'
+            ? failed.map(failedRow)
+            : [...runningRows, ...done.map(doneRow), ...failed.map(failedRow)];
 
     const earned = done.reduce((sum, r) => sum + r.payout, 0);
     const blocked = active.filter((p) => stopFor(p)).length;

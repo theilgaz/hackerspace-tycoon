@@ -49,6 +49,8 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     era: 1,
     shippedCount: 0,
     shipped: [],
+    failed: [],
+    notices: [],
     reputation: 0,
     ceremony: null,
     ceremonies: [],

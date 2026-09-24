@@ -58,7 +58,7 @@ export interface StationDef {
 const STARTING_STATIONS: StationDef[] = [
   { id: 'cad-desk', type: 'cad-desk', label: 'Software Station', tile: { x: 1, y: 0 }, stand: { x: 1, y: 1 } },
   { id: 'printer-1', type: 'fdm', label: 'A1 Mini Combo', model: 'a1-mini', tile: { x: 3, y: 0 }, stand: { x: 3, y: 1 } },
-  { id: 'bench', type: 'bench', label: 'Hardware Station', tile: { x: 0, y: 2 }, stand: { x: 1, y: 2 } },
+  { id: 'bench', type: 'bench', label: 'Maker Station', model: 'solder-bench', tile: { x: 0, y: 2 }, stand: { x: 1, y: 2 } },
   { id: 'assembly', type: 'assembly', label: 'Assembly Table', tile: { x: 0, y: 4 }, stand: { x: 1, y: 4 } },
   // A second desk, because one seat per workstation (§4d) would otherwise make the garage a
   // one-person CAD shop on day one — and the first thing a new player learns should be the
@@ -347,7 +347,7 @@ export function setAmenityLayout(
 
 export const MACHINE_LABEL: Record<MachineType, string> = {
   fdm: 'FDM Printer',
-  bench: 'Hardware Station',
+  bench: 'Maker Station',
   assembly: 'Assembly Table',
   'cad-desk': 'Software Station',
   lounge: 'Sofa & Kettle',

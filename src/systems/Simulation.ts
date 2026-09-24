@@ -161,6 +161,7 @@ import {
   generateParts,
   partsOutstanding,
   partsPending,
+  projectProgress,
   refreshQuality,
   remainingWork,
   resolveTest,
@@ -353,6 +354,11 @@ export class Simulation {
 
   private log(text: Message, kind: 'info' | 'good' | 'bad' | 'warn' = 'info') {
     store.getState().pushLog(text, kind);
+  }
+
+  /** A notification rather than a log line: a toast first, the log once it has gone. */
+  private notice(text: Message, kind: 'info' | 'good' | 'bad' | 'warn' = 'info') {
+    store.getState().pushNotice(text, kind);
   }
 
   // -------------------------------------------------------------------------
@@ -648,6 +654,22 @@ export class Simulation {
    * The shelf. Nothing stops you starting a dozen projects, but the ones nobody ever
    * picks up quietly die, and the money you spent on their parts dies with them.
    */
+  /** A build that will never ship goes on the record (the Projects panel's Failed tab). */
+  private recordFailure(project: ProjectData, reason: 'missed' | 'shelved', rep: number) {
+    store.getState().recordFailed({
+      id: project.id,
+      defId: project.defId,
+      name: project.name,
+      category: project.category,
+      day: this.day,
+      startedOnDay: project.startedOnDay,
+      reason,
+      rep,
+      spent: Math.round(project.spent),
+      progress: projectProgress(project).ratio,
+    });
+  }
+
   private shelveAbandoned() {
     for (const project of [...this.projects]) {
       // A project with parts on a machine is alive even with nobody standing over it —
@@ -667,6 +689,7 @@ export class Simulation {
       for (const machine of this.machines) machine.dropProject(project.id);
       this.projects = this.projects.filter((p) => p.id !== project.id);
       this.seeded.delete(project.id);
+      this.recordFailure(project, 'shelved', 0);
       this.log(msg('log.shelved', { project: project.name, days: SHELVE.afterIdleDays }), 'bad');
     }
   }
@@ -1364,7 +1387,8 @@ export class Simulation {
     }
     if (!station.furniture) return { value: 0, reason: 'build.sell.fixture' };
     if (this.projects.some((p) => p.tableId === id)) return { value: 0, reason: 'build.sell.inUse' };
-    const def = Object.values(FURNITURE_MAP).find((f) => f.type === station.type);
+    // By piece, not by kind: a Long Maker Bench is not a Maker Station at half the price.
+    const def = furnitureOf(station);
     return { value: Math.round((def?.price ?? 0) * RESALE.share), reason: null };
   }
 
@@ -1519,40 +1543,60 @@ export class Simulation {
    * Send somebody for a tea (§7b): they put down what they are doing, go to this comfort,
    * and come back in a better mood. The owner's gesture, not a policy — once a person a day.
    */
-  treatDrink(memberId: string, amenityId: string): boolean {
-    const m = this.member(memberId);
-    const use = amenityDef(amenityId)?.use;
-    if (!m || !m.present || !use || use.kind !== 'drink') return false;
-    if (!store.getState().amenities.includes(amenityId)) return false;
-    if (this.treatedToday.has(memberId)) {
-      this.log(msg('build.log.treatAgain', { member: m.name }), 'warn');
-      return false;
-    }
-    const busy = new Set([...this.leisure.values()].filter((o) => o.amenityId === amenityId).map((o) => o.slot));
+  /**
+   * Send people to a comfort (§7b): a drink, the sofa, the console, a game of table tennis.
+   * Table tennis takes exactly two — nobody plays on their own — the console one or two, and
+   * anything else as many as it has room for. They drop what they are doing, and come back
+   * in a better mood with a bit more in the tank. Once a person a day.
+   */
+  treat(memberIds: string[], amenityId: string): boolean {
+    const def = amenityDef(amenityId);
+    const use = def?.use;
+    if (!def || !use || !store.getState().amenities.includes(amenityId)) return false;
+    const people = [...new Set(memberIds)].map((id) => this.member(id)).filter((m): m is MemberEntity => !!m && m.present);
     const spots = leisureSpots(amenityId);
-    const slot = spots.findIndex((_, i) => !busy.has(i));
-    if (slot < 0) {
-      this.log(msg('build.log.treatBusy', { item: amenityDef(amenityId)!.name }), 'warn');
+    const busy = new Set([...this.leisure.values()].filter((o) => o.amenityId === amenityId).map((o) => o.slot));
+    const free = spots.map((_, i) => i).filter((i) => !busy.has(i));
+    const need = use.pair ? use.spots.length : 1;
+    if (people.length < need || people.length > use.spots.length) return false;
+    // A place to stand at each end — against a wall, one end of the table is nobody's.
+    if (spots.length < people.length) {
+      this.log(msg('build.log.treatNoRoom', { item: def.name }), 'warn');
       return false;
     }
-    this.releaseSeat(m.id);
-    this.endLeisure(m.id);
-    const spot = spots[slot];
-    this.leisure.set(m.id, {
-      amenityId,
-      kind: 'drink',
-      slot,
-      until: this.totalHours + rng.range(...LEISURE.arrivalHours),
-      tile: spot.tile,
-      seat: spot.seat,
-      // A treat takes priority the way the coffee on the way in does.
-      arrival: true,
-      pair: false,
-      treat: true,
+    if (free.length < people.length) {
+      this.log(msg('build.log.treatBusy', { item: def.name }), 'warn');
+      return false;
+    }
+    const again = people.find((m) => this.treatedToday.has(m.id));
+    if (again) {
+      this.log(msg('build.log.treatAgain', { member: again.name }), 'warn');
+      return false;
+    }
+    const until = this.totalHours + rng.range(...(use.kind === 'drink' ? LEISURE.arrivalHours : use.hours));
+    people.forEach((m, i) => {
+      this.releaseSeat(m.id);
+      this.endLeisure(m.id);
+      const slot = free[i];
+      this.leisure.set(m.id, {
+        amenityId,
+        kind: use.kind,
+        slot,
+        until,
+        tile: spots[slot].tile,
+        seat: spots[slot].seat,
+        // A treat takes priority the way the coffee on the way in does.
+        arrival: true,
+        pair: !!use.pair,
+        treat: true,
+      });
+      this.leisureKept.add(m.id);
+      this.treatedToday.add(m.id);
     });
-    this.leisureKept.add(m.id);
-    this.treatedToday.add(memberId);
-    this.log(msg('build.log.treatSent', { member: m.name, item: amenityDef(amenityId)!.name }), 'info');
+    this.log(
+      msg('build.log.treatSent', { member: people.map((m) => m.name).join(' & '), item: def.name }),
+      'info',
+    );
     this.publish();
     return true;
   }
@@ -1620,7 +1664,8 @@ export class Simulation {
       const who = this.member(id);
       if (who) {
         who.data.mood = Math.min(100, who.data.mood + LEISURE.treatMood);
-        this.log(msg('build.log.treatDone', { member: who.name }), 'good');
+        who.data.energy = Math.min(100, who.data.energy + LEISURE.treatEnergy);
+        this.log(msg(spell.kind === 'drink' ? 'build.log.treatDone' : 'build.log.treatDoneBreak', { member: who.name }), 'good');
       }
     }
     // Finished with nothing else to go to: up and about, rather than standing at the fridge
@@ -3035,7 +3080,7 @@ export class Simulation {
         if (!race || ratio > race.ratio) race = { label: award.label, rival: best.name, ratio };
       }
     }
-    this.log(
+    this.notice(
       msg('log.awards.countdown', {
         days,
         leading: leading.join(', '),
@@ -3780,8 +3825,13 @@ export class Simulation {
     if (offers.length < ORDERS.maxOffers && rng.chance(ORDERS.newPerDay)) {
       const taken = new Set([...offers.map((o) => o.defId), ...this.projects.map((p) => p.defId)]);
       const options = PRINT_JOBS.filter((def) => def.era <= state.era && !taken.has(def.id));
-      if (options.length) {
-        const def = rng.pick(options);
+      // Seven in ten come with the STL ready; the rest need drawing first (and pay for it).
+      const series = options.filter((def) => def.order?.series);
+      const drawn = options.filter((def) => !def.order?.series);
+      const wantSeries = rng.chance(ORDERS.seriesShare);
+      const pool = wantSeries ? (series.length ? series : drawn) : drawn.length ? drawn : series;
+      if (pool.length) {
+        const def = rng.pick(pool);
         offers = [...offers, { id: uid('order'), defId: def.id, days: def.order!.days, expiresOnDay: this.day + ORDERS.offerDays }];
         this.log(msg('build.log.orderIn', { item: def.name, client: def.order!.client }), 'info');
       }
@@ -3840,7 +3890,8 @@ export class Simulation {
         }
       }
       store.getState().recordReputation(-ORDERS.missedRep);
-      this.log(msg('build.log.orderMissed', { item: project.name, client: project.order.client }), 'bad');
+      this.recordFailure(project, 'missed', ORDERS.missedRep);
+      this.log(msg('build.log.orderMissed', { item: project.name, client: project.order.client, rep: ORDERS.missedRep }), 'bad');
     }
   }
 
@@ -3878,6 +3929,10 @@ export class Simulation {
         snap.seat = this.seatFor(m);
         snap.spot = spots.get(m.id) ?? null;
         snap.treated = this.treatedToday.has(m.id);
+        // The comfort they are at, once they have got there — the room puts a pad or a
+        // bottle in their hands and a game on the console's screen.
+        const spell = this.leisure.get(m.id);
+        snap.using = spell?.served && spell.amenityId && sameTile(m.tile, spell.tile) ? spell.amenityId : null;
         snap.share = this.shareFor(m);
         return snap;
       }),

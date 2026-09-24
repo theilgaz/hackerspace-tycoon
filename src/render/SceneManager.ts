@@ -18,6 +18,9 @@ function fitFrustum(aspect: number): number {
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
 /** Orthographic isometric rig with pan/zoom. No character control (CLAUDE.md §11). */
+/** How much light is left with everybody gone home: enough to see the room by. */
+const NIGHT_LIGHT = 0.16;
+
 export class SceneManager {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.OrthographicCamera;
@@ -51,8 +54,14 @@ export class SceneManager {
     this.bindControls(canvas);
   }
 
+  /** The room's lights and what each gives at full brightness, so they can be dimmed. */
+  private lights: { light: THREE.Light; full: number }[] = [];
+  /** 1 with the lights on, down to `NIGHT_LIGHT` with everybody gone home. */
+  private lit = 1;
+
   private addLights() {
-    this.scene.add(new THREE.HemisphereLight('#d6e8ff', '#3a2f22', 1.15));
+    const sky = new THREE.HemisphereLight('#d6e8ff', '#3a2f22', 1.15);
+    this.scene.add(sky);
 
     const key = new THREE.DirectionalLight('#fff4e2', 1.7);
     key.position.set(12, 20, 8);
@@ -71,6 +80,19 @@ export class SceneManager {
     const fill = new THREE.DirectionalLight('#8fb6ff', 0.45);
     fill.position.set(-10, 8, -6);
     this.scene.add(fill);
+    this.lights = [sky, key, fill].map((light) => ({ light, full: light.intensity }));
+  }
+
+  /**
+   * The lights go off when the last person leaves and come back on with the first one in
+   * the morning. Eased over a second or so, like a room whose strip lights take a moment.
+   * What glows on its own — a screen, the Mate sign, a status lamp — keeps glowing.
+   */
+  setLit(on: boolean, dt: number) {
+    const target = on ? 1 : NIGHT_LIGHT;
+    if (Math.abs(this.lit - target) < 0.001) return;
+    this.lit += (target - this.lit) * Math.min(1, dt * 3);
+    for (const { light, full } of this.lights) light.intensity = full * this.lit;
   }
 
   private bindControls(canvas: HTMLCanvasElement) {

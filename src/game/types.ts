@@ -124,6 +124,8 @@ export interface MemberSnapshot {
   seat: Seat | null;
   /** Where they are drawn standing when somebody else already has their tile. */
   spot: { x: number; y: number } | null;
+  /** The comfort they are using right now, once they are at it (drawn: a pad, a bottle). */
+  using?: string | null;
   /** Their skills as they stand today — training changes them, so the roster data will not do. */
   skills: Skills;
   /** A course they are on at the learning station, if any. */
@@ -616,6 +618,26 @@ export interface ShippedRecord {
   design?: DesignChoice;
   /** How the payout was reached: the brief's price and each multiplier on it. */
   pay?: { base: number; market: number; appeal: number; quality: number; novelty: number };
+}
+
+/**
+ * A build that never shipped (§13's shelf, §5's print orders): what it was, how far it got,
+ * what it cost and what it took off the space's name. Kept so the Projects panel can show
+ * the misses beside the ships — a ledger with only the wins in it flatters.
+ */
+export interface FailedRecord {
+  id: string;
+  defId: string;
+  name: string;
+  category: ProjectCategory;
+  day: number;
+  startedOnDay: number;
+  reason: 'missed' | 'shelved';
+  /** Reputation it cost. */
+  rep: number;
+  spent: number;
+  /** How far it got, 0-1. */
+  progress: number;
 }
 
 /** What the player named and badged their space. */

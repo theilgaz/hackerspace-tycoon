@@ -87,6 +87,8 @@ export const LEISURE = {
    * a free mood button pressed on everybody every morning is not a decision.
    */
   treatMood: 14,
+  /** …and this much energy back: a break you were sent on is a proper one. */
+  treatEnergy: 18,
   /** The coffee or tea on the way in, in sim-hours. */
   arrivalHours: [0.2, 0.3] as [number, number],
   /** How long somebody waits at an empty table-tennis table for a partner. */
@@ -116,7 +118,14 @@ export const ORDERS = {
   /** Days an offer waits for an answer. */
   offerDays: 3,
   /** Reputation lost when an order misses its date and the client walks. */
-  missedRep: 40,
+  missedRep: 50,
+  /**
+   * Most orders arrive with the STL ready — print it and get paid, nobody at a desk. The
+   * rest need their files drawn first, and pay for it.
+   */
+  seriesShare: 0.7,
+  /** What an order that needs CAD pays over the same print hours with the file supplied. */
+  cadPremium: 2.5,
 };
 
 /**
@@ -1002,8 +1011,8 @@ export const SEATS: Partial<Record<MachineType, number>> = {
 
 /**
  * Training at the learning station (§4c): one level of one skill at a time. Each level up
- * costs more money and more hours at the station than the last — from 2 to 3 is a week of
- * a full-timer's shifts, from 4 to 5 nearly two.
+ * costs more money and more hours at the station than the last, up to a working day for
+ * the top course (see `TRAIN.hoursPerLevel`).
  */
 /** What something bought for the room fetches when it is sold again. */
 export const RESALE = { share: 0.5 };
@@ -1024,6 +1033,14 @@ export const ROLES = {
 
 export const TRAIN = {
   costPerLevel: 500,
-  hoursPerLevel: 12,
+  /**
+   * Station hours per level of the course: 1.1 × the level being reached, so the longest
+   * course (4 → 5) is 5½ hours — **one working day at most**, started at nine and done by
+   * six. Not 8: a day at the station is about 6 hours once the coffee, lunch and the walk
+   * over are out of it, and at 1.6 and at 1.25 the top course spilled into the next morning. It was 12,
+   * which made the top course a week and a half; the absence is still the price, but a day
+   * off the crew is one the player can plan round.
+   */
+  hoursPerLevel: 1.1,
   maxLevel: 5,
 };

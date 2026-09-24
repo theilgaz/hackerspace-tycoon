@@ -343,6 +343,23 @@ export const ui = {
     `${money(p.payout)} in, ${money(p.spent)} on parts and bounties`,
   'ui.projects.tab.on': 'In progress',
   'ui.projects.tab.done': 'Done',
+  'ui.projects.tab.failed': 'Failed',
+  'ui.projects.failedOn': (p: { day: number; reason: 'missed' | 'shelved' }) =>
+    p.reason === 'missed' ? `missed d${p.day}` : `shelved d${p.day}`,
+  'ui.projects.failedWhy': (p: { reason: 'missed' | 'shelved'; rep: number }) =>
+    p.reason === 'missed' ? `missed the date · −${p.rep} rep` : 'nobody touched it',
+  'ui.bench.eta': (p: { span: string }) => `≈ ${p.span} to finish`,
+  'ui.bench.etaHint':
+    'The work left in every stage for the crew it has, the prints still to run, and any parts on the way — in calendar days, weekends included.',
+  'ui.bench.due': (p: { days: number }) =>
+    p.days <= 0 ? 'due today' : p.days === 1 ? 'due tomorrow' : `due in ${p.days} days`,
+  'ui.bench.dueHint': (p: { client: string; day: number; rep: number }) =>
+    `${p.client} wants it by day ${p.day}. Miss it and the print is scrap, and it costs ${p.rep} reputation.`,
+  'ui.bench.wishBy': (p: { days: number }) => (p.days <= 0 ? 'client wish: today' : `client wish: ${p.days} days`),
+  'ui.bench.wishHint': 'The client would like it within this many days — ship in time and the wish pays extra.',
+  'ui.bench.awards': (p: { days: number }) => `awards in ${p.days} days`,
+  'ui.bench.awardsOk': 'At this pace it ships before the awards night.',
+  'ui.bench.awardsLate': 'At this pace it ships after the awards night.',
   'ui.projects.col.project': 'Project',
   'ui.projects.col.stage': 'Stage',
   'ui.projects.col.progress': 'Progress',

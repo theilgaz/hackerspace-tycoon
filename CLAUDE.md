@@ -189,8 +189,8 @@ five stars is dear, good and pays more. Cost, quality and return all go the same
 
 **Training is how a crew gets better** (`Simulation.train`, `TRAIN`). Buy a **Learning
 Station** in Build, then press **Train** on somebody in People and pick a skill: one level
-up, paid now (`500 × next level`), and hours at the station (`12 × next level`) during which
-they are on nobody's crew. That absence is the real price, and it is what makes a five-star
+up, paid now (`500 × next level`), and hours at the station (`1.1 × next level`, so the top
+course fits one working day) during which they are on nobody's crew. That absence is the real price, and it is what makes a five-star
 IDE an investment rather than a checkbox. Skills live on the member now (saved, copied per
 run — the roster data is a module constant, and sharing its `skills` object would carry one
 run's training into the next).
@@ -273,24 +273,30 @@ button counts them, and the Build panel says which kind. Before this, eight peop
 CAD at one desk. **The room is now a constraint**, and the floor — which grows with the
 lease — is what limits how much of it you can buy.
 
-| | Seats | Price |
-|---|---|---|
-**Variants** (`FurnitureDef.seats / rate / fatigue / kickoff / testRisk`, drawn by `model`):
-the same jobs done differently, each with its cost. Pro Workstation (₺4,500) works 15% faster
-and tires less; Long Hacker Bench (₺3,900, two tiles) seats three at 92%; Pair Programming
-Desk (₺2,600) seats two at 85%; Soldering & Measurement Bench (₺5,200) assembles 20% faster
-and, while the space owns one, electronics, IoT, radio and retro builds fail their test a
-quarter less; Meeting Corner (₺3,600, two tiles) seats six and kicks off 35% faster.
-`furnitureOf(station)` says which piece a station is — the kit the garage came with and
-anything from before variants is the plain one of its kind.
+**The Work shelf is three corners** (`FurnitureDef.corner`), each a block of its own on the
+shelf — what a piece is *for*, not what kind of seat it is:
 
-| Small Project Table | 4 | 900 |
-| Large Project Table (two tiles) | 10 | 4,800 |
-| Software Station | 1 | 1,800 |
-| Hardware Station | 1 | 2,400 |
-| Assembly Table | 2 | 1,500 |
+| Corner | Piece | Seats | Price | Trade |
+|---|---|---|---|---|
+| **Hacker** | Software Station | 1 | 1,800 | the plain desk |
+| | Long Hacker Bench (two tiles) | 3 | 3,900 | 92% pace |
+| **Maker** | Maker Station | 1 | 3,400 | assembles 20% faster; owning one cuts electronics test failures by a quarter |
+| | Long Maker Bench (two tiles) | 3 | 5,200 | 92% pace |
+| | Assembly Table | 2 | 1,500 | the plain one |
+| | CNC Router | — | 26,000 | a machine, one per space, Era 2 |
+| **Meeting** | Small / Large Project Table | 4 / 10 | 900 / 4,800 | |
+| | Meeting Corner (two tiles) | 6 | 3,600 | kicks off 35% faster |
+| | Learning Station | 2 | 3,200 | courses |
 
-The garage opens with one small table, two software stations, one hardware station and an
+**The Maker Station replaced the Hardware Station**, and Pro Workstation and Pair Programming
+Desk went. The Maker Station keeps the old soldering bench's id (`solder-bench`) so saved rooms
+keep it; a save naming a piece that is gone falls back to the first entry of its kind through
+`furnitureOf`, which is why the shelf's order inside a kind matters. **The garage's own bench
+is a Maker Station** — which means every run now starts with its 20% and its test-risk cut, a
+balance change `era-pace` has not measured yet. Both maker benches carry a double-sided
+pegboard of hung tools (`pegboard()`), because a bench mid-room shows the camera its back.
+
+The garage opens with one small table, two software stations, a Maker Station and an
 assembly table.
 
 **Five things that were wrong first, each worth not repeating:**
@@ -861,6 +867,11 @@ Winning pays reputation. Two tuning notes worth keeping:
   to a state with one of each blocker and photographing it is what found both; neither would
   have shown up in a test that only asks whether an element exists.
 
+- **A counter that restarts with the page is not an id.** `uid()` counted from zero on
+  every load, so after a reload the next build could be handed the id of a saved one — and
+  the bench opened, closed and put "you" on both cards at once. Loading now moves the
+  counter past every id in the save (`uidPast`) and gives any duplicate already saved a
+  fresh id, with its crew and print jobs following it (`repairIds`).
 - **A duplicated helper is a bug with a delay on it.** `partsWait` in `ui.ts` was a verbatim
   copy of `partsEta` in `ProjectSystem`. Nothing was wrong with it yet, and nothing would have
   been until either changed. It is gone; the panel imports the real one.
@@ -984,8 +995,12 @@ them — off one bat, a bounce on the far half, onto the other. A break already 
 finished before anybody fusses over a running printer; that rule used to pull players off
 the table the moment they got there.
 
-**Send somebody for a tea** (§7b): click a drink comfort in the room, pick who — they drop
-what they are doing, and come back `LEISURE.treatMood` happier. Once a person a day.
+**Send somebody on a break** (§7b, `Simulation.treat`): click any comfort people use in the
+room and pick who — a drink or the sofa takes one, the console one or two, and **table tennis
+takes exactly two** (the picker has a Send button when more than one can go). They drop what
+they are doing and come back `LEISURE.treatMood` happier and `treatEnergy` less tired. Once a
+person a day. Left alone, the tired still find a sofa or a drink on their own, and may beat
+you to the fridge. A comfort pushed against a wall with no room at one end says so.
 
 **Durations are read in days, never hours** (design §2): `span()` for machine time (the
 clock runs round the day) and `workSpan()` for hand work and courses (the working day),
@@ -1141,6 +1156,9 @@ Machine types: FDM printer · resin printer · laser cutter · CNC router · mil
 bench · welding bay · electronics bench · assembly table.
 
 ### Print orders (`src/utils/printjobs.ts`)
+
+**Seven in ten orders come with the STL** (`ORDERS.seriesShare`) — straight to the printer,
+nobody at a desk. The rest need their files drawn and pay `ORDERS.cadPremium` (2.5×) for it.
 
 **Paid jobs that come in because the space has printers**, on a board in the Machines panel:
 a few on offer at a time, three days to say yes, a due date counted from the day you accept,
@@ -1472,6 +1490,17 @@ was an Old Factory item, which put the one thing every real first hackerspace ha
 four leases. **The Old Factory keeps three** — the dearest comforts in the game: a
 **Big-Screen TV** on the back wall, an **Espresso Bar** and a **Nap Pod**.
 
+**The lights go out when the last person leaves** (`SceneManager.setLit`) and come on with
+the first one in; screens and lamps that glow on their own keep glowing. The console's
+screen is off (black) whenever nobody is playing.
+
+**While somebody plays, the console shows a game** (`drawConsoleGame`): racing, football,
+basketball or a fighter, picked at random when somebody sits down to an empty console and
+drawn on a small canvas; nobody on it and the screen goes back to its glow. Players hold a
+pad, and whoever is at the Club-Mate fridge holds a bottle in the hand nearer the camera and
+takes a swig now and then (`updateHeld`, driven by `MemberSnapshot.using`). Table tennis
+bats lie on the table between games and are in the players' hands during one.
+
 **The comforts are used, not just owned** (`AmenityUse`, `Simulation.relax`) — **but only by
 people with nothing on.** Somebody on a crew never takes a break (lunch aside): with the
 print running or the parts in the post they wait for their build, and a crew with a kickoff
@@ -1723,6 +1752,20 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   62% opacity; one that is waiting on you does not. The stage counter (`cad 21/24`) is detail
   and lives on the open card only — a folded row answers "does this need me", not "how far
   through the stage is it".
+- **Notifications go to the log when they go** (`store.notices`, `pushNotice`,
+  `retireNotice`): the awards countdown is a toast first and a log line once the toast has
+  timed out or been pressed, and a "seats short" toast — which was never a log line — is
+  written to the log the same way. Nothing that pops up is lost.
+- **The open card carries its dates** (`benchDates`): about how many days until it ships
+  (`finishDays` — the hand work left in every stage for the crew it has, the prints still
+  to run over the printers, or the parts in the post if longer, in calendar days), a print
+  order's due date and a client's "within N days" wish. The awards night is not a date of
+  the build's and is a notification instead. A due date that is at risk also becomes the folded
+  card's warning. A date you cannot see is not a deadline, it is an ambush.
+- **What never shipped is on the record** (`store.failed`, `FailedRecord`): a missed print
+  order (−50 reputation, said in the log line) and a shelved project. The Projects panel
+  has a Failed tab, and it opens on In progress — falling through to a tab with something
+  in it when that is empty.
 - **The open card says each thing once.** It said the kickoff blocker twice (on the stage
   line and again in a box), wrapped eight stage names onto two lines, and put the crew in a
   box with its own heading — three lines of chrome around two names. Now: wing icon, name,

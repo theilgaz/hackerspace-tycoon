@@ -125,7 +125,9 @@ export class Game {
           if (!ok || item.kind === 'amenity') store.getState().setPlacingBuy(null);
         }),
       cancelBuy: () => store.getState().setBuyConfirm(null),
-      treatDrink: (memberId, amenityId) => act(() => sim.treatDrink(memberId, amenityId)),
+      treat: (memberIds, amenityId) => act(() => sim.treat(memberIds, amenityId)),
+      retireNotice: (id) => store.getState().retireNotice(id),
+      logToast: (text, kind) => store.getState().pushLog(text, kind),
       devCommand: (line) => runDevCommand(sim, line).lines,
       // A preference, not an action on the run: it goes straight to the store and storage.
       setLocale: (locale) => applyLocale(locale),
@@ -270,8 +272,9 @@ export class Game {
     if (!state.buildMode) {
       const hit = this.scene.pick(clientX, clientY, this.view.pickables);
       if (hit && STATION_MAP[hit]?.type === 'learning') this.ui.openTraining();
-      // A tea maker, a coffee machine, a fridge: send somebody for one (§7b).
-      else if (hit && amenityDef(hit)?.use?.kind === 'drink') this.ui.openTreat(hit);
+      // Any comfort people use — a drink, the sofa, the console, the table tennis table:
+      // send somebody (or two) to it (§7b).
+      else if (hit && amenityDef(hit)?.use) this.ui.openTreat(hit);
       return;
     }
     // Placing something from the shelves: a legal tile asks "buy it?", nothing is paid yet.
@@ -422,6 +425,9 @@ export class Game {
       (state.identity?.icon as IconName | undefined) ?? null,
     );
     this.view.update(state.runtime, dt);
+    // Lights off once the last person has gone home, on again with the first one in.
+    const anyone = state.runtime.members.some((m) => m.present) || !!state.runtime.player?.present;
+    this.scene.setLit(!state.started || anyone, dt);
     const over = this.scene.pick(this.pointer.x, this.pointer.y, this.view.pickables);
     if (over !== this.hovered) {
       this.hovered = over;

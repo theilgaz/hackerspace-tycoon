@@ -14,10 +14,11 @@ import { rng } from '@/utils/rng';
 import { freshMarket } from '@/utils/market';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
 import { STATION_MAP } from '@/machines/layout';
+import { APPLICANTS } from '@/utils/constants';
 
 rng.reseed(3);
 store.setState({
-  difficulty: 'easy',
+  difficulty: 'normal',
   cash: DIFFICULTY_MAP.normal.startCash,
   log: [],
   era: 1,
@@ -28,6 +29,12 @@ store.setState({
   started: true,
 });
 const sim = new Simulation();
+// The run opens with two people now; the check needs four, so take two applicants on.
+for (const a of APPLICANTS) {
+  if (sim.members.length >= 4) break;
+  store.setState({ applicants: [a.id] });
+  sim.hire(a.id);
+}
 const results: { name: string; ok: boolean; detail: string }[] = [];
 const check = (name: string, ok: boolean, detail = '') => {
   results.push({ name, ok, detail });
@@ -46,6 +53,8 @@ for (const m of crew) {
   m.team = project.id;
 }
 const absent = crew[3];
+// Somebody taken on today is not on today's rota; the three who are meant to be in are in.
+for (const m of crew.slice(0, 3)) plans.set(m.id, { attending: true, arriveAt: 9, leaveAt: 18 });
 // And you on it too: four crew plus the owner is five at a four-seat table. That used to
 // mean no table ever qualified and the kickoff never started (§4d); you are never required,
 // so the crew must meet without you.

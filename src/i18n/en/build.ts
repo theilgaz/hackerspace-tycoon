@@ -238,7 +238,7 @@ export const build = {
     'click again to turn it. Printers and tools are in <b>Machines</b>.',
   'build.seats.title': 'Seats in the space',
   'build.seats.software': (p: { count: number }) => `Software ${num(p.count)}`,
-  'build.seats.hardware': (p: { count: number }) => `Hardware ${num(p.count)}`,
+  'build.seats.hardware': (p: { count: number }) => `Maker ${num(p.count)}`,
   'build.seats.assembly': (p: { count: number }) => `Assembly ${num(p.count)}`,
   'build.seats.waiting': (p: { count: number }) => `${num(p.count)} waiting`,
   'build.seats.waitingHint': (p: { count: number }) => `${num(p.count)} standing about for want of one`,
@@ -365,11 +365,18 @@ export const build = {
   'build.train.startCourse': (p: { cost: number }) => `Start course · ${money(p.cost)}`,
   'build.log.treatSent': (p: { member: string; item: string }) => `${p.member} is off to the ${p.item}.`,
   'build.log.treatDone': (p: { member: string }) => `${p.member} is back with a cup, and in a better mood.`,
+  'build.log.treatDoneBreak': (p: { member: string }) => `${p.member} is back from a break, rested and in a better mood.`,
   'build.log.treatAgain': (p: { member: string }) => `${p.member} has already had one today.`,
   'build.log.treatBusy': (p: { item: string }) => `Somebody is already at the ${p.item}.`,
-  'build.treat.title': (p: { item: string }) => `Who is having one? · ${p.item}`,
-  'build.treat.hint': 'They put down what they are doing and come back in a better mood. Once a person a day.',
-  'build.treat.had': 'had one today',
+  'build.log.treatNoRoom': (p: { item: string }) => `There is no room to get round the ${p.item} — move it off the wall.`,
+  'build.treat.title.drink': (p: { item: string; n: number }) => `Who is having one? · ${p.item}`,
+  'build.treat.title.one': (p: { item: string; n: number }) => `Who is taking a break? · ${p.item}`,
+  'build.treat.title.many': (p: { item: string; n: number }) => `Who is taking a break? (up to ${p.n}) · ${p.item}`,
+  'build.treat.title.pair': (p: { item: string; n: number }) => `Who is playing? (pick ${p.n}) · ${p.item}`,
+  'build.treat.send': (p: { picked: number; need: number; max: number }) =>
+    p.picked < p.need ? `Pick ${p.need - p.picked} more` : `Send ${p.picked}`,
+  'build.treat.hint': 'They put down what they are doing and come back rested and in a better mood. Once a person a day.',
+  'build.treat.had': 'had a break today',
   'build.toast.needSeat': (p: { count: number; station: string }) =>
     `${num(p.count)} waiting for a free ${p.station} — add one in Build`,
   'build.np.wingBriefs': (p: { count: number }) => `${num(p.count)} ${p.count === 1 ? 'brief' : 'briefs'}`,
@@ -431,6 +438,9 @@ export const build = {
   'build.mode.placeHint': 'Click a lit tile to put it there — you are asked before anything is paid. R turns it, Esc puts it back.',
   'build.mode.pickHint': 'Click it to pick it up, then choose a tile — nothing is paid until you say yes.',
   'build.mode.moveHint': 'Pick something from the shelves, or click anything in the room to move it.',
+  'build.mode.corner.hacker': 'Hacker corner',
+  'build.mode.corner.maker': 'Maker corner',
+  'build.mode.corner.meeting': 'Meeting corner',
   'build.mode.confirm': (p: { name: string }) => `Buy the ${p.name} and put it here?`,
   'build.mode.leaves': (p: { cash: number }) => `leaves ${money(p.cash)}`,
   'build.mode.yes': (p: { price: number }) => `Buy · ${money(p.price)}`,
@@ -471,8 +481,8 @@ export const build = {
   'build.log.orderIn': (p: { item: string; client: string }) => `A print order came in: ${p.item}, for ${p.client}.`,
   'build.log.orderAccepted': (p: { item: string; pay: number; day: number }) =>
     `Said yes to ${p.item}: ${money(p.pay)} on delivery, due by day ${num(p.day)}.`,
-  'build.log.orderMissed': (p: { item: string; client: string }) =>
-    `${p.item} missed its date. ${p.client} went elsewhere, and what was on the printer is scrap.`,
+  'build.log.orderMissed': (p: { item: string; client: string; rep?: number }) =>
+    `${p.item} missed its date. ${p.client} went elsewhere, and what was on the printer is scrap.${p.rep ? ` −${p.rep} reputation.` : ''}`,
   'build.machines.col.printer': 'Printer',
   'build.trophy.firstNight': (p: { date: string; days: string; count: number }) =>
     `The first awards night is on ${p.date} — ${p.days} days away. ${num(p.count)} trophies, judged on the year.`,

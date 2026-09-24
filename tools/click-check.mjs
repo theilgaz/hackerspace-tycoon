@@ -790,14 +790,19 @@ await check('Ranking: a row opens that space, and Escape comes back', async () =
   return ok;
 });
 
-await check('Projects: the filter narrows one list', async () => {
+await check('Projects: opens on In progress, and the filter narrows one list', async () => {
   await ensureWorkInFlight();
   await openPanel('projects-open');
   const count = () => evaluate(`document.querySelectorAll('#modal .rank-table tbody tr').length`);
   const totals = JSON.parse(
     await evaluate(`JSON.stringify({ done: __store.getState().shipped.length,
+                                     failed: __store.getState().failed.length,
                                      open: __store.getState().runtime.projects.length })`),
   );
+  // What is running is what you open the panel to look at.
+  const opensOn = await evaluate(`document.querySelector('#modal [data-action="projects-tab"][aria-pressed="true"]')?.dataset.value`);
+  const first = await count();
+  await click('#modal [data-action="projects-tab"][data-value="all"]:not([disabled])');
   const all = await count();
   await click('#modal [data-action="projects-tab"][data-value="done"]:not([disabled])');
   const onlyDone = await count();
@@ -805,10 +810,10 @@ await check('Projects: the filter narrows one list', async () => {
   const onlyOpen = await count();
   // All really is everything, and each filter really is its own slice of it.
   const ok =
-    totals.done > 0 && totals.open > 0 &&
-    all === totals.done + totals.open && onlyDone === totals.done && onlyOpen === totals.open;
+    totals.done > 0 && totals.open > 0 && opensOn === 'on' && first === totals.open &&
+    all === totals.done + totals.open + totals.failed && onlyDone === totals.done && onlyOpen === totals.open;
   if (!ok) {
-    console.log(`      all ${all}, done ${onlyDone}/${totals.done}, open ${onlyOpen}/${totals.open}`);
+    console.log(`      opens on ${opensOn} (${first}), all ${all}, done ${onlyDone}/${totals.done}, open ${onlyOpen}/${totals.open}, failed ${totals.failed}`);
   }
   return ok;
 });
@@ -970,6 +975,11 @@ await check('a run survives a reload', async () => {
     projects: __game.sim.projects.map((p) => p.defId + ':' + p.stage).sort(),
   })`);
   const saved = await evaluate(`(localStorage.getItem('hackerspace-tycoon-save-v1') || '').length > 0`);
+  // Which day the file on disk is from, so a failure says whether the autosave ran at all.
+  const onDisk = await evaluate(`(() => { const raw = localStorage.getItem('hackerspace-tycoon-save-v1') || '';
+    try { const f = JSON.parse(raw); return 'day ' + f.store.day + ', ' + Math.round(raw.length / 1024) + ' KB, state ' +
+      JSON.stringify({ started: __store.getState().started, paused: __store.getState().paused, gameOver: !!__store.getState().gameOver }); }
+    catch (e) { return 'unreadable ' + raw.length; } })()`);
   await send('Page.reload', { ignoreCache: true });
   await sleep(2500);
   const offered = await evaluate(`document.querySelectorAll('#start .start-card.resume').length === 1`);
@@ -981,7 +991,7 @@ await check('a run survives a reload', async () => {
     projects: __game.sim.projects.map((p) => p.defId + ':' + p.stage).sort(),
   })`);
   if (!(saved && offered && before === after)) {
-    console.log(`      saved=${saved} offered=${offered}\n      before ${before}\n      after  ${after}`);
+    console.log(`      saved=${saved} offered=${offered} on disk: ${onDisk}\n      before ${before}\n      after  ${after}`);
   }
   return saved && offered && before === after;
 });

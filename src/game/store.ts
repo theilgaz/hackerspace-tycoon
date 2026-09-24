@@ -9,6 +9,7 @@ import type {
   Post,
   RuntimeSnapshot,
   ShippedRecord,
+  FailedRecord,
 } from './types';
 import type { Ceremony } from '@/systems/RivalSystem';
 import type { Placement, StationPlacement } from '@/machines/layout';
@@ -59,6 +60,8 @@ export interface GameState {
   shippedCount: number;
   /** Everything that made it out of the door, newest last. */
   shipped: ShippedRecord[];
+  /** Builds that never shipped: missed print orders and shelved projects. */
+  failed: FailedRecord[];
   /** Cumulative hype from everything shipped; drives era progression and Phase 2. */
   reputation: number;
   /** Applicant ids who would consider joining; hiring is a decision, not automatic. */
@@ -124,6 +127,8 @@ export interface GameState {
   setMarket: (market: Market) => void;
   runtime: RuntimeSnapshot;
   log: LogEntry[];
+  /** Notifications on screen, not yet in the log. */
+  notices: LogEntry[];
   /**
    * The language on screen (CLAUDE.md §11). A preference, not run state: never saved with
    * the run — `i18n/preference.ts` keeps it — and it lives here only so that switching
@@ -149,6 +154,10 @@ export interface GameState {
   /** Close the month: the statement has been drawn up and a new page starts here. */
   closeMonth: () => void;
   pushLog: (text: Text, kind?: LogEntry['kind']) => void;
+  /** A notification: shown as a toast first, and written to the log when it goes (§11). */
+  pushNotice: (text: Text, kind?: LogEntry['kind']) => void;
+  /** The toast has gone: into the log with it. */
+  retireNotice: (id: string) => void;
 
   setBacklog: (backlog: BacklogEntry[]) => void;
   setPrintOffers: (offers: PrintOffer[]) => void;
@@ -171,6 +180,7 @@ export interface GameState {
   setBuyConfirm: (confirm: GameState['buyConfirm']) => void;
   disownMachine: (type: MachineType) => void;
   recordShipped: (hype: number, record: ShippedRecord) => void;
+  recordFailed: (record: FailedRecord) => void;
   recordReputation: (amount: number) => void;
   /** Bank a post's reaction: the post itself, the hype it moved, the reputation it cost. */
   recordPost: (post: Post, reputationDelta: number) => void;
@@ -212,6 +222,7 @@ export const store = createStore<GameState>((set, get) => ({
   era: 1,
   shippedCount: 0,
   shipped: [],
+  failed: [],
   reputation: 0,
   ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
   amenities: [],
@@ -244,6 +255,7 @@ export const store = createStore<GameState>((set, get) => ({
   posts: [],
   runtime: emptyRuntime(),
   log: [],
+  notices: [],
   locale: 'en',
   setLocale: (locale) => {
     setI18nLocale(locale);
@@ -282,15 +294,15 @@ export const store = createStore<GameState>((set, get) => ({
   snapshot: () => {
     const {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
-      day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
+      day, simTime, cash, era, shippedCount, shipped, failed, reputation, ownedMachines, applicants,
+      passed, upvotes, backlog, log, notices, hype, posts, overdraftSince, amenities, amenityPlacements,
       stationPlacements, market, ladder, ledger, monthOpen, licences, printOffers, filamentStock, rankPrev,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
-      day, simTime, cash, era, shippedCount, shipped, reputation, ownedMachines, applicants,
-      passed, upvotes, backlog, log, hype, posts, overdraftSince, amenities, amenityPlacements,
+      day, simTime, cash, era, shippedCount, shipped, failed, reputation, ownedMachines, applicants,
+      passed, upvotes, backlog, log, notices, hype, posts, overdraftSince, amenities, amenityPlacements,
       stationPlacements, market, ladder, ledger, monthOpen, licences, printOffers, filamentStock, rankPrev,
     };
   },
@@ -325,6 +337,16 @@ export const store = createStore<GameState>((set, get) => ({
     set((s) => ({ cash: s.cash + amount, ledger: { ...s.ledger, [kind]: (s.ledger[kind] ?? 0) + amount } })),
   closeMonth: () => set((s) => ({ ledger: {}, monthOpen: s.cash })),
 
+  pushNotice: (text, kind = 'info') => {
+    const { day, simTime, notices } = get();
+    set({ notices: [...notices, { id: uid('note'), day, time: simTime, text, kind }] });
+  },
+  retireNotice: (id) => {
+    const notice = get().notices.find((n) => n.id === id);
+    if (!notice) return;
+    set({ notices: get().notices.filter((n) => n.id !== id) });
+    get().pushLog(notice.text, notice.kind);
+  },
   pushLog: (text, kind = 'info') => {
     const { day, simTime, log } = get();
     const head = log[0];
@@ -426,6 +448,7 @@ export const store = createStore<GameState>((set, get) => ({
   // Reputation unlocks the next lease; it no longer signs it. See `Simulation.signLease`.
   recordReputation: (amount) => set((s) => ({ reputation: s.reputation + amount })),
 
+  recordFailed: (record) => set((s) => ({ failed: [...s.failed, record] })),
   recordShipped: (hype, record) =>
     set((s) => {
       const shippedCount = s.shippedCount + 1;

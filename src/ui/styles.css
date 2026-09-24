@@ -1071,6 +1071,14 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .proj-wing { display: inline-flex; color: var(--tone); flex: none; }
 .proj-wing .ui-icon { width: 14px; height: 14px; }
 .proj-rating .stars .ui-icon { width: 10px; height: 10px; }
+
+/* The dates that matter to a build: when it is done, when it is due, the awards night. */
+.bench-dates { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: -4px 0 10px; font-size: 10.5px; color: var(--muted-foreground); }
+.bench-date { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.bench-date .ui-icon { width: 12px; height: 12px; flex: none; opacity: 0.8; }
+.bench-date.good { color: var(--success); }
+.bench-date.warn { color: var(--warning); }
+.bench-date.bad { color: var(--destructive); }
 .project--open .proj-line { font-family: var(--font); }
 
 /* The one thing in the way, said once. */
@@ -2725,7 +2733,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   transform: translateX(-50%);
   display: none;
   /* The shelves are a strip across the top; under it, what the item is and the wall of pictures. */
-  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px 14px;
   width: min(1180px, calc(100vw - 32px));
@@ -2760,8 +2768,9 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .build-info__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .build-info .ui-desc { margin: 0; font-size: 11.5px; }
 .build-info__price { font-family: var(--mono, monospace); font-size: 11px; color: var(--muted-foreground); margin-top: -3px; }
-/* One line of badges, never two: the column is short, and what does not fit is on the card's tooltip-free second look. */
-.build-info .ui-row__meta { flex-wrap: nowrap; overflow: hidden; gap: 4px; }
+/* Badges wrap to a second line and stop there: on a hover there is no hint under them, so
+   two rows fit; a third would push the column past the panel's height. */
+.build-info .ui-row__meta { flex-wrap: wrap; gap: 4px; max-height: 42px; overflow: hidden; }
 .build-info .ui-badge { flex: none; font-size: 10px; padding: 1px 6px; }
 .build-info__hint {
   display: flex;
@@ -2774,7 +2783,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .build-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fill, 92px);
-  grid-auto-rows: 122px;
+  grid-auto-rows: auto;
   gap: 8px;
   align-content: start;
   overflow-y: auto;
@@ -2782,6 +2791,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 }
 .build-tile {
   position: relative;
+  height: 122px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -2791,6 +2801,25 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
+/* A corner of the Work shelf: a quiet label across the whole row, above its tiles. */
+.build-group {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 -2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.build-group::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.build-tiles--grouped { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px 22px; }
+.build-corner { display: flex; flex-direction: column; gap: 6px; }
+.build-corner .build-group { margin: 0; }
+.build-corner__tiles { display: flex; gap: 8px; }
+.build-corner__tiles .build-tile { width: 92px; }
 .build-tile:hover:not(:disabled) { border-color: var(--border-strong); background: var(--card-hover); }
 .build-tile.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
 .build-tile.owned { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); }
@@ -2875,6 +2904,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .toast--bad { background: color-mix(in srgb, var(--destructive) 8%, var(--popover)); }
 .toast .ui-icon { flex: none; width: 14px; height: 14px; margin-top: 1px; color: var(--warning); }
 .toast--bad .ui-icon { color: var(--destructive); }
+.toast--info .ui-icon, .toast--good .ui-icon { color: var(--gold); }
 @keyframes toast-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(-4px); } }
 
@@ -2959,6 +2989,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 }
 .treat-row:hover:not(:disabled) { border-color: var(--primary); }
 .treat-row:disabled { opacity: 0.45; }
+.treat-row.picked { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
 .treat-row .wing .ui-icon { width: 13px; height: 13px; }
 .treat-mood { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); overflow: hidden; }
 .treat-mood i { display: block; height: 100%; background: var(--success); }

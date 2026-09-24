@@ -1,3 +1,4 @@
+import { uid, uidPast } from '@/utils/format';
 import type {
   MachineType,
   ProjectCategory,
@@ -274,6 +275,9 @@ function migrate(file: SaveFile): SaveFile {
   // month on record, so the first day after loading takes one and the arrows start there.
   if (!store.rankPrev || typeof store.rankPrev !== 'object') store.rankPrev = {};
 
+  // Builds that never shipped are kept now; an older run has none on record.
+  if (!Array.isArray(store.failed)) store.failed = [];
+
   // v20 — there is one setting now (difficulty.ts). A run started on easy or hard keeps the
   // crew and cash it already has; from here on it recruits and faces rivals like everybody.
   store.difficulty = 'normal';
@@ -291,6 +295,33 @@ function migrate(file: SaveFile): SaveFile {
   return file;
 }
 
+/**
+ * Saves written before `uidPast` can hold two open builds with one id (see `format.ts`).
+ * The later one gets a fresh id, and everything that pointed at it by id follows: the
+ * people its own team lists, and the print jobs for its own parts. You stay on the first.
+ */
+function repairIds(file: SaveFile): SaveFile {
+  const seen = new Set<string>();
+  for (const project of file.sim.projects ?? []) {
+    if (!seen.has(project.id)) {
+      seen.add(project.id);
+      continue;
+    }
+    const old = project.id;
+    project.id = uid('proj');
+    seen.add(project.id);
+    const crew = new Set(project.team ?? []);
+    for (const m of file.sim.members ?? []) if (m.team === old && crew.has(m.id)) m.team = project.id;
+    const parts = new Set((project.parts ?? []).map((part) => part.id));
+    for (const machine of file.sim.machines ?? []) {
+      for (const job of [machine.current, ...(machine.queue ?? [])]) {
+        if (job && job.projectId === old && parts.has(job.partId)) job.projectId = project.id;
+      }
+    }
+  }
+  return file;
+}
+
 export function readSave(): SaveFile | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
@@ -300,7 +331,8 @@ export function readSave(): SaveFile | null {
       localStorage.removeItem(SAVE_KEY);
       return null;
     }
-    return file.version === SAVE_VERSION ? file : migrate(file);
+    uidPast(raw);
+    return repairIds(file.version === SAVE_VERSION ? file : migrate(file));
   } catch {
     // A corrupt or unreadable file is the same as no file.
     return null;

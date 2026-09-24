@@ -673,14 +673,12 @@ export class SpaceView {
   private buildStation(def: StationDef): THREE.Object3D {
     // The furniture variants (§4d) draw as themselves; a plain one falls through to its kind.
     switch (def.model) {
-      case 'pro-workstation':
-        return this.buildProDesk();
       case 'long-bench':
         return this.buildLongBench();
-      case 'pair-desk':
-        return this.buildPairDesk();
+      case 'maker-bench':
+        return this.buildMakerBench();
       case 'solder-bench':
-        return this.buildSolderBench();
+        return this.buildMakerStation();
       case 'meeting-corner':
         return this.buildMeetingCorner();
     }
@@ -692,11 +690,13 @@ export class SpaceView {
       case 'reflow':
         return this.buildReflow();
       case 'cad-desk':
-        return this.buildDesk('#3f7ea8');
+        return this.buildDesk();
       case 'assembly':
         return this.buildTable('#b07d4a');
       case 'bench':
-        return this.buildHardware();
+        // A bench from before the variants, or a save that named one that is gone: the
+        // Maker Station is the one-seat hardware bench now.
+        return this.buildMakerStation();
       case 'lounge':
         return this.buildLounge(def.span ?? 1);
       case 'table-small':
@@ -884,7 +884,7 @@ export class SpaceView {
    * The Software Station: two screens, a keyboard and a chair on the user's side. It has to
    * read as *a place one person sits* at iso scale, because one person is all it seats (§4d).
    */
-  private buildDesk(screenColor: string): THREE.Group {
+  private buildDesk(): THREE.Group {
     const g = new THREE.Group();
     const top = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.08, 0.6), mat('#9c7048'));
     top.position.y = 0.62;
@@ -895,21 +895,9 @@ export class SpaceView {
       leg.position.set(sx, 0.31, sz);
       g.add(leg);
     }
-    for (const [sx, turn] of [[-0.2, 0.2], [0.22, -0.2]] as [number, number][]) {
-      const screen = new THREE.Mesh(
-        new THREE.BoxGeometry(0.38, 0.26, 0.035),
-        new THREE.MeshStandardMaterial({ color: screenColor, emissive: '#12384d', flatShading: true }),
-      );
-      screen.position.set(sx, 0.86, -0.17);
-      screen.rotation.set(-0.1, turn, 0);
-      g.add(screen);
-      const stand = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), mat('#2b313b'));
-      stand.position.set(sx, 0.72, -0.19);
-      g.add(stand);
-    }
-    const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.025, 0.11), mat('#2b313b'));
-    keyboard.position.set(0, 0.675, 0.1);
-    g.add(keyboard);
+    g.add(this.monitor(-0.2, 0.38, 0.2, 0));
+    g.add(this.monitor(0.22, 0.38, -0.2, 3));
+    g.add(this.keyboard(0, 0.34));
     g.add(this.chair(0, CHAIR_REACH));
     return g;
   }
@@ -931,59 +919,86 @@ export class SpaceView {
     return g;
   }
 
-  /** A screen on a stand, lit, at desk height; `width` wide, turned by `turn`. */
-  private monitor(x: number, width: number, turn = 0, glow = '#3f7ea8'): THREE.Group {
+  /**
+   * A hacker's screen: a thin dark bezel, a near-black panel with a few lines of lit code on
+   * it, and a soft backlight halo. `seed` shifts which lines and which halo, so a bench of six
+   * is not one screen copied six times. Faces +z, the user's side, like everything else.
+   */
+  private monitor(x: number, width: number, turn = 0, seed = 0): THREE.Group {
     const g = new THREE.Group();
-    const screen = new THREE.Mesh(
-      new THREE.BoxGeometry(width, width * 0.62, 0.035),
-      new THREE.MeshStandardMaterial({ color: glow, emissive: '#12384d', flatShading: true }),
+    const h = width * 0.6;
+    const face = new THREE.Group();
+    face.position.set(0, 0.84 + width * 0.12, 0);
+    face.rotation.x = -0.1;
+    g.add(face);
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(width, h, 0.03), mat('#15181d'));
+    bezel.castShadow = true;
+    face.add(bezel);
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(width - 0.024, h - 0.024, 0.004),
+      new THREE.MeshStandardMaterial({ color: '#08161b', emissive: '#062028', flatShading: true }),
     );
-    screen.position.set(0, 0.82 + width * 0.1, 0);
-    screen.rotation.set(-0.1, 0, 0);
-    g.add(screen);
-    const stand = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), mat('#2b313b'));
-    stand.position.set(0, 0.72, -0.02);
-    g.add(stand);
+    panel.position.z = 0.016;
+    face.add(panel);
+    // Code: indent, length, colour — an editor, not a screensaver.
+    const CODE: [number, number, string][] = [
+      [0, 0.55, '#5ecfc0'], [0.1, 0.42, '#c58ef0'], [0.1, 0.62, '#3ddc84'], [0.2, 0.3, '#f0b429'],
+      [0.2, 0.48, '#3ddc84'], [0.1, 0.22, '#c58ef0'], [0, 0.35, '#5ecfc0'], [0.1, 0.5, '#3ddc84'],
+    ];
+    const inner = width - 0.06;
+    const rows = 6;
+    const step = (h - 0.07) / (rows - 1);
+    for (let i = 0; i < rows; i += 1) {
+      const [indent, length, colour] = CODE[(i + seed) % CODE.length];
+      const line = new THREE.Mesh(
+        new THREE.BoxGeometry(inner * length, 0.011, 0.003),
+        new THREE.MeshStandardMaterial({ color: colour, emissive: colour, emissiveIntensity: 0.85, flatShading: true }),
+      );
+      line.position.set(-inner / 2 + inner * indent + (inner * length) / 2, h / 2 - 0.035 - i * step, 0.019);
+      face.add(line);
+    }
+    const halo = ['#5ecfc0', '#c58ef0', '#5aa9f0'][seed % 3];
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(width + 0.03, h + 0.03, 0.004),
+      new THREE.MeshStandardMaterial({ color: halo, emissive: halo, emissiveIntensity: 0.45, transparent: true, opacity: 0.55, flatShading: true }),
+    );
+    glow.position.z = -0.019;
+    face.add(glow);
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.16, 0.028), mat('#2b313b'));
+    neck.position.set(0, 0.74, -0.03);
+    g.add(neck);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.012, 0.09), mat('#2b313b'));
+    foot.position.set(0, 0.667, -0.02);
+    g.add(foot);
     g.position.set(x, 0, -0.17);
     g.rotation.y = turn;
     return g;
   }
 
-  /** Pro Workstation: three screens in an arc, a desk lamp, and a high-backed chair. */
-  private buildProDesk(): THREE.Group {
-    const g = this.deskTop(0.96, 0.62, '#6d4f36');
-    g.add(this.monitor(-0.32, 0.3, 0.35));
-    g.add(this.monitor(0, 0.34));
-    g.add(this.monitor(0.32, 0.3, -0.35));
-    const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.025, 0.11), mat('#1f242c'));
-    keyboard.position.set(0, 0.675, 0.1);
-    g.add(keyboard);
-    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.05, 0.28, 8), mat('#d9dde2'));
-    lamp.position.set(0.4, 0.8, 0.12);
-    g.add(lamp);
-    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.08, 10), mat('#f0b429', { emissive: '#f0b429', emissiveIntensity: 0.4 }));
-    shade.position.set(0.4, 0.96, 0.1);
-    g.add(shade);
-    // The chair that costs more than the desk: tall back, headrest, the station's accent.
-    const chair = this.chair(0, CHAIR_REACH, 0, '#1d2027');
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.06), mat('#5ecfc0'));
-    head.position.set(0, 0.76, 0.15);
-    chair.add(head);
-    g.add(chair);
+  /** A keyboard with a strip of underglow along its front edge. */
+  private keyboard(x: number, width: number, glow = '#5ecfc0'): THREE.Group {
+    const g = new THREE.Group();
+    const keys = new THREE.Mesh(new THREE.BoxGeometry(width, 0.025, 0.1), mat('#1f242c'));
+    keys.position.set(x, 0.675, 0.1);
+    g.add(keys);
+    const strip = new THREE.Mesh(
+      new THREE.BoxGeometry(width, 0.006, 0.01),
+      new THREE.MeshStandardMaterial({ color: glow, emissive: glow, emissiveIntensity: 0.8, flatShading: true }),
+    );
+    strip.position.set(x, 0.666, 0.152);
+    g.add(strip);
     return g;
   }
 
   /** Long Hacker Bench: one long desk across two tiles, three pairs of screens, three chairs. */
   private buildLongBench(): THREE.Group {
     const g = this.deskTop(1.9, 0.6, '#8a6a4a');
-    for (const x of [-0.6, 0, 0.6]) {
-      g.add(this.monitor(x - 0.1, 0.24, 0.15));
-      g.add(this.monitor(x + 0.12, 0.24, -0.15));
-      const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.025, 0.1), mat('#2b313b'));
-      keyboard.position.set(x, 0.675, 0.1);
-      g.add(keyboard);
+    [-0.6, 0, 0.6].forEach((x, i) => {
+      g.add(this.monitor(x - 0.1, 0.24, 0.15, i * 2));
+      g.add(this.monitor(x + 0.12, 0.24, -0.15, i * 2 + 5));
+      g.add(this.keyboard(x, 0.28, ['#5ecfc0', '#c58ef0', '#5aa9f0'][i]));
       g.add(this.chair(x, CHAIR_REACH));
-    }
+    });
     // The cables everybody means to tidy.
     const tray = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.04, 0.06), mat('#1f242c'));
     tray.position.set(0, 0.5, -0.22);
@@ -991,59 +1006,223 @@ export class SpaceView {
     return g;
   }
 
-  /** Pair Programming Desk: one wide screen, two keyboards, two chairs side by side. */
-  private buildPairDesk(): THREE.Group {
-    const g = this.deskTop(0.96, 0.6, '#9c7048');
-    g.add(this.monitor(0, 0.56, 0, '#4a8fbf'));
-    for (const x of [-0.22, 0.22]) {
-      const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.025, 0.1), mat('#2b313b'));
-      keyboard.position.set(x, 0.675, 0.1);
-      g.add(keyboard);
-      g.add(this.chair(x, CHAIR_REACH, 0, '#3a4a66'));
+  /**
+   * Long Maker Bench: the Maker Station three wide. Cutting mats, two irons, a meter and a
+   * parts cabinet on the top, a pegboard of hung tools behind, three stools — spread by
+   * `seatPosition` like the hacker bench.
+   */
+  private buildMakerBench(): THREE.Group {
+    const g = this.deskTop(1.9, 0.6, '#b98a5a');
+    const top = 0.66;
+    for (const x of [-0.6, 0, 0.6]) {
+      const cutMat = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.01, 0.3), mat('#2f7a8a'));
+      cutMat.position.set(x, top + 0.005, 0.08);
+      g.add(cutMat);
+      g.add(this.chair(x, CHAIR_REACH, 0, '#6aa89a'));
     }
+    // Two soldering stations, a meter, and the drawers of small parts nobody sorts.
+    for (const x of [-0.62, 0.02]) g.add(this.solderIron(x, top));
+    const meter = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 0.13), mat('#e0b83a'));
+    meter.position.set(0.28, top + 0.01, -0.12);
+    g.add(meter);
+    g.add(this.partsDrawers(0.72, top));
+    g.add(this.benchLamp(-0.3, top));
+    g.add(this.pegboard(1.76, top));
     return g;
   }
 
   /**
-   * Soldering & Measurement Bench: the hardware bench grown up — a four-channel scope, a
-   * fume arm over the board, a reel rack, and the good stool.
+   * Maker Station: one seat of hands-on work — a proper iron, a four-channel scope, a fume
+   * arm over the board, and the same pegboard as the long bench, one tile wide. It is the
+   * garage's own bench and the only one-seat hardware bench on the shelf.
    */
-  private buildSolderBench(): THREE.Group {
-    const g = this.deskTop(0.96, 0.62, '#5f6b52');
-    const mat2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.01, 0.32), mat('#2f7a8a'));
-    mat2.position.set(-0.05, 0.665, 0.06);
-    g.add(mat2);
-    const scope = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.2), mat('#d6d9de'));
-    scope.position.set(0.28, 0.76, -0.16);
+  private buildMakerStation(): THREE.Group {
+    const g = this.deskTop(0.96, 0.62, '#b98a5a');
+    const top = 0.66;
+    const cutMat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.01, 0.3), mat('#2f7a8a'));
+    cutMat.position.set(-0.05, top + 0.005, 0.08);
+    g.add(cutMat);
+    const scope = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.18), mat('#d6d9de'));
+    scope.position.set(0.26, top + 0.09, -0.16);
     g.add(scope);
     const trace = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 0.12, 0.01),
+      new THREE.BoxGeometry(0.18, 0.1, 0.01),
       new THREE.MeshStandardMaterial({ color: '#0d2b1c', emissive: '#3ddc84', emissiveIntensity: 0.5, flatShading: true }),
     );
-    trace.position.set(0.25, 0.77, -0.055);
+    trace.position.set(0.24, top + 0.1, -0.065);
     g.add(trace);
-    const station = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.14), mat('#2b313b'));
-    station.position.set(-0.32, 0.705, -0.14);
-    g.add(station);
+    g.add(this.solderIron(-0.3, top));
     // The fume arm reaching over the work.
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.36, 6), mat('#c9d1dd'));
-    post.position.set(-0.4, 0.84, -0.22);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.3, 6), mat('#c9d1dd'));
+    post.position.set(-0.4, top + 0.15, -0.22);
     g.add(post);
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.34, 6), mat('#c9d1dd'));
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.3, 6), mat('#c9d1dd'));
     arm.rotation.x = Math.PI / 2.6;
-    arm.position.set(-0.4, 1.0, -0.08);
+    arm.position.set(-0.4, top + 0.3, -0.1);
     g.add(arm);
     const hood = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.07, 10), mat('#2b313b'));
-    hood.position.set(-0.4, 0.98, 0.07);
+    hood.position.set(-0.4, top + 0.28, 0.04);
     g.add(hood);
-    for (const [x, colour] of [[-0.12, '#b8764a'], [0.0, '#c9d1dd'], [0.12, '#d9a13a']] as [number, string][]) {
-      const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 10), mat(colour));
-      reel.rotation.x = Math.PI / 2;
-      reel.position.set(x, 0.73, -0.22);
-      g.add(reel);
-    }
-    g.add(this.chair(0, CHAIR_REACH, 0, '#3a3f4a'));
+    g.add(this.pegboard(0.9, top));
+    g.add(this.chair(0, CHAIR_REACH, 0, '#6aa89a'));
     return g;
+  }
+
+  /** An iron in its stand: the base unit and the holder leaning off it. */
+  private solderIron(x: number, top: number): THREE.Group {
+    const g = new THREE.Group();
+    const station = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.07, 0.12), mat('#2b313b'));
+    station.position.set(x, top + 0.035, -0.18);
+    g.add(station);
+    const holder = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.1, 6), mat('#c9d1dd'));
+    holder.rotation.z = 0.5;
+    holder.position.set(x + 0.1, top + 0.06, -0.18);
+    g.add(holder);
+    return g;
+  }
+
+  /** A small-parts cabinet, three rows of coloured drawer fronts. */
+  private partsDrawers(x: number, top: number): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.14), mat('#d6d9de'));
+    body.position.set(x, top + 0.1, -0.2);
+    g.add(body);
+    for (let row = 0; row < 3; row += 1) {
+      for (const dx of [-0.07, 0.07]) {
+        const front = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.045, 0.01), mat(['#e5484d', '#3f7ea8', '#e0b83a'][row]));
+        front.position.set(x + dx, top + 0.04 + row * 0.06, -0.128);
+        g.add(front);
+      }
+    }
+    return g;
+  }
+
+  /** A bench lamp on an arm, head tipped over the work. */
+  private benchLamp(x: number, top: number): THREE.Group {
+    const g = new THREE.Group();
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.34, 6), mat('#e8e8e8'));
+    post.position.set(x, top + 0.17, -0.22);
+    g.add(post);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.08, 10, 1, true), mat('#e8e8e8'));
+    head.rotation.x = Math.PI * 0.8;
+    head.position.set(x, top + 0.34, -0.13);
+    g.add(head);
+    return g;
+  }
+
+  /**
+   * The pegboard every makerspace has: a pale board on two posts off a bench's back edge,
+   * pitted with holes, a warm strip under it, and tools hung on it — as many as `width`
+   * holds, in the order a real wall fills up: screwdrivers, pliers, a wrench, a hammer, then
+   * rolls of tape and solder. **The tools face whoever works there**; from behind it is the
+   * bare board with its holes. Both faces were dressed once, and a bench seen from behind
+   * then looked as if it faced the wrong way.
+   */
+  private pegboard(width: number, top: number): THREE.Group {
+    const board = new THREE.Group();
+    board.position.set(0, 0, -0.34);
+    const half = width / 2;
+    for (const x of [-half - 0.02, half + 0.02]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.95, 0.05), mat('#4c5360'));
+      post.position.set(x, top + 0.47, 0);
+      board.add(post);
+    }
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(width, 0.66, 0.03), mat('#e6ddc8'));
+    panel.position.set(0, 1.2, 0);
+    panel.castShadow = true;
+    board.add(panel);
+
+    const side = new THREE.Group();
+    board.add(side);
+    const cols = Math.max(6, Math.round(width / 0.1));
+    const holes = new THREE.InstancedMesh(new THREE.BoxGeometry(0.014, 0.014, 0.004), mat('#8a8272'), cols * 6);
+    const place = new THREE.Object3D();
+    let n = 0;
+    for (let row = 0; row < 6; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        place.position.set(-half + 0.05 + col * ((width - 0.1) / (cols - 1)), 0.92 + row * 0.1, 0.017);
+        place.updateMatrix();
+        holes.setMatrixAt(n++, place.matrix);
+      }
+    }
+    side.add(holes);
+    // The back: the same holes, nothing hung on them. Tools face whoever works there.
+    const backHoles = holes.clone();
+    backHoles.position.z = -0.034;
+    board.add(backHoles);
+    const strip = new THREE.Mesh(
+      new THREE.BoxGeometry(width - 0.06, 0.02, 0.03),
+      new THREE.MeshStandardMaterial({ color: '#ffe2a8', emissive: '#ffcf70', emissiveIntensity: 0.6, flatShading: true }),
+    );
+    strip.position.set(0, 0.86, 0.02);
+    side.add(strip);
+
+    // Tools left to right until the board is full. Each takes its width of board.
+    const face = 0.035;
+    type Hang = { w: number; draw: (x: number) => void };
+    const screwdriver = (colour: string): Hang => ({
+      w: 0.09,
+      draw: (x) => {
+        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.1, 6), mat(colour));
+        handle.position.set(x, 1.38, face);
+        side.add(handle);
+        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.13, 5), mat('#c9d1dd'));
+        shaft.position.set(x, 1.265, face);
+        side.add(shaft);
+      },
+    });
+    const pliers: Hang = {
+      w: 0.12,
+      draw: (x) => {
+        for (const lean of [-0.14, 0.14]) {
+          const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.22, 0.012), mat(lean < 0 ? '#c9d1dd' : '#e5484d'));
+          jaw.rotation.z = lean;
+          jaw.position.set(x + lean * 0.12, 1.26, face);
+          side.add(jaw);
+        }
+      },
+    };
+    const wrench: Hang = {
+      w: 0.14,
+      draw: (x) => {
+        const shank = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.26, 0.012), mat('#aab3bf'));
+        shank.position.set(x, 1.25, face);
+        side.add(shank);
+        const head = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.012, 6, 10, Math.PI * 1.5), mat('#aab3bf'));
+        head.position.set(x, 1.4, face);
+        side.add(head);
+      },
+    };
+    const hammer: Hang = {
+      w: 0.18,
+      draw: (x) => {
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.26, 0.018), mat('#a67c52'));
+        handle.position.set(x, 1.22, face);
+        side.add(handle);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.04), mat('#3a3f4a'));
+        head.position.set(x, 1.37, face);
+        side.add(head);
+      },
+    };
+    const roll = (colour: string): Hang => ({
+      w: 0.15,
+      draw: (x) => {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.022, 6, 12), mat(colour));
+        ring.position.set(x, 1.34, face + 0.01);
+        side.add(ring);
+      },
+    });
+    const wall: Hang[] = [
+      screwdriver('#e5484d'), screwdriver('#e0b83a'), screwdriver('#3f7ea8'), pliers, wrench,
+      screwdriver('#4caf6a'), pliers, hammer, roll('#f2f2f2'), roll('#2b313b'), roll('#c9d1dd'),
+    ];
+    let x = -half + 0.09;
+    for (const tool of wall) {
+      if (x + tool.w / 2 > half - 0.05) break;
+      tool.draw(x + tool.w / 2 - 0.045);
+      x += tool.w;
+    }
+    return board;
   }
 
   /**
@@ -1147,32 +1326,6 @@ export class SpaceView {
     c.position.set(x, 0, z);
     c.rotation.y = turn;
     return c;
-  }
-
-  /**
-   * The Hardware Station: an iron, a scope, a bench supply and the fume extractor nobody
-   * switches on. Electronics assembly happens here now, one pair of hands at a time.
-   */
-  private buildHardware(): THREE.Group {
-    const g = this.buildTable('#8a6f52', true);
-    const scope = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.18), mat('#d6d9de'));
-    scope.position.set(-0.24, 0.74, -0.2);
-    g.add(scope);
-    const trace = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 0.1, 0.01),
-      new THREE.MeshStandardMaterial({ color: '#7ac74f', emissive: '#2f6b1f', flatShading: true }),
-    );
-    trace.position.set(-0.27, 0.75, -0.105);
-    g.add(trace);
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.36, 6), mat('#8d98a8'));
-    arm.position.set(0.36, 0.84, -0.22);
-    arm.rotation.z = 0.35;
-    g.add(arm);
-    const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.08, 8), mat('#f0b429'));
-    hood.position.set(0.3, 1.0, -0.18);
-    g.add(hood);
-    g.add(this.chair(0, CHAIR_REACH, 0, '#3a3f4a'));
-    return g;
   }
 
   /**
@@ -1752,7 +1905,9 @@ export class SpaceView {
     bezel.position.set(0, 0.62, -0.4);
     bezel.castShadow = true;
     g.add(bezel);
-    const glass = this.screen(0.94, 0.52);
+    // Off until somebody plays: a dark panel, and the game is drawn onto it (`updateConsoles`).
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.52, 0.03), mat('#0c0e12'));
+    glass.name = 'consoleGlass';
     glass.position.set(0, 0.62, -0.37);
     g.add(glass);
     // The console itself: white shell, dark band, stood on its end the way everybody does.
@@ -2228,44 +2383,173 @@ export class SpaceView {
         g.add(leg);
       }
     }
-    const bat = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.12), mat('#b4453a'));
-    bat.position.set(0.3, 0.77, 0.18);
-    bat.rotation.y = 0.5;
-    g.add(bat);
+    // Between games: two bats lying on the table and a ball beside them. They are hidden
+    // while a rally is on, because the players are holding them (`updateRallies`).
+    const kit = new THREE.Group();
+    kit.name = 'restingKit';
+    ([[0.28, 0.14, 0.6, '#c0392b'], [0.34, -0.12, -0.9, '#1d2027']] as const).forEach(([x, z, yaw, rubber]) => {
+      const bat = this.makeBat(rubber);
+      bat.rotation.set(-Math.PI / 2, yaw, 0, 'YXZ');
+      bat.position.set(x, 0.762, z);
+      kit.add(bat);
+    });
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), mat('#f4f1ea'));
+    ball.position.set(0.14, 0.782, 0.02);
+    kit.add(ball);
+    g.add(kit);
     return g;
   }
 
+  /** A table-tennis bat: a round blade in its rubber colour on a wooden grip, standing up. */
+  private makeBat(rubber: string): THREE.Group {
+    const bat = new THREE.Group();
+    const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.016, 14), mat(rubber));
+    blade.rotation.x = Math.PI / 2;
+    blade.position.y = 0.09;
+    bat.add(blade);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.1, 0.025), mat('#a67c52'));
+    bat.add(grip);
+    return bat;
+  }
+
+  /**
+   * The aquarium: a tank on a cabinet, sand, a couple of rocks, weed that sways, a small
+   * wreck on its side, fish that swim end to end and turn, and bubbles off a stone in the
+   * corner. It moves through `userData.tick` (see `update`), so the fish are part of the
+   * model — a thumbnail simply catches them mid-swim.
+   */
   private propAquarium(tone: string): THREE.Group {
     const g = new THREE.Group();
     const stand = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.5, 0.42), mat('#3a3027'));
     stand.position.y = 0.25;
     stand.castShadow = true;
     g.add(stand);
+    // An open frame rather than a lid: the camera looks down into the room, and a solid top
+    // hid half of what is in the tank. A light bar along the back does the lid's job.
+    for (const [w, d, x, z] of [[0.76, 0.03, 0, 0.195], [0.76, 0.03, 0, -0.195], [0.03, 0.42, 0.365, 0], [0.03, 0.42, -0.365, 0]]) {
+      const rim = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), mat('#2d333d'));
+      rim.position.set(x, 0.965, z);
+      g.add(rim);
+    }
+    const light = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.03, 0.06),
+      new THREE.MeshStandardMaterial({ color: '#dff4ff', emissive: '#bfe8ff', emissiveIntensity: 0.7, flatShading: true }),
+    );
+    light.position.set(0, 0.985, -0.15);
+    g.add(light);
+    // Inside first, water last: the water is see-through, so it has to be drawn after what
+    // is in it, and it writes no depth so the fish behind its front face still show.
+    const sand = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.05, 0.36), mat('#c8b48a'));
+    sand.position.y = 0.535;
+    g.add(sand);
+    for (const [x, z, r, colour] of [[-0.24, -0.08, 0.055, '#6b7280'], [-0.17, 0.02, 0.035, '#8a8f99'], [0.26, -0.1, 0.045, '#5d6470']] as [number, number, number, string][]) {
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), mat(colour));
+      rock.position.set(x, 0.56 + r * 0.5, z);
+      rock.rotation.set(x * 7, z * 9, 0);
+      g.add(rock);
+    }
+    // The wreck: a hull on its side, a broken mast, two portholes. Small, like the real ones.
+    const wreck = new THREE.Group();
+    wreck.position.set(0.1, 0.585, -0.08);
+    wreck.rotation.set(0, -0.5, 0.35);
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.08), mat('#6b4a2e'));
+    wreck.add(hull);
+    const bow = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.07, 4), mat('#6b4a2e'));
+    bow.rotation.z = -Math.PI / 2;
+    bow.position.x = 0.13;
+    wreck.add(bow);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.11, 5), mat('#4a3322'));
+    mast.position.set(-0.02, 0.07, 0);
+    mast.rotation.z = 0.3;
+    wreck.add(mast);
+    for (const px of [-0.05, 0.03]) {
+      const porthole = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.005, 8), mat('#d9b25a'));
+      porthole.rotation.x = Math.PI / 2;
+      porthole.position.set(px, 0.005, 0.042);
+      wreck.add(porthole);
+    }
+    g.add(wreck);
+    // Weed along the back, swaying from the root.
+    const weed: THREE.Object3D[] = [];
+    for (const [x, z, h, colour] of [[-0.3, -0.13, 0.26, '#3f8f4a'], [-0.08, -0.14, 0.2, '#56a85c'], [0.3, -0.12, 0.3, '#3f8f4a'], [0.22, 0.1, 0.16, '#6bbf5e']] as [number, number, number, string][]) {
+      const root = new THREE.Group();
+      root.position.set(x, 0.56, z);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.025, h, 0.012), mat(colour));
+      blade.position.y = h / 2;
+      root.add(blade);
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.02, h * 0.6, 0.01), mat(colour));
+      leaf.position.set(0.02, h * 0.35, 0);
+      leaf.rotation.z = -0.35;
+      root.add(leaf);
+      g.add(root);
+      weed.push(root);
+    }
+    // Fish: a body, a tail and a fin each; they swim along x and turn at the glass.
+    const fish = (colour: string) => {
+      const f = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), mat(colour));
+      body.scale.set(1.5, 0.9, 0.6);
+      f.add(body);
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.045, 4), mat(colour));
+      tail.rotation.z = Math.PI / 2;
+      tail.position.x = -0.065;
+      f.add(tail);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.006, 5, 4), mat('#111111'));
+      eye.position.set(0.035, 0.008, 0.018);
+      f.add(eye);
+      g.add(f);
+      return { node: f, tail };
+    };
+    const school = [
+      { ...fish('#f0b429'), y: 0.72, z: 0.05, speed: 0.55, phase: 0 },
+      { ...fish('#e2725b'), y: 0.82, z: -0.04, speed: 0.4, phase: 2.1 },
+      { ...fish('#f08fa4'), y: 0.65, z: 0.1, speed: 0.7, phase: 4.2 },
+      { ...fish('#5aa9f0'), y: 0.77, z: 0.0, speed: 0.48, phase: 1.1 },
+    ];
+    // Bubbles off an airstone in the back corner, rising and starting again at the bottom.
+    const stone = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.025, 8), mat('#9aa3ad'));
+    stone.position.set(-0.29, 0.575, 0.1);
+    g.add(stone);
+    const bubbleMat = new THREE.MeshStandardMaterial({ color: '#e8f7ff', emissive: '#9fdcff', emissiveIntensity: 0.4, flatShading: true });
+    const bubbles = Array.from({ length: 7 }, (_, i) => {
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.009 + (i % 3) * 0.003, 6, 4), bubbleMat);
+      g.add(b);
+      return b;
+    });
     const water = new THREE.Mesh(
       new THREE.BoxGeometry(0.72, 0.44, 0.38),
       new THREE.MeshStandardMaterial({
         color: tone,
         flatShading: true,
         transparent: true,
-        opacity: 0.45,
+        opacity: 0.32,
+        depthWrite: false,
         emissive: new THREE.Color(tone),
-        emissiveIntensity: 0.35,
+        emissiveIntensity: 0.3,
       }),
     );
     water.position.y = 0.73;
+    water.renderOrder = 1;
     g.add(water);
-    const lid = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.05, 0.42), mat('#2d333d'));
-    lid.position.y = 0.97;
-    g.add(lid);
-    for (const [fx, fy, colour] of [
-      [-0.16, 0.7, '#f0b429'],
-      [0.12, 0.8, '#e2725b'],
-      [0.2, 0.64, '#f08fa4'],
-    ] as [number, number, string][]) {
-      const fish = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.03), mat(colour));
-      fish.position.set(fx, fy, 0.06);
-      g.add(fish);
-    }
+
+    g.userData.tick = (t: number) => {
+      for (const f of school) {
+        const s = Math.sin(t * f.speed + f.phase);
+        f.node.position.set(s * 0.26, f.y + Math.sin(t * 1.3 + f.phase) * 0.015, f.z);
+        // Facing where it is going: the derivative of the sine says which way that is.
+        f.node.rotation.y = Math.cos(t * f.speed + f.phase) >= 0 ? 0 : Math.PI;
+        f.tail.rotation.y = Math.sin(t * 12 + f.phase) * 0.5;
+      }
+      weed.forEach((root, i) => {
+        root.rotation.z = Math.sin(t * 0.9 + i * 1.7) * 0.12;
+        root.rotation.x = Math.sin(t * 0.7 + i) * 0.06;
+      });
+      bubbles.forEach((b, i) => {
+        const rise = (t * 0.22 + i / bubbles.length) % 1;
+        b.position.set(-0.29 + Math.sin(t * 3 + i * 2) * 0.012, 0.6 + rise * 0.33, 0.1);
+      });
+    };
+    g.userData.tick(0);
     return g;
   }
 
@@ -2593,6 +2877,11 @@ export class SpaceView {
     return g;
   }
 
+  /**
+   * The lava lamp: a stool, a metal base, a tinted glass and, inside it, three blobs of wax
+   * rising and falling out of step — stretched on the way, round at the turn — over a pool
+   * that never leaves the bottom. Moves through `userData.tick` (see `update`).
+   */
   private propLava(tone: string): THREE.Group {
     const g = new THREE.Group();
     const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.42, 10), mat('#3b4250'));
@@ -2601,21 +2890,45 @@ export class SpaceView {
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 0.1, 10), mat('#aab3c0'));
     base.position.y = 0.47;
     g.add(base);
+    const wax = new THREE.MeshStandardMaterial({ color: '#ffd23d', emissive: new THREE.Color('#ffb020'), emissiveIntensity: 0.9, flatShading: true });
+    const pool = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), wax);
+    pool.scale.set(1, 0.45, 1);
+    pool.position.y = 0.525;
+    g.add(pool);
+    const blobs = [0.034, 0.027, 0.022].map((r) => {
+      const blob = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), wax);
+      g.add(blob);
+      return blob;
+    });
     const glass = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.05, 0.08, 0.3, 10),
-      new THREE.MeshStandardMaterial({ color: tone, transparent: true, opacity: 0.7, emissive: new THREE.Color(tone), emissiveIntensity: 0.6 }),
+      new THREE.CylinderGeometry(0.05, 0.08, 0.3, 12),
+      new THREE.MeshStandardMaterial({
+        color: tone,
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false,
+        emissive: new THREE.Color(tone),
+        emissiveIntensity: 0.55,
+      }),
     );
     glass.position.y = 0.67;
+    glass.renderOrder = 1;
     g.add(glass);
-    const blob = new THREE.Mesh(
-      new THREE.SphereGeometry(0.04, 8, 6),
-      new THREE.MeshStandardMaterial({ color: '#ffd23d', emissive: new THREE.Color('#ffb020'), emissiveIntensity: 0.8 }),
-    );
-    blob.position.y = 0.72;
-    g.add(blob);
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.06, 10), mat('#aab3c0'));
     cap.position.y = 0.85;
     g.add(cap);
+
+    g.userData.tick = (t: number) => {
+      blobs.forEach((blob, i) => {
+        // Slow, and out of step: a lava lamp is never in a hurry and never in time.
+        const phase = t * (0.35 + i * 0.07) + i * 2.3;
+        const height = (Math.sin(phase) + 1) / 2;
+        const moving = Math.abs(Math.cos(phase));
+        blob.position.set(Math.sin(t * 0.25 + i * 1.9) * 0.012, 0.56 + height * 0.22, Math.cos(t * 0.2 + i) * 0.01);
+        blob.scale.set(1 - moving * 0.18, 1 + moving * 0.35, 1 - moving * 0.18);
+      });
+    };
+    g.userData.tick(0);
     return g;
   }
 
@@ -2671,6 +2984,12 @@ export class SpaceView {
     this.elapsed += dt;
     this.syncStations();
 
+    // Props that move on their own — fish, lava — carry a `userData.tick` and are handed
+    // the clock here. A prop animates itself; the view only keeps time.
+    for (const node of this.amenityNodes.values()) {
+      node.traverse((child) => (child.userData.tick as ((t: number) => void) | undefined)?.(this.elapsed));
+    }
+
     // The door opens for whoever is on the threshold and closes behind them.
     if (this.doorLeaf) {
       const people = [...runtime.members, ...(runtime.player ? [runtime.player] : [])];
@@ -2690,6 +3009,8 @@ export class SpaceView {
     }
 
     this.updateRallies(runtime);
+    this.updateHeld(runtime);
+    this.updateConsoles(runtime);
 
     for (const machine of runtime.machines) {
       const visual = this.machineVisuals.get(machine.id);
@@ -2768,16 +3089,7 @@ export class SpaceView {
         );
         group.add(ball);
         const bats = [0, 1].map((i) => {
-          const bat = new THREE.Group();
-          const blade = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.075, 0.075, 0.016, 14),
-            mat(i ? '#1d2027' : '#c0392b'),
-          );
-          blade.rotation.x = Math.PI / 2;
-          blade.position.y = 0.09;
-          bat.add(blade);
-          const grip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.1, 0.025), mat('#a67c52'));
-          bat.add(grip);
+          const bat = this.makeBat(i ? '#1d2027' : '#c0392b');
           group.add(bat);
           return bat;
         });
@@ -2819,10 +3131,151 @@ export class SpaceView {
         bat.position.y = ends[i].y + Math.sin(this.elapsed * 3 + i) * 0.02;
       });
     }
+    // The bats on the table are the ones in the players' hands.
+    for (const [id, node] of this.amenityNodes) {
+      const kit = node.getObjectByName('restingKit');
+      if (kit) kit.visible = !live.has(id);
+    }
     for (const [id, rally] of this.rallies) {
       if (live.has(id)) continue;
       this.group.remove(rally.group);
       this.rallies.delete(id);
+    }
+  }
+
+  /**
+   * What somebody has in their hands at a comfort: a pad on the PlayStation, a bottle at the
+   * Mate fridge. People have no arms, so it floats where the hands would be — the table
+   * tennis bats do the same and read fine at this distance.
+   */
+  private held = new Map<string, { kind: HeldKind; prop: THREE.Group }>();
+
+  private updateHeld(runtime: RuntimeSnapshot) {
+    const wanted = new Map<string, HeldKind>();
+    for (const m of runtime.members) {
+      if (!m.present || !m.using) continue;
+      const shape = amenityDef(m.using)?.shape;
+      const kind: HeldKind | null = shape === 'console' ? 'pad' : shape === 'mate' ? 'bottle' : null;
+      if (kind) wanted.set(m.id, kind);
+    }
+    for (const [id, item] of this.held) {
+      if (wanted.get(id) === item.kind) continue;
+      item.prop.removeFromParent();
+      this.held.delete(id);
+    }
+    for (const [id, kind] of wanted) {
+      const node = this.people.get(id);
+      if (!node) continue;
+      let item = this.held.get(id);
+      if (!item) {
+        item = { kind, prop: kind === 'pad' ? this.makePad() : this.makeBottle() };
+        // A touch over life size, or it is a speck at the room's zoom.
+        item.prop.scale.setScalar(kind === 'pad' ? 1.3 : 1.45);
+        node.add(item.prop);
+        this.held.set(id, item);
+      }
+      const t = this.elapsed + (id.length % 5);
+      if (kind === 'pad') {
+        // Held in the lap, in front of the body, thumbs going.
+        item.prop.position.set(Math.sin(t * 7) * 0.012, 0.3, SIT_FORWARD + 0.18);
+        item.prop.rotation.set(-0.55 + Math.sin(t * 9) * 0.05, 0, Math.sin(t * 3) * 0.08);
+      } else {
+        // In the hand at the side — they face the fridge, so in front of them it would be
+        // hidden behind their back — and now and then up to the mouth for a swig.
+        const cycle = t % 4.5;
+        const swig = cycle > 3.3 ? Math.sin(((cycle - 3.3) / 1.2) * Math.PI) : 0;
+        // The hand nearer the camera, which looks from +x+z: whichever side of the body that
+        // is depends on which way they are facing.
+        const side = Math.cos(node.rotation.y) - Math.sin(node.rotation.y) >= 0 ? 1 : -1;
+        item.prop.position.set(side * (0.25 - swig * 0.09), 0.3 + swig * 0.36, 0.03 + swig * 0.08);
+        item.prop.rotation.set(-swig * 1.2, 0, -0.15 * side);
+      }
+    }
+  }
+
+  /** A game pad: a dark body, two grips, and the light bar in the front. */
+  private makePad(): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.07), mat('#23262d'));
+    g.add(body);
+    for (const side of [-1, 1]) {
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.07), mat('#23262d'));
+      grip.position.set(side * 0.065, -0.005, 0.035);
+      grip.rotation.y = side * 0.35;
+      g.add(grip);
+    }
+    const light = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.012, 0.012),
+      new THREE.MeshStandardMaterial({ color: '#5aa9ff', emissive: new THREE.Color('#3b82f6'), emissiveIntensity: 1.2 }),
+    );
+    light.position.set(0, 0.012, -0.036);
+    g.add(light);
+    return g;
+  }
+
+  /** A Club-Mate: an amber bottle, the yellow label, a blue cap. */
+  private makeBottle(): THREE.Group {
+    const g = new THREE.Group();
+    const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.032, 0.13, 10), mat('#7a4712'));
+    glass.position.y = 0.065;
+    g.add(glass);
+    const label = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.033, 0.05, 10), mat('#f2c230'));
+    label.position.y = 0.06;
+    g.add(label);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.028, 0.06, 10), mat('#7a4712'));
+    neck.position.y = 0.16;
+    g.add(neck);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.012, 10), mat('#1f4fa0'));
+    cap.position.y = 0.196;
+    g.add(cap);
+    return g;
+  }
+
+  /**
+   * The console's screen. While somebody is playing it shows a game — racing, football,
+   * basketball or a fighter, picked at random each time somebody sits down to an empty
+   * console — drawn on a small canvas; nobody on it, and it goes back to the blue glow.
+   */
+  private screens = new Map<
+    string,
+    { canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; playing: THREE.Material; idle: THREE.Material | THREE.Material[]; game: ConsoleGame; drawn: number }
+  >();
+
+  private updateConsoles(runtime: RuntimeSnapshot) {
+    const inUse = new Set(runtime.members.filter((m) => m.present && m.using).map((m) => m.using!));
+    for (const [id, node] of this.amenityNodes) {
+      if (amenityDef(id)?.shape !== 'console') continue;
+      const glass = node.getObjectByName('consoleGlass') as THREE.Mesh | undefined;
+      if (!glass) continue;
+      let screen = this.screens.get(id);
+      if (!inUse.has(id)) {
+        if (screen) {
+          glass.material = screen.idle;
+          screen.tex.dispose();
+          screen.playing.dispose();
+          this.screens.delete(id);
+        }
+        continue;
+      }
+      if (!screen) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 192;
+        canvas.height = 108;
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const playing = new THREE.MeshBasicMaterial({ map: tex });
+        const game = CONSOLE_GAMES[Math.floor(Math.random() * CONSOLE_GAMES.length)];
+        screen = { canvas, tex, playing, idle: glass.material, game, drawn: -1 };
+        glass.material = playing;
+        this.screens.set(id, screen);
+      }
+      // Twenty frames a second is plenty for a picture this size.
+      if (this.elapsed - screen.drawn < 0.05) continue;
+      screen.drawn = this.elapsed;
+      const ctx = screen.canvas.getContext('2d');
+      if (!ctx) continue;
+      drawConsoleGame(ctx, screen.game, this.elapsed);
+      screen.tex.needsUpdate = true;
     }
   }
 
@@ -2840,5 +3293,133 @@ export class SpaceView {
   machineWorld(id: string): THREE.Vector3 | null {
     const def = STATIONS.find((s) => s.id === id);
     return def ? toWorld(def.tile.x, def.tile.y, 1.75) : null;
+  }
+}
+
+type HeldKind = 'pad' | 'bottle';
+type ConsoleGame = 'racing' | 'football' | 'basketball' | 'fighting';
+const CONSOLE_GAMES: ConsoleGame[] = ['racing', 'football', 'basketball', 'fighting'];
+
+/** One frame of whatever is on the console, on a 192×108 canvas. */
+function drawConsoleGame(ctx: CanvasRenderingContext2D, game: ConsoleGame, t: number) {
+  const W = 192;
+  const H = 108;
+  const rect = (x: number, y: number, w: number, h: number, c: string) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(x, y, w, h);
+  };
+  const dot = (x: number, y: number, r: number, c: string) => {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  ctx.font = 'bold 9px monospace';
+  if (game === 'racing') {
+    // Sky, grass, a road running to the horizon with the dashes rushing at you.
+    const sky = ctx.createLinearGradient(0, 0, 0, 44);
+    sky.addColorStop(0, '#1b3b7a');
+    sky.addColorStop(1, '#f59e6b');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, 44);
+    rect(0, 44, W, H - 44, '#2f7d3a');
+    ctx.fillStyle = '#44464d';
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - 8, 44);
+    ctx.lineTo(W / 2 + 8, 44);
+    ctx.lineTo(W + 30, H);
+    ctx.lineTo(-30, H);
+    ctx.fill();
+    for (let i = 0; i < 6; i += 1) {
+      const k = ((i + (t * 2.2) % 1) / 6) ** 2;
+      const y = 44 + k * (H - 44);
+      rect(W / 2 - 1 - k * 2, y, 2 + k * 4, 2 + k * 8, '#f4f1ea');
+    }
+    const sway = Math.sin(t * 1.7) * 26;
+    rect(W / 2 - 16 + sway, 82, 32, 14, '#d23b3b');
+    rect(W / 2 - 12 + sway, 78, 24, 6, '#8e2222');
+    const rival = Math.sin(t * 1.1 + 2) * 14;
+    rect(W / 2 - 6 + rival, 56, 12, 6, '#3b6fd2');
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`LAP 2/3  ${String(Math.floor(t * 7) % 60).padStart(2, '0')}"`, 6, 12);
+  } else if (game === 'football') {
+    // A pitch in stripes, the lines, two sides chasing a ball.
+    for (let i = 0; i < 8; i += 1) rect(i * 24, 0, 24, H, i % 2 ? '#2e8b3e' : '#33994a');
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(6, 8, W - 12, H - 16);
+    ctx.beginPath();
+    ctx.moveTo(W / 2, 8);
+    ctx.lineTo(W / 2, H - 8);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2, 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeRect(6, H / 2 - 18, 18, 36);
+    ctx.strokeRect(W - 24, H / 2 - 18, 18, 36);
+    const bx = W / 2 + Math.sin(t * 0.9) * 70;
+    const by = H / 2 + Math.sin(t * 1.6) * 30;
+    for (let i = 0; i < 3; i += 1) {
+      dot(bx - 14 - i * 16 + Math.sin(t * 3 + i) * 4, by + (i - 1) * 16, 4, '#e53935');
+      dot(bx + 14 + i * 16 + Math.cos(t * 3 + i) * 4, by - (i - 1) * 14, 4, '#1e63d6');
+    }
+    dot(bx, by, 2.6, '#ffffff');
+    rect(W / 2 - 22, 0, 44, 11, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = '#fff';
+    ctx.fillText('1 - 0', W / 2 - 13, 9);
+  } else if (game === 'basketball') {
+    // A wooden court, the key, a hoop, and a shot that goes in every time.
+    rect(0, 0, W, H, '#c8894a');
+    for (let i = 0; i < 12; i += 1) rect(0, i * 9, W, 1, 'rgba(90,50,20,0.25)');
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(W - 60, 30, 60, 48);
+    ctx.beginPath();
+    ctx.arc(W - 60, 54, 24, Math.PI / 2, (Math.PI * 3) / 2);
+    ctx.stroke();
+    rect(W - 16, 26, 3, 30, '#e9edf2');
+    ctx.strokeStyle = '#e8572a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(W - 24, 42, 8, 2.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    const k = (t * 0.6) % 1;
+    const sx = 40 + k * (W - 64 - 40);
+    // From the shooter's hands at y 70 to the rim at y 42, over an arc.
+    const sy = 70 - Math.sin(k * Math.PI) * 50 - k * 28;
+    dot(sx, sy, 5, '#e8572a');
+    dot(36 + Math.sin(t * 2) * 3, 78, 6, '#7e57c2');
+    dot(W - 70 + Math.cos(t * 2) * 5, 70, 6, '#2e7d32');
+    rect(4, 3, 52, 11, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`HOME ${48 + Math.floor(t / 1.7) * 2 % 40}`, 7, 11);
+  } else {
+    // A sunset stage, two fighters trading blows, and the health bars that say who is winning.
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#3b1d5e');
+    sky.addColorStop(0.6, '#e2604a');
+    sky.addColorStop(1, '#f2b25c');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+    rect(0, 88, W, 20, '#3a2a2a');
+    const gap = 30 + Math.sin(t * 1.3) * 16;
+    const mid = W / 2 + Math.sin(t * 0.7) * 20;
+    const fighter = (x: number, colour: string, facing: number, punch: number) => {
+      rect(x - 7, 58, 14, 24, colour);
+      dot(x, 50, 7, '#f0c8a0');
+      rect(x - 6, 82, 5, 8, '#222');
+      rect(x + 1, 82, 5, 8, '#222');
+      rect(facing > 0 ? x + 6 : x - 6 - 8 - punch, 62, 8 + punch, 4, '#f0c8a0');
+    };
+    fighter(mid - gap, '#1e63d6', 1, Math.max(0, Math.sin(t * 6)) * 12);
+    fighter(mid + gap, '#d23b3b', -1, Math.max(0, Math.sin(t * 6 + 2)) * 12);
+    const hpA = 0.35 + 0.6 * ((Math.sin(t * 0.3) + 1) / 2);
+    const hpB = 0.3 + 0.6 * ((Math.cos(t * 0.37) + 1) / 2);
+    rect(6, 6, 76, 7, '#4a1010');
+    rect(6, 6, 76 * hpA, 7, '#f2c230');
+    rect(W - 82, 6, 76, 7, '#4a1010');
+    rect(W - 82 + 76 * (1 - hpB), 6, 76 * hpB, 7, '#f2c230');
+    ctx.fillStyle = '#fff';
+    ctx.fillText('KO?', W / 2 - 9, 13);
   }
 }
