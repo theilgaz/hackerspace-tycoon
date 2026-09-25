@@ -250,5 +250,33 @@ export const log = {
   'bill.comforts': 'Comforts',
   'bill.comfortsDetail': (p: { count: number }) => `${p.count} in the space · running costs`,
   'log.role.levelled': (p: { member: string; machine: string }) => `${p.member} levelled the bed on the ${p.machine} between prints.`,
+
+  // Traits (§3): each one tells you when it happens.
+  'trait.perfectionist.hold': (p: { member: string; project: string; stage: string; quality: number; gate: number }) =>
+    `${p.member} won't sign off the ${p.stage} of ${p.project} at ${Math.round(p.quality * 100)}% — wants ${Math.round(p.gate * 100)}%. The crew keeps at it.`,
+  'trait.perfectionist.relent': (p: { member: string; project: string; stage: string }) =>
+    `${p.member} signed off the ${p.stage} of ${p.project} after all — under protest.`,
+  'trait.scope.added': (p: { member: string; project: string; idea: string; stage: string }) =>
+    `${p.member} added ${p.idea} to ${p.project}. More ${p.stage} to do, and a higher ceiling.`,
+  'trait.scope.idea.software.0': 'a dark mode',
+  'trait.scope.idea.software.1': 'a public API',
+  'trait.scope.idea.software.2': 'offline support',
+  'trait.scope.idea.electronics.0': 'a USB-C port',
+  'trait.scope.idea.electronics.1': 'a battery gauge',
+  'trait.scope.idea.electronics.2': 'RGB, obviously',
+  'trait.scope.idea.comms.0': 'a mesh fallback',
+  'trait.scope.idea.comms.1': 'a second antenna',
+  'trait.scope.idea.comms.2': 'encryption, end to end',
+  'trait.scope.idea.mechanical.0': 'a quick-release mount',
+  'trait.scope.idea.mechanical.1': 'a folding frame',
+  'trait.scope.idea.mechanical.2': 'a second motor',
+  'trait.mentor': (p: { member: string; project: string }) =>
+    `${p.member} is showing the crew of ${p.project} how it's done — everyone works a level up.`,
+  'trait.documenter': (p: { member: string; project: string }) =>
+    `${p.member} has started writing the docs for ${p.project}. Nobody had to ask.`,
+  'trait.gatekeeper': (p: { member: string }) =>
+    `${p.member} checks every job before it goes near a printer: fewer failed prints, slower novices.`,
+  'trait.nightOwl': (p: { member: string }) => `${p.member} is staying on tonight to keep an eye on the prints.`,
+  'trait.ghost': (p: { member: string }) => `Nobody has seen much of ${p.member} lately. Their crew is carrying them.`,
 };
 

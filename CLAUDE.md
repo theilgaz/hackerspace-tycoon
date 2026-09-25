@@ -101,6 +101,31 @@ for a deadline. The player raises commitment with mood, not money.
 | Night Owl | Works the hours nobody else does — great for long machine babysitting |
 | Documenter | Rare. Actually does the docs stage without a bounty |
 
+**Every trait acts, and every trait says so** (`TRAITS` in constants.ts, `Simulation.traitSays`).
+A trait nobody is told about does not exist — the Perfectionist's gate ran for months as a
+silent stall on the bench. What each one does now:
+
+- **Perfectionist** — their craft counts +0.12 toward quality; holds CAD / Iterate below 55%,
+  but only until the stage has had half its work again (`relentAfter`), then signs off
+  "under protest". A crew that could never reach the bar used to stall the build for good.
+- **Scope Creeper** — at the end of a kickoff and on going into Iterate, 45% each, once per
+  build: +25% work on the next stage, +0.05 quality and ceiling, and a named idea ("a dark
+  mode", "a second motor"). **Never on a small build** — see below.
+- **Mentor** — everybody else working the same build is a level up, never past the Mentor's own.
+- **Gatekeeper** — while in, print failure ×0.7; a novice (below 2 in the stage's skill) works ×0.85.
+- **Night Owl** — stays late at 45% (§3d), and print failure ×0.7 while in after hours.
+- **Documenter** — ×1.6 on the release stage, and +12% hype for a build whose docs they wrote.
+- **Ghost** — as before; the space notices once their attendance drops under half.
+
+**The first sighting is a notification, the rest are log lines** (`store.traitsSeen`, save
+v21) — except the two that change a build's plan, a hold and an added requirement, which are
+news every time. That first version fired 60-120 notifications in 220 days, almost all from
+weekend builds, so a small build neither creeps nor raises a hold as a toast. Measured after:
+roughly 17-33 a run, about one a week, beside the awards countdown's six a year
+(`AWARDS_COUNTDOWN`: 50, 30, 20, 10, 5 and 1 days out). `era-pace`, 8 seeds: ships unchanged,
+the player's final reputation about +10% — every trait but the Ghost is an upside, which is
+the next thing to look at if the lead over the field matters.
+
 ### The player's five verbs
 | Verb | Effect | Cost |
 |---|---|---|
@@ -1758,6 +1783,14 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   62% opacity; one that is waiting on you does not. The stage counter (`cad 21/24`) is detail
   and lives on the open card only — a folded row answers "does this need me", not "how far
   through the stage is it".
+- **The calendar sits under the clock** (`UI.calendar`, `calendarEvents`). Today's date,
+  the year up to its awards night as a strip — past shaded, a marker for today, a dot per
+  dated thing — and the next thing by name; a press opens the agenda. Awards night, the
+  monthly bill, a print order's due date, a client's "within N days", parts arriving, an
+  offer running out and the next applicant were each a number somewhere else — a toast,
+  one build's card, the People footer — and none could be seen beside the others. It is
+  built from the store alone. It replaced the season pill in the top bar, which hid its
+  bar below 1480px — i.e. on a 14" MacBook — and the bench and toasts moved down to 118px.
 - **Notifications go to the log when they go** (`store.notices`, `pushNotice`,
   `retireNotice`): the awards countdown is a toast first and a log line once the toast has
   timed out or been pressed, and a "seats short" toast — which was never a log line — is
@@ -2096,9 +2129,9 @@ is visible rather than rediscovered:
   expensive kind of dead stat: it looks live. The comforts are what write to it.
 - **`commitment` drives nothing.** It is shown in the People panel and on the member card, but
   contracted hours (§3d) replaced it as the capacity number.
-- **Five of the seven traits are type declarations only** — `scopeCreeper`, `mentor`,
-  `gatekeeper`, `nightOwl` and `documenter` are never read. Only Perfectionist and Ghost do
-  anything. Each is a Phase 5 job, and §13's rule applies: measure it against attendance.
+- ~~**Five of the seven traits are type declarations only**~~ — **all seven act now** (§3,
+  `TRAITS`). Whether any of them moves *attendance* (§13's test) is still unmeasured: they
+  change what a present crew does, not whether it turns up.
 
 ## 14. Development Priority
 

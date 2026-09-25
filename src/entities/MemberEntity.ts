@@ -83,9 +83,12 @@ export class MemberEntity {
     return best;
   }
 
-  /** Work units per sim-hour, given the skill this stage actually leans on. */
-  workRate(skill: SkillKey | null, tags: Tag[] = []): number {
-    const level = skill ? this.data.skills[skill] : 2;
+  /**
+   * Work units per sim-hour, given the skill this stage actually leans on. `boost` is levels
+   * lent by somebody else — a Mentor on the same build (§3).
+   */
+  workRate(skill: SkillKey | null, tags: Tag[] = [], boost = 0): number {
+    const level = Math.min(5, (skill ? this.data.skills[skill] : 2) + boost);
     let rate = MEMBER.baseWorkRate * (1 + (level - 1) * MEMBER.skillRateBonus);
     rate *= 1 + ((this.data.mood - 50) / 50) * MEMBER.moodRateSwing;
     if (this.passionMatch(tags) < 0.4) rate *= MEMBER.offPassionPenalty;

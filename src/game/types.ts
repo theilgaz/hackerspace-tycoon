@@ -434,6 +434,13 @@ export interface ProjectData {
   ceiling?: number;
   /** What the client asked for (design §5.4), judged at release. */
   wishes?: Wish[];
+  /**
+   * Trait moments this build has already had (§3): 'scope:kickoff', 'perfectionist:cad',
+   * 'mentor', … — so each is told once per build rather than on every tick.
+   */
+  traitNotes?: string[];
+  /** A Documenter wrote this build's docs: louder at release. */
+  documented?: boolean;
   /** A print order: the agreed price, whose it is, and the last day it can be handed over. */
   order?: { pay: number; client: string; dueDay: number };
   /** How it was designed (§4d). */
@@ -659,4 +666,6 @@ export interface LogEntry {
   kind: 'info' | 'good' | 'bad' | 'warn';
   /** Consecutive repeats, collapsed into one line rather than flooding the log. */
   repeats?: number;
+  /** A notification's glyph on its toast (an `IconName`); the kind picks one otherwise. */
+  icon?: string;
 }

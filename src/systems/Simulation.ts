@@ -13,6 +13,7 @@ import type {
   ProjectData,
   ProjectDef,
   StageKey,
+  TraitKey,
   Tag,
   ClaimKey,
   Post,
@@ -89,6 +90,7 @@ import {
   STAGE_ORDER,
   ORDERS,
   PERFECTIONIST_QUALITY_GATE,
+  TRAITS,
   APPLICANTS,
   shuffleLadder,
   PLAYER,
@@ -362,6 +364,52 @@ export class Simulation {
     store.getState().pushNotice(text, kind);
   }
 
+  /**
+   * A trait showing itself (§3). **A trait nobody is told about does not exist**: the
+   * Perfectionist's gate ran for months as a silent stall on the bench. The first time a
+   * trait acts in a run it is a notification; after that it is a log line — unless it
+   * changed a build's plan (`always`), which the player needs to hear every time.
+   */
+  private traitSays(trait: TraitKey, text: Message, always = false) {
+    if (store.getState().markTraitSeen(trait) || always) store.getState().pushNotice(text, 'info', 'sparkles');
+    else this.log(text, 'info');
+  }
+
+  /** Has this build already had this trait moment? Marks it if not. */
+  private firstFor(project: ProjectData, note: string): boolean {
+    const notes = (project.traitNotes ??= []);
+    if (notes.includes(note)) return false;
+    notes.push(note);
+    return true;
+  }
+
+  /**
+   * A Scope Creeper on the crew may add a requirement (§3): more work on the stage it lands
+   * on, a better build and a higher ceiling at the end of it. Once at the kickoff and once
+   * on going into Iterate, per build.
+   */
+  private maybeCreep(project: ProjectData, moment: 'kickoff' | 'iterate', stage: StageKey) {
+    // A weekend build has no room for an idea: two days, one person, ship it.
+    if (CATALOG_MAP[project.defId]?.tier === 'small') return;
+    const creeper = this.members.find((m) => m.team === project.id && m.hasTrait('scopeCreeper'));
+    if (!creeper || !this.firstFor(project, `scope:${moment}`)) return;
+    if (!rng.chance(TRAITS.scopeCreeper.chance)) return;
+    project.required[stage] = Math.round(project.required[stage] * (1 + TRAITS.scopeCreeper.work));
+    project.bonus += TRAITS.scopeCreeper.quality;
+    if (project.ceiling !== undefined) project.ceiling = Math.min(1, project.ceiling + TRAITS.scopeCreeper.ceiling);
+    refreshQuality(project);
+    this.traitSays(
+      'scopeCreeper',
+      msg('trait.scope.added', {
+        member: creeper.name,
+        project: project.name,
+        idea: msg(`trait.scope.idea.${project.category}.${rng.int(0, 2)}` as MessageKey),
+        stage: stageLabel(project.category, stage),
+      }),
+      true,
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Clock
   // -------------------------------------------------------------------------
@@ -415,6 +463,9 @@ export class Simulation {
    * loops, so it is folded once and kept until the owned list changes rather than being
    * recomputed a few thousand times a second.
    */
+  /** The day a Night Owl last said they were staying on — once a night is plenty. */
+  private owlNight = -1;
+
   private comfortCache: Comforts = NO_COMFORTS;
   private comfortKey = '';
 
@@ -648,7 +699,11 @@ export class Simulation {
       const target = Math.max(0, Math.min(100, m.baseMood + comfort));
       m.data.mood += (target - m.data.mood) * COMFORT.settle;
       if (this.plans.get(m.id)?.attending && m.hasTrait('ghost')) {
+        const before = m.ghostFactor;
         m.ghostFactor *= GHOST_DECAY;
+        if (before >= TRAITS.ghost.noticeBelow && m.ghostFactor < TRAITS.ghost.noticeBelow) {
+          this.traitSays('ghost', msg('trait.ghost', { member: m.name }), true);
+        }
       }
     }
   }
@@ -941,14 +996,33 @@ export class Simulation {
       let total = 0;
       let craftSum = 0;
       let rateSum = 0;
-      workers.slice(0, MEMBER.maxWorkersPerStage).forEach((m, index) => {
+      const crew = workers.slice(0, MEMBER.maxWorkersPerStage);
+      // A Mentor working the build lends everybody else a level, never past their own (§3).
+      const mentor = crew.find((m) => m.hasTrait('mentor'));
+      const mentorLevel = mentor && skill ? mentor.data.skills[skill] : 0;
+      const gatekeeper = this.members.some((m) => m.present && m.hasTrait('gatekeeper'));
+      crew.forEach((m, index) => {
         // Each extra pair of hands helps less than the last — eight people around one
         // bench is not eight times the throughput.
         const factor =
           index === 0 ? 1 : MEMBER.extraWorkerFactor * Math.pow(MEMBER.crowdDecay, index - 1);
         // A live bounty on this stage is effort, not hours: the same day, worked harder.
         const bountied = project.bounties.includes(project.stage) && m !== this.player ? BOUNTY.rateBonus : 1;
-        const rate = m.workRate(skill, project.tags) * factor * this.comforts.focus * bountied * this.deskRate(m, project);
+        const own = skill ? m.data.skills[skill] : 2;
+        const boost = mentor && m !== mentor ? Math.max(0, Math.min(TRAITS.mentor.levels, mentorLevel - own)) : 0;
+        if (boost && this.firstFor(project, 'mentor')) {
+          this.traitSays('mentor', msg('trait.mentor', { member: mentor!.name, project: project.name }));
+        }
+        // Under a Gatekeeper a novice's work is checked at every step.
+        const checked = gatekeeper && own + boost < TRAITS.gatekeeper.noviceBelow ? TRAITS.gatekeeper.noviceRate : 1;
+        // A Documenter does the docs — the release stage — without being asked.
+        const docs = project.stage === 'release' && m.hasTrait('documenter') ? TRAITS.documenter.releaseRate : 1;
+        const rate =
+          m.workRate(skill, project.tags, boost) * factor * this.comforts.focus * bountied * this.deskRate(m, project) * checked * docs;
+        if (docs > 1 && this.firstFor(project, 'documenter')) {
+          project.documented = true;
+          this.traitSays('documenter', msg('trait.documenter', { member: m.name, project: project.name }));
+        }
         total += rate * dt;
         rateSum += rate;
         // Each person's own share of the stage, for the bar over their head — and of the
@@ -956,8 +1030,9 @@ export class Simulation {
         project.contrib[m.id] = (project.contrib[m.id] ?? 0) + rate * dt;
         const effort = (project.effort ??= {});
         effort[m.id] = (effort[m.id] ?? 0) + rate * dt;
-        const level = skill ? m.data.skills[skill] : 2;
-        craftSum += (level / 5) * rate;
+        const level = Math.min(5, own + boost);
+        const fussy = m.hasTrait('perfectionist') ? TRAITS.perfectionist.craft : 0;
+        craftSum += Math.min(1, level / 5 + fussy) * rate;
       });
       const craft = rateSum > 0 ? craftSum / rateSum : 0.5;
       addWork(project, total, Math.min(1, Math.max(0.1, craft)));
@@ -1999,7 +2074,23 @@ export class Simulation {
   }
 
   private tickMachines(dt: number) {
+    // Who is keeping an eye on the printers (§3): a Gatekeeper in the building, a Night Owl
+    // in after hours.
+    const gatekeeper = this.members.find((m) => m.present && m.hasTrait('gatekeeper'));
+    const afterHours = this.time < WORKDAY.start || this.time >= WORKDAY.end;
+    const owl = afterHours ? this.members.find((m) => m.present && m.hasTrait('nightOwl')) : undefined;
+    const watch = (gatekeeper ? TRAITS.gatekeeper.printFail : 1) * (owl ? TRAITS.nightOwl.printFail : 1);
+    const printing = this.machines.some((m) => m.running);
+    if (printing && gatekeeper && !store.getState().traitsSeen?.includes('gatekeeper')) {
+      this.traitSays('gatekeeper', msg('trait.gatekeeper', { member: gatekeeper.name }));
+    }
+    // Once a night, and only with something on the bed to watch.
+    if (printing && owl && this.owlNight !== this.day) {
+      this.owlNight = this.day;
+      this.traitSays('nightOwl', msg('trait.nightOwl', { member: owl.name }));
+    }
     for (const machine of this.machines) {
+      machine.watch = watch;
       const operated = this.members.some(
         (m) => m.present && m.activity === 'babysitting' && this.atStation(m, machine.type),
       );
@@ -2091,6 +2182,7 @@ export class Simulation {
           outcome.brokenPartId ? msg('log.stage.remake') : msg('log.stage.backToCad'),
           'warn',
         );
+        this.maybeCreep(project, 'iterate', 'iterate');
       }
       return;
     }
@@ -2110,8 +2202,30 @@ export class Simulation {
         project.quality < PERFECTIONIST_QUALITY_GATE,
     );
     if (blocker) {
-      blocker.note = t('note.notSigningOff');
-      return;
+      const stageName = stageLabel(project.category, stage);
+      // **Not for ever.** A crew that cannot reach the bar would otherwise stall the build
+      // for good; once the stage has had half as much work again, they give in.
+      if (project.progress[stage] < project.required[stage] * TRAITS.perfectionist.relentAfter) {
+        blocker.note = t('note.notSigningOff');
+        if (this.firstFor(project, `perfectionist:${stage}`)) {
+          this.traitSays(
+            'perfectionist',
+            msg('trait.perfectionist.hold', {
+              member: blocker.name,
+              project: project.name,
+              stage: stageName,
+              quality: project.quality,
+              gate: PERFECTIONIST_QUALITY_GATE,
+            }),
+            // A weekend build held up for an hour is a log line; a real build held is news.
+            CATALOG_MAP[project.defId]?.tier !== 'small',
+          );
+        }
+        return;
+      }
+      if (this.firstFor(project, `relent:${stage}`)) {
+        this.log(msg('trait.perfectionist.relent', { member: blocker.name, project: project.name, stage: stageName }), 'warn');
+      }
     }
 
     switch (stage) {
@@ -2193,6 +2307,7 @@ export class Simulation {
       }),
       fit.quality < -0.05 ? 'warn' : 'info',
     );
+    this.maybeCreep(project, 'kickoff', 'cad');
   }
 
   private setStage(
@@ -2267,7 +2382,10 @@ export class Simulation {
     const before = store.getState().era;
     const hype = project.order
       ? def.hype
-      : Math.round(def.hype * project.hypeMultiplier * novelty * Math.sqrt(appeal) * qualityHype(project.quality) * (1 + DESIGN.wishHype * met));
+      : Math.round(
+          def.hype * project.hypeMultiplier * novelty * Math.sqrt(appeal) * qualityHype(project.quality) *
+            (1 + DESIGN.wishHype * met) * (project.documented ? 1 + TRAITS.documenter.hype : 1),
+        );
     // The market has one fewer thing to want. Somebody else's print order is not ours.
     if (!project.order) store.getState().setMarket(coolMarket(store.getState().market, project.category));
     store.getState().recordShipped(hype, {

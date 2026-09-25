@@ -98,6 +98,12 @@ export function shortDate(day: number): string {
   return `${d.dayOfMonth} ${monthName(d.month).slice(0, 3)} ${d.year}`;
 }
 
+/** "12 Mar" — a date inside the year already on screen. */
+export function dayMonth(day: number): string {
+  const d = gameDate(day);
+  return `${d.dayOfMonth} ${monthName(d.month).slice(0, 3)}`;
+}
+
 /** The awards night (day 90) of the calendar year that `day` falls in. */
 export function awardsDay(day: number): number {
   const d = gameDate(day);

@@ -53,7 +53,7 @@ import {
   WEEKLY_HOURS,
 } from '@/utils/constants';
 import { TOUR, hasToured, rememberToured } from './tour';
-import { awardsDay, clock, dayName, hours, money, pct, shortDate, span, workSpan } from '@/utils/format';
+import { awardsDay, clock, dayMonth, dayName, hours, money, pct, shortDate, span, workSpan } from '@/utils/format';
 import { LOCALES, getLocale, msg, num, say, t, type Locale, type MessageKey, type Text } from '@/i18n';
 import {
   AMENITIES,
@@ -234,6 +234,19 @@ function suggestName(): string {
   const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
   return `${pick(NAME_A)} ${pick(NAME_B)}`;
 }
+
+/** Something with a date on the calendar under the clock. */
+type CalKind = 'awards' | 'bill' | 'order' | 'wish' | 'parts' | 'offer' | 'recruit';
+interface CalEvent {
+  day: number;
+  kind: CalKind;
+  icon: IconName;
+  label: string;
+  /** Due today or tomorrow, and it costs something to miss. */
+  urgent?: boolean;
+}
+/** Same-day events in this order: what costs you if missed first. */
+const CAL_ORDER: CalKind[] = ['order', 'awards', 'bill', 'wish', 'offer', 'parts', 'recruit'];
 
 /** The promise each tier makes about length (CLAUDE.md §4). */
 const TIER_DAYS: Record<ProjectDef['tier'], string> = {
@@ -518,6 +531,9 @@ export class UI {
   /** Which column the leaderboard is sorted by. */
   private rankSort: { key: RankKey; dir: 1 | -1 } = { key: 'reputation', dir: -1 };
 
+  /** The agenda under the clock: what is coming, as a list. */
+  private agendaOpen = false;
+
   /** The New Project wizard (§4d). Survives re-renders; reset each time it is opened. */
   private np: {
     step: NewStep;
@@ -727,6 +743,7 @@ export class UI {
       else if (state?.ceremony) this.handlers.dismissCeremony();
       // Build mode unwinds one layer a press: the question, then the item in hand, then the
       // mode itself. Something picked up from the room is Game's to put down.
+      else if (this.agendaOpen) this.agendaOpen = false;
       else if (state?.buyConfirm) this.handlers.cancelBuy();
       else if (this.treatAmenity) this.treatAmenity = null;
       else if (state?.buildMode && state.placingBuy) this.handlers.pickBuy(null);
@@ -773,6 +790,14 @@ export class UI {
     // pointerdown, NOT click. The panels re-render as the sim advances, so the element
     // under the cursor can be replaced between press and release — and the browser then
     // never fires `click` at all. Acting on press is immune to that.
+    // The agenda folds away on a press anywhere else — the room included, which is not ours.
+    document.addEventListener('pointerdown', (event) => {
+      if (!this.agendaOpen) return;
+      if ((event.target as HTMLElement).closest?.('.cal, .agenda')) return;
+      this.agendaOpen = false;
+      this.rerender();
+    });
+
     this.root.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return; // primary button only
       const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action]');
@@ -833,6 +858,11 @@ export class UI {
         }
         case 'ranking-open':
           this.openModal = 'ranking';
+          this.agendaOpen = false;
+          this.rerender();
+          break;
+        case 'agenda-toggle':
+          this.agendaOpen = !this.agendaOpen;
           this.rerender();
           break;
         case 'projects-open':
@@ -1369,7 +1399,8 @@ export class UI {
     for (const notice of state.notices ?? []) {
       if (this.toastSeen.has(notice.id)) continue;
       this.toastSeen.add(notice.id);
-      this.toast(say(notice.text), notice.kind, notice.kind === 'info' ? 'trophy' : undefined, () =>
+      const glyph = (notice.icon as IconName | undefined) ?? (notice.kind === 'info' ? 'trophy' : undefined);
+      this.toast(say(notice.text), notice.kind, glyph, () =>
         this.handlers.retireNotice(notice.id),
       );
     }
@@ -2053,9 +2084,6 @@ export class UI {
       return `<button data-action="speed" data-value="${value}" class="tiny ${active ? 'active' : ''}">${label}</button>`;
     };
     const allocation = this.handlers.allocation();
-    const season = state.runtime.season;
-    const seasonPct = (season.dayOfYear / season.length) * 100;
-    const daysLeft = season.length - season.dayOfYear;
 
     // The clock lives in its own corner: it is the one thing you glance at constantly,
     // and it changes every frame, so it has no business sharing a box with the totals.
@@ -2068,7 +2096,8 @@ export class UI {
          ${speedButton(0, '❙❙')}
          ${TIME.speeds.map((s) => speedButton(s, `${s}×`)).join('')}
        </div>
-       ${this.dayBar(state)}`,
+       ${this.dayBar(state)}
+       ${this.calendar(state)}`,
     );
     const clockEl = this.clockPanel.querySelector('.clock');
     if (clockEl) clockEl.textContent = clock(state.simTime);
@@ -2130,12 +2159,6 @@ export class UI {
           <span class="tb-sub">${t('build.top.busy', { used: allocation.used, total: allocation.total })} · ${t('build.top.shipped', { count: state.shippedCount })}</span>
         </div>
       </div>
-      <button class="season" data-action="ranking-open"
-        title="${esc(t('ui.top.seasonHint', { year: season.year, days: daysLeft }))}">
-        <span class="season-label">${season.year}</span>
-        <span class="season-bar"><i style="width:${seasonPct.toFixed(1)}%"></i></span>
-        <span class="season-left">${t('ui.days.short', { days: daysLeft })}</span>
-      </button>
       ${(() => {
         // One press flips between the two; the button names the language it switches *to*,
         // in that language, so somebody who cannot read the current one can still find it.
@@ -4795,6 +4818,100 @@ export class UI {
    * It draws the *lesser* of what is left in you and what is left of the day, because an
    * idle player at half ten at night has a full tank and one usable hour.
    */
+  /**
+   * **What is coming, dated** (§11). The awards night, the bill, a client's due date, a
+   * delivery: each was a number somewhere else — a toast, a chip on one build's card, the
+   * People footer — and none of them could be seen beside the others. The UI builds the
+   * list from the store alone, like every other screen.
+   */
+  private calendarEvents(state: GameState): CalEvent[] {
+    const today = state.day;
+    const season = state.runtime.season;
+    const events: CalEvent[] = [];
+    events.push({ day: today - season.dayOfYear + season.length, kind: 'awards', icon: 'trophy', label: t('ui.cal.awards') });
+    const bill = this.handlers.previewBill();
+    for (let day = today + bill.dueInDays; day <= today + 100; day += ECONOMY.billEvery) {
+      events.push({ day, kind: 'bill', icon: 'coins', label: t('ui.cal.bill') });
+    }
+    const now = this.handlers.totalHours();
+    for (const project of state.runtime.projects) {
+      if (project.order) {
+        events.push({ day: project.order.dueDay, kind: 'order', icon: 'alert', label: t('ui.cal.order', { project: project.name }), urgent: project.order.dueDay - today <= 1 });
+      }
+      const within = project.wishes?.find((w): w is Extract<Wish, { kind: 'days' }> => w.kind === 'days');
+      if (within && project.startedOnDay + within.within >= today) {
+        events.push({ day: project.startedOnDay + within.within, kind: 'wish', icon: 'star', label: t('ui.cal.wish', { project: project.name }) });
+      }
+      if (project.partsOrdered && project.partsArriveAt > now) {
+        const day = today + Math.floor((state.simTime + project.partsArriveAt - now) / 24);
+        events.push({ day, kind: 'parts', icon: 'package', label: t('ui.cal.parts', { project: project.name }) });
+      }
+    }
+    for (const entry of state.backlog) {
+      if (entry.source === 'catalog' || entry.expiresOnDay === undefined) continue;
+      const name = CATALOG_MAP[entry.defId]?.name ?? entry.defId;
+      events.push({ day: entry.expiresOnDay, kind: 'offer', icon: 'clock', label: t('ui.cal.offer', { project: name }) });
+    }
+    if (state.runtime.recruitIn > 0) {
+      events.push({ day: today + state.runtime.recruitIn, kind: 'recruit', icon: 'users', label: t('ui.cal.recruit') });
+    }
+    return events.filter((e) => e.day >= today).sort((a, b) => a.day - b.day || CAL_ORDER.indexOf(a.kind) - CAL_ORDER.indexOf(b.kind));
+  }
+
+  /** Today, the year up to its awards night as a strip, and the next thing on it. */
+  private calendar(state: GameState): string {
+    const season = state.runtime.season;
+    const events = this.calendarEvents(state);
+    const start = state.day - season.dayOfYear;
+    const at = (day: number) => Math.min(100, Math.max(0, ((day - start) / season.length) * 100));
+    const when = (day: number) => t('ui.cal.in', { days: day - state.day });
+    const inYear = events.filter((e) => e.day <= start + season.length);
+    // One dot a day and kind: three bills in a row would otherwise print on top of each other.
+    const dots = [...new Map(inYear.map((e) => [`${e.day}:${e.kind}`, e])).values()]
+      .map(
+        (e) => `<i class="cal-dot cal-dot--${e.kind} ${e.urgent ? 'urgent' : ''}" style="left:${at(e.day).toFixed(1)}%"
+          title="${esc(`${dayMonth(e.day)} · ${e.label} · ${when(e.day)}`)}"></i>`,
+      )
+      .join('');
+    const next = events[0];
+    const agenda = this.agendaOpen
+      ? `<div class="agenda ui-card">
+          <div class="agenda-head"><span class="ui-label">${t('ui.cal.title')}</span><span class="agenda-today">${t('ui.cal.today')} · ${shortDate(state.day)}</span></div>
+          ${
+            events.length
+              ? `<ul>${events
+                  .slice(0, 10)
+                  .map(
+                    (e) => `<li class="agenda-row ${e.urgent ? 'urgent' : ''}">
+                      <span class="agenda-date">${dayMonth(e.day)}</span>
+                      <span class="agenda-icon cal-tone--${e.kind}">${icon(e.icon)}</span>
+                      <span class="agenda-label">${esc(e.label)}</span>
+                      <span class="agenda-in">${when(e.day)}</span>
+                    </li>`,
+                  )
+                  .join('')}</ul>`
+              : `<p class="ui-desc">${t('ui.cal.nothing')}</p>`
+          }
+          <button class="ui-btn ui-btn--ghost ui-btn--sm ui-btn--block" data-action="ranking-open">${icon('trophy')}${t('ui.cal.standings')}</button>
+        </div>`
+      : '';
+    return `<button class="cal ${this.agendaOpen ? 'on' : ''}" data-action="agenda-toggle" title="${esc(t('ui.cal.hint'))}">
+        <span class="cal-row">
+          <b class="cal-date">${shortDate(state.day)}</b>
+          ${
+            next
+              ? `<span class="cal-next ${next.urgent ? 'urgent' : ''}"><span class="cal-tone--${next.kind}">${icon(next.icon)}</span><span class="cal-next__label">${esc(next.label)}</span><span class="cal-next__in">${when(next.day)}</span></span>`
+              : ''
+          }
+        </span>
+        <span class="cal-strip">
+          <i class="cal-past" style="width:${at(state.day).toFixed(1)}%"></i>
+          ${dots}
+          <i class="cal-now" style="left:${at(state.day).toFixed(1)}%"></i>
+        </span>
+      </button>${agenda}`;
+  }
+
   private dayBar(state: GameState): string {
     const p = state.runtime.player;
     if (!p) return '';

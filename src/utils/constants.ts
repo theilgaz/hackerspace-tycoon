@@ -867,13 +867,62 @@ export const TRAIT_LABEL: Record<TraitKey, string> = {
 };
 
 export const TRAIT_BLURB: Record<TraitKey, string> = {
-  perfectionist: 'Will not advance a stage below quality threshold.',
-  scopeCreeper: 'Adds requirements mid-project.',
-  mentor: 'Raises effective skill of members in the same room.',
-  ghost: 'Signs up, then attendance quietly decays.',
-  gatekeeper: 'Blocks uncertified members from machines.',
-  nightOwl: 'Works the hours nobody else will.',
-  documenter: 'Actually does the docs. Without a bounty.',
+  perfectionist: 'Better work, but will not sign off the design below 55% quality — not until it has had half as much again.',
+  scopeCreeper: 'Now and then adds a requirement to a bigger build: more work, a higher ceiling.',
+  mentor: 'Everyone on the same build works a level up, to the Mentor\'s own.',
+  ghost: 'Signs up, then turns up less and less.',
+  gatekeeper: 'While in, prints fail less — and novices work slower, checked at every step.',
+  nightOwl: 'Stays late far more often, and prints fail less with somebody watching them.',
+  documenter: 'Writes the docs without being asked: a faster launch and a louder one.',
+};
+
+/**
+ * What each trait does (CLAUDE.md §3). **Each one is a story, not a stat tweak** — so every
+ * one of them also tells the player when it happens: a notification the first time a trait
+ * shows itself in a run, and every time for the two that change a build's plan (a
+ * Perfectionist holding a stage, a Scope Creeper adding to it).
+ */
+export const TRAITS = {
+  perfectionist: {
+    /** Their craft counts this much more toward the design's quality. */
+    craft: 0.12,
+    /** A holdout ends once the stage has had this much of its work again: signed off under protest. */
+    relentAfter: 1.5,
+  },
+  scopeCreeper: {
+    /** Chance at the end of the kickoff, and again on going into Iterate, once each per build — never a small one. */
+    chance: 0.45,
+    /** Extra work on the stage after it, as a share of what that stage needed. */
+    work: 0.25,
+    /** Quality the idea adds, and how far it lifts the crew's ceiling. */
+    quality: 0.05,
+    ceiling: 0.05,
+  },
+  mentor: {
+    /** Levels added to everybody else on the build, never past the Mentor's own. */
+    levels: 1,
+  },
+  gatekeeper: {
+    /** Print failure odds while a Gatekeeper is in the building. */
+    printFail: 0.7,
+    /** A novice — below this level in the stage's skill — works at this rate under them. */
+    noviceBelow: 2,
+    noviceRate: 0.85,
+  },
+  nightOwl: {
+    /** Print failure odds while a Night Owl is in after hours, watching the bed. */
+    printFail: 0.7,
+  },
+  documenter: {
+    /** Their pace on the release stage — the docs — against anybody else's. */
+    releaseRate: 1.6,
+    /** Extra hype at release for a build whose docs they wrote. */
+    hype: 0.12,
+  },
+  ghost: {
+    /** Attendance multiplier under which the space notices somebody has stopped coming. */
+    noticeBelow: 0.5,
+  },
 };
 
 /** §13.1 Perfectionist refuses to advance below this project quality. */

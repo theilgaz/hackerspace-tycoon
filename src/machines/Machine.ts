@@ -45,6 +45,11 @@ export class Machine {
   operatorSkill = 0;
   /** Kit the space owns that changes the odds, e.g. a filament dry box. */
   failureModifier = 1;
+  /**
+   * Who is keeping an eye on it (§3 traits): a Gatekeeper in the building, a Night Owl in
+   * after hours. Set every tick by the sim; 1 with nobody watching.
+   */
+  watch = 1;
   /** How fast this particular machine works. A better printer is a faster printer. */
   speed = 1;
   /** The machine's own contribution to failure odds, separate from the space's kit. */
@@ -107,6 +112,7 @@ export class Machine {
         operatorTerm *
         lengthTerm *
         this.failureModifier *
+        this.watch *
         this.reliability,
     );
   }

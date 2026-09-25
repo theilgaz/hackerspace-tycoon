@@ -10,6 +10,7 @@ import type {
   RuntimeSnapshot,
   ShippedRecord,
   FailedRecord,
+  TraitKey,
 } from './types';
 import type { Ceremony } from '@/systems/RivalSystem';
 import type { Placement, StationPlacement } from '@/machines/layout';
@@ -111,6 +112,8 @@ export interface GameState {
   printOffers: PrintOffer[];
   /** Filament on the shelf, in grams — bought ahead, drawn on before buying more (§5). */
   filamentStock: number;
+  /** Traits the player has been told about this run — the first sighting is a notification. */
+  traitsSeen: TraitKey[];
   /** The order applicants were dealt onto the reputation ladder this run. */
   ladder: string[];
   /** Seat licences the space owns, by option (§4c). Bought once, kept for good. */
@@ -155,7 +158,9 @@ export interface GameState {
   closeMonth: () => void;
   pushLog: (text: Text, kind?: LogEntry['kind']) => void;
   /** A notification: shown as a toast first, and written to the log when it goes (§11). */
-  pushNotice: (text: Text, kind?: LogEntry['kind']) => void;
+  pushNotice: (text: Text, kind?: LogEntry['kind'], icon?: string) => void;
+  /** First sighting of a trait this run; false if the player has already been told. */
+  markTraitSeen: (trait: TraitKey) => boolean;
   /** The toast has gone: into the log with it. */
   retireNotice: (id: string) => void;
 
@@ -237,6 +242,7 @@ export const store = createStore<GameState>((set, get) => ({
   backlog: [],
   printOffers: [],
   filamentStock: 0,
+  traitsSeen: [],
   market: freshMarket(),
   licences: {},
   rankPrev: {},
@@ -273,6 +279,7 @@ export const store = createStore<GameState>((set, get) => ({
       market: freshMarket(),
       licences: {},
       rankPrev: {},
+      traitsSeen: [],
       started: true,
       paused: false,
       speed: 1,
@@ -296,14 +303,14 @@ export const store = createStore<GameState>((set, get) => ({
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, failed, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, notices, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements, market, ladder, ledger, monthOpen, licences, printOffers, filamentStock, rankPrev,
+      stationPlacements, market, ladder, ledger, monthOpen, licences, printOffers, filamentStock, rankPrev, traitsSeen,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, failed, reputation, ownedMachines, applicants,
       passed, upvotes, backlog, log, notices, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements, market, ladder, ledger, monthOpen, licences, printOffers, filamentStock, rankPrev,
+      stationPlacements, market, ladder, ledger, monthOpen, licences, printOffers, filamentStock, rankPrev, traitsSeen,
     };
   },
 
@@ -337,9 +344,15 @@ export const store = createStore<GameState>((set, get) => ({
     set((s) => ({ cash: s.cash + amount, ledger: { ...s.ledger, [kind]: (s.ledger[kind] ?? 0) + amount } })),
   closeMonth: () => set((s) => ({ ledger: {}, monthOpen: s.cash })),
 
-  pushNotice: (text, kind = 'info') => {
+  pushNotice: (text, kind = 'info', icon) => {
     const { day, simTime, notices } = get();
-    set({ notices: [...notices, { id: uid('note'), day, time: simTime, text, kind }] });
+    set({ notices: [...notices, { id: uid('note'), day, time: simTime, text, kind, ...(icon ? { icon } : {}) }] });
+  },
+  markTraitSeen: (trait) => {
+    const seen = get().traitsSeen ?? [];
+    if (seen.includes(trait)) return false;
+    set({ traitsSeen: [...seen, trait] });
+    return true;
   },
   retireNotice: (id) => {
     const notice = get().notices.find((n) => n.id === id);

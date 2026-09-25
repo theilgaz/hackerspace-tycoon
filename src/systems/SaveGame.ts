@@ -81,7 +81,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 20;
+export const SAVE_VERSION = 21;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -290,6 +290,10 @@ function migrate(file: SaveFile): SaveFile {
       CATEGORY_ORDER.map((wing) => [wing, sums[wing]?.length ? sums[wing].reduce((a, b) => a + b, 0) / sums[wing].length : 1]),
     );
   }
+
+  // v21 — traits the player has been told about. An old run has seen none, so each one's
+  // first appearance is news, which is exactly what it would have been.
+  if (!Array.isArray(store.traitsSeen)) store.traitsSeen = [];
 
   file.version = SAVE_VERSION;
   return file;
