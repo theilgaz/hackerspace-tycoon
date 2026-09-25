@@ -53,6 +53,8 @@ export const TOUR: TourStep[] = [
   },
   { id: 'bench', target: '#left', title: 'tour.bench.title', body: 'tour.bench.body', place: 'right' },
   { id: 'you', target: '#clockpanel', title: 'tour.you.title', body: 'tour.you.body', place: 'right' },
+  { id: 'calendar', target: '#clockpanel .cal', title: 'tour.calendar.title', body: 'tour.calendar.body', place: 'right' },
+  { id: 'log', target: '#log', title: 'tour.log.title', body: 'tour.log.body', place: 'below' },
   { id: 'menu', target: '#bottombar', title: 'tour.menu.title', body: 'tour.menu.body', place: 'above' },
   { id: 'money', target: '#topbar .tb-group:nth-of-type(2)', title: 'tour.money.title', body: 'tour.money.body', place: 'below' },
   { id: 'done', target: null, title: 'tour.done.title', body: 'tour.done.body' },

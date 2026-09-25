@@ -507,19 +507,19 @@ export const build = {
   'tour.welcome.body': (p: { name: string }) =>
     `<b>${p.name}</b> is yours: a small hackerspace in a garage. Design builds, get your volunteers to ` +
     '<b>finish</b> them, pay the rent, and grow into a bigger space. Once a year there is an awards ' +
-    'night against the other hackerspaces in town — aim for the top. The clock is stopped for the tour.',
+    'night against the other hackerspaces — aim for the top. The clock is stopped for the tour.',
   'tour.top.title': (_p: { name: string }) => 'The space at a glance',
   'tour.top.body': (_p: { name: string }) =>
-    'Your cash, your reputation and what is on. Reputation is what signs the next, bigger lease — ' +
-    'and the bar on the right counts down to the yearly awards night against the other spaces.',
+    'Your cash, your reputation and what is on. Reputation is what opens the next, bigger lease — ' +
+    'when it does, a button to move appears here, and the move is yours to make.',
   'tour.new.title': (_p: { name: string }) => 'Start something',
   'tour.new.body': (_p: { name: string }) =>
     'Everything begins with <b>+ New Project</b>. Press it now — the tour will wait.',
-  'tour.wizard.title': (_p: { name: string }) => 'Design it, then crew it',
+  'tour.wizard.title': (_p: { name: string }) => 'Crew it, then design it',
   'tour.wizard.body': (_p: { name: string }) =>
-    'Pick a genre and a brief, then who you will <b>ask</b> — they are volunteers and can say no. ' +
-    'The crew decides what the design can be: better tools need people who can use them. ' +
-    'A small first build is the right first build. Start it at the end.',
+    'Pick a genre and a brief, then the crew: the build arrives with its brief\'s name, which you can ' +
+    'change, and the people you tick are the crew. They decide what the design can be — better tools ' +
+    'need people who can use them. A small first build is the right first build. Start it at the end.',
   'tour.bench.title': (_p: { name: string }) => 'On the bench',
   'tour.bench.body': (_p: { name: string }) =>
     'Your builds live here. Each one starts with a <b>kickoff</b> at a project table, and only moves ' +
@@ -527,14 +527,25 @@ export const build = {
     'Anything blocking a build is said here, in red or amber.',
   'tour.you.title': (_p: { name: string }) => 'Your day',
   'tour.you.body': (_p: { name: string }) =>
-    'The bar under the clock is what is left of your day. You are the one person who always turns up: ' +
-    'when your hands are empty you pick up the oldest build yourself. Every other verb — a bounty, an ' +
-    'order, a hire — spends the same hours.',
+    'The thin bar under the clock is what is left of your day. You are the one person who always turns ' +
+    'up: when your hands are empty you pick up the oldest build yourself. Every other verb — a bounty, ' +
+    'an order, a hire — spends the same hours.',
+  'tour.calendar.title': (_p: { name: string }) => 'What is coming',
+  'tour.calendar.body': (_p: { name: string }) =>
+    'Today\'s date, the year up to its <b>awards night</b> — the gold dot at the end — and a dot for ' +
+    'everything with a date: the monthly bill, a client\'s deadline, parts arriving, somebody new. ' +
+    'The next one is named. Press it for the list.',
+  'tour.log.title': (_p: { name: string }) => 'Everybody is somebody',
+  'tour.log.body': (_p: { name: string }) =>
+    'Your people have <b>traits</b> — a Perfectionist who will not sign off shoddy work, a Scope Creeper ' +
+    'with one more idea, a Mentor, a Night Owl. When one of them does something, it pops up beside the ' +
+    'bench, and everything that happens ends up in this log.',
   'tour.menu.title': (_p: { name: string }) => 'Everything else',
   'tour.menu.body': (_p: { name: string }) =>
-    '<b>Build</b> buys tables, stations, printers and comforts. <b>People</b> is where you take members on ' +
-    'and train them. <b>Machines</b> runs the print queue. <b>Socials</b> turns work into attention — ' +
-    'and attention fades a little every day.',
+    '<b>Build</b> buys tables, stations, printers and comforts — <b>Exit Build</b> takes you back. ' +
+    '<b>People</b> is where you take members on, see their traits and train them. <b>Machines</b> runs ' +
+    'the printers and paid print orders. <b>Socials</b> turns work into attention — and attention fades ' +
+    'a little every day.',
   'tour.money.title': (_p: { name: string }) => 'The books',
   'tour.money.body': (_p: { name: string }) =>
     'Every 30 days the books close: members pay dues, the landlord takes the rent. You may go under, ' +

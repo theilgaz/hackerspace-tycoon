@@ -144,10 +144,12 @@ the answer is one of the verbs above, not more direct control.
 Every project has a **team size** (1 for a weekend build, 8 for the motorcycle) and you allocate
 members to it. This is the player's most direct lever, and it is deliberately not command:
 
-- **Asking is free, but they can say no.** Acceptance is `0.42 + 0.75 × passion match`, plus 0.3
-  if the project carries a live bounty. A refusal sticks for 14 hours — you cannot badger anyone.
+- ~~**Asking is free, but they can say no.**~~ **Superseded (§4b): the crew is picked by hand,
+  and the pick is the crew** — the people ticked in the wizard join without being asked. The
+  refusal roll (`0.42 + 0.75 × passion match`, +0.3 with a bounty, 14 hours' memory) let a
+  pick decline and hand the chair to somebody the player had just unticked.
 - **One project per person, and no cap on projects.** You may start as many as you like; the
-  limit is bodies, plus the two hours a pitch costs you. An artificial slot count only ever made
+  limit is bodies — a pitch costs no hours (§3a), only the money it commits. An artificial slot count only ever made
   the job list inert while something was in progress — see §13.
 - **The team persists across stages.** Only drift removes someone, which makes interest decay the
   thing that actually costs you a team member.
@@ -268,8 +270,12 @@ Never compute a plan's numbers anywhere else.
 Carried over from the Jobs wizard, because they were right: **it is a fixed box** (780×700
 now — three option cards a row with their effects do not fit in 680), `npm run click-check`
 asserts the size is identical on every step; **completed breadcrumbs navigate**; the crew
-step **arrives already picked** with the best matches, a proposer is locked in, and **a crew
-the player has touched is never re-suggested over**.
+step **starts empty** — nobody is pre-selected (§4b) — except a proposer, who is locked in.
+**The build's name is on the crew step**, above the size, and arrives filled in with the
+brief's name (a codename for an own project); a name the player typed or shuffled survives a
+change of brief, and a cleared box falls back to the brief's name, so Start is never held
+shut by it. It used to sit empty on the review step with Start disabled until something was
+typed — a chore, not a decision.
 
 **The size meter is the size picker.** Crew size used to be a segmented control in the
 corner with a coloured meter under it saying how each size would go — and the meter looked
@@ -1026,6 +1032,13 @@ them — off one bat, a bounce on the far half, onto the other. A break already 
 finished before anybody fusses over a running printer; that rule used to pull players off
 the table the moment they got there.
 
+**Each player stands at their own end, or there is no game** (`pairEnds`, `roomWalkable`).
+The spots used to go to the nearest free tile, and the derived comfort slots put the next
+purchase a tile from the table — exactly on an end — so the rally was played shoulder to
+shoulder along one side. Now nothing else may stand on an end, the table turns a quarter to
+leave both ends open, both must be reachable from the door (the same flood fill that guards
+the stand tiles), and a table that still cannot be played says "one end is blocked" on hover.
+
 **Send somebody on a break** (§7b, `Simulation.treat`): click any comfort people use in the
 room and pick who — a drink or the sofa takes one, the console one or two, and **table tennis
 takes exactly two** (the picker has a Send button when more than one can go). They drop what
@@ -1161,8 +1174,8 @@ catalog pick and a timed opportunity is the decision:
 | **Sponsor** | Cash up front, a deadline on the offer, and you are building *their* thing. |
 | **Trending** | Reddit is briefly obsessed; ship inside the window for a hype multiplier. Phase 2 will consume this. |
 
-Offers expire. Concurrent project slots come from the era (§8): **one** in Era 1, three in Era 2.
-Era 1 being a single slot is deliberate — learn the pipeline before juggling.
+Offers expire, and a sponsor's or a trend's end date is on the calendar (§11). ~~Concurrent
+project slots come from the era~~ — there is no cap on projects any more (§3b, §13).
 
 ## 5. Machines & the Job Queue — the signature system
 
@@ -1437,6 +1450,11 @@ on a tile asks "buy it?" with the price and what it leaves you. Only yes pays
 **Picking things up in the room only happens in Build mode** — outside it a click on a
 bench will mean "tell me about this station", and a click that sometimes lifts it instead
 would be a guess. Escape unwinds the question, then the item in hand, then the mode.
+**Escape is not enough on its own**: in fullscreen — itch.io's or the browser's — the browser
+keeps Esc and leaves fullscreen instead. So the shelves end in a plain **Exit Build** button
+(it was a quiet "Done" nobody saw), and a right-click on the room puts back what is held, one
+layer a press, without ever leaving the mode. `B` was considered and dropped: it is in the dev
+console's magic word.
 `click-check` presses real tiles on the canvas for all of it, and was seen to fail with the
 Build-mode gate taken out — after first passing with it out, because it aimed at a desk's
 footprint and the ray went between the legs.
@@ -1714,7 +1732,8 @@ break-even, front page — arrive with Phases 3 and 5.
 
 ## 9. Failure (selected: real, hard failure)
 
-- **Rent** is due monthly. Miss it twice → **eviction → run over.**
+- **Rent** is due monthly. ~~Miss it twice → eviction~~ — superseded by the overdraft (§7a):
+  under −₺30,000, or under zero for 60 days, and the lease is gone.
 - A **failed crowdfunding delivery** permanently burns reputation (applicant pool shrinks, sub
   skepticism rises, sponsors walk).
 - A **serious safety incident** (uncertified member + dangerous machine) can force a shutdown period.
@@ -1919,7 +1938,12 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   stepping back if the wizard is closed unused. It stops the clock while it runs and gives it
   back after, runs once per browser (`hackerspace-tycoon-toured`, a preference beside the
   language, never in the save), and the lightbulb in the top bar replays it. `click-check`
-  walks it on its fresh profile and was seen to fail with auto-advance broken.
+  walks it on its fresh profile and was seen to fail with auto-advance broken. **Eleven
+  steps**: welcome, the top bar, + New Project (Do), the wizard (Do), the bench, your day,
+  the calendar, the log and traits, the build menu, the books, done. **When a screen changes,
+  the tour has to change with it** — it went on pointing at a season bar that had been taken
+  out and describing a crew that could refuse long after both were gone. Keep the first four
+  in that order: `click-check` counts them.
 - **Scrollbars are styled once, globally** — thin and dark. Left to the platform, macOS with
   "always show scrollbars" drew a white gutter down every panel, and the bench's verb row
   (a fixed three-column grid) pushed a button past the edge and added a sideways one.
@@ -1973,8 +1997,8 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   passions are never duplicated into the file. Two things are easy to forget and both break a
   load: **stations installed by tool projects** live in a module-level list and have to be put
   back before anything looks one up, and **day plans** are recomputed rather than saved so they
-  cannot drift. Bump `SAVE_VERSION` on any shape change — an old file is discarded rather than
-  half-loaded, because a save that loads into a broken game is worse than no save.
+  cannot drift. Bump `SAVE_VERSION` on any shape change **and give the new field a default in
+  `migrate()`** — an old file is migrated, never discarded (see the rule above).
 - **Language (`src/i18n/`)** — English and Turkish, typed. `en/` is the source of truth and
   `tr/` is typed against it area by area, so a missing Turkish key fails `npm run typecheck`.
   Five rules, each from something that broke:
@@ -2135,6 +2159,15 @@ is visible rather than rediscovered:
 
 ## 14. Development Priority
 
+**Phase 1.18 — itch.io playtest fixes, traits that act, and a calendar — BUILT.**
+From the first playtest on itch.io, on a MacBook: the room lines up on Retina screens (§11's
+canvas rule), Build mode has an **Exit Build** button and right-click puts back what is held
+(fullscreen keeps Esc for itself), table tennis is played from both ends or not at all (§7b),
+and a build is named on the crew step, pre-filled (§4c). All seven traits act and announce
+themselves (§3); the calendar under the clock shows today and what is coming (§11). The tour,
+README and this file were brought up to date. Measured (`era-pace`, 8 seeds): first in 8/8,
+ships unchanged, player reputation about +10% from the traits; `project-times` 51/52.
+
 **Phase 1.17 — A first-run tour, fuller printers, and a kickoff you cannot break — BUILT.**
 A nine-step tour for first-time players (§11). The owner no longer sizes a kickoff table, so
 joining a full crew no longer stops its meeting, and the bench says so at once (§4d). The
@@ -2281,12 +2314,11 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     the work backs, and one who always claims the most. Run it after touching `HYPE`,
     `subreddits.ts` or `HypeSystem.ts`. **The careful player must beat both others**; when the
     reckless one wins, the claim is not a decision.
-  - `npm run era-pace [seeds] [easy|normal|hard]` — what day each era arrives for a committed
-    player, plus the final standings against the rival spaces. Plays 400 days by default
-    (`DAYS=n` to change it) so a run reaches the first 1 December awards night. Run it after changing
-    throughput, team sizes, the catalog, or anything in `rivals.ts` — **and run all three
-    difficulties**, since they now hand the player different crews and a change that suits one
-    can break another.
+  - `npm run era-pace [seeds]` — what day each era arrives for a committed player, plus the
+    first awards night and the final standings against the rival spaces. Plays 220 days by
+    default (`DAYS=n` to change it), which reaches two awards nights. Run it after changing
+    throughput, team sizes, the catalog, traits, or anything in `rivals.ts`. There is one
+    setting now (§3c); the level argument is kept only so old commands still run.
   - `NO_SHOP=1 npm run era-pace [seeds] [level]` — the same run with the Shop never opened.
     Run both after touching `amenities.ts` or `COMFORT`: a comfort is only worth its upkeep
     if the pair disagree, and §7b records what the gap currently is.
@@ -2308,7 +2340,7 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     crew step with nobody free to suggest, and an "under too long" overdraft that one payout
     could clear. And the Ranking check asked for seven award columns long after the table was
     deliberately cut to three — it failed every run for weeks, which is how a suite stops being
-    read. Measured after: 32/32 on nine consecutive runs, English and Turkish. Drives the real UI with real mouse
+    read. Measured after: 32/32 on nine consecutive runs (35 checks now, with the Retina one), English and Turkish. Drives the real UI with real mouse
     press/release pairs while the sim runs, and counts DOM rebuilds. Run it after touching
     anything in `src/ui/`.
   - Harness sources live in `tools/`, built via `vite.headless.config.ts` to `dist-headless/`.

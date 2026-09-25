@@ -4,77 +4,78 @@ An isometric management sim about running a hackerspace.
 
 > A hackerspace is a machine for *starting* projects. Your job is to make it *finish* one.
 
-You don't have employees. You have **volunteers** — people with their own passions who sign up for
-what excites them and drift away when it stops being interesting. You can't order anyone to do
-anything. You pitch projects, post bounties, buy tools that act as magnets, run events, and set
-policies people may or may not like.
+You don't have employees. You have **volunteers** — people with their own passions, their own
+quirks, and nine-to-six lives. You can't put anyone on a task. You design builds and pick who
+crews them, post bounties, buy the kit and the comforts that make people want to be there, and
+decide when to sign for a bigger space.
 
-You can also just do the work yourself. You're a maker with about seven hours in a day — but
-pitching a project, posting a bounty and ordering parts all come out of the same seven hours. Every
-hour at the CAD desk is an hour you didn't spend recruiting someone faster than you.
+You can also just do the work yourself. You're in the building from six in the morning to
+eleven at night, with seventeen hours in the day — and every bounty, every parts order, every
+hire comes out of the same hours. An hour at the CAD desk is an hour you didn't spend making the
+place better at doing CAD without you.
 
-Meanwhile the work is physical. Fabrication isn't a progress bar — it's jobs queued on machines that
-run overnight, burn through filament, and fail at hour 9 of 11. And half of any build arrives in a
-box: order the parts early or find out at assembly that they're three weeks away.
+Meanwhile the work is physical. Fabrication isn't a progress bar — it's jobs queued on printers
+that run overnight, burn through filament and fail at hour 19 of 22. Half of any build arrives in
+a box, and assembly waits for it. Build a CNC router, and now you own a CNC.
 
-Build a cyberdeck, a LoRaWAN gateway, a nixie clock, a pizza oven. Build a CNC router, and now you
-own a CNC.
+Runs in the browser, in English and Turkish.
 
-Post the build to Reddit to turn work into hype, turn hype into backers, and try to deliver what you
-promised before the rent is due twice.
+## What a run looks like
+
+- **Name the place, pick a badge, open the doors.** You start in a garage with two people, Safa
+  and Abdullah, and ₺50,000. Twenty-three more are out there; your reputation brings them to the
+  door, in a different order every run.
+- **+ New Project** is a five-step wizard: genre → brief → crew → design → review. The build
+  arrives with its brief's name, which you can change. The crew comes before the design,
+  because the crew decides what the design can be: a five-star toolchain needs somebody who can
+  use it.
+- **Four wings** — 💻 Software, 🔌 Electronics, 📡 Communications, ⚙️ Mechanical — and
+  fifty-two briefs, from a phone stand to a 3D-printed motorcycle. Software pays the bills;
+  hardware builds the name.
+- **Every build starts round a table.** The kickoff only moves while the whole crew is sitting
+  down together; then everybody goes to their own workstation, and the room is a constraint.
+- **Everybody is somebody.** A Perfectionist won't sign off shoddy work, a Scope Creeper always
+  has one more idea, a Mentor lifts the whole crew, a Night Owl watches the prints, a Ghost
+  quietly stops turning up. When one of them does something, you hear about it.
+- **Build mode** is where the room happens: desks, benches, printers, a coffee machine, a table
+  tennis table. Comforts raise mood, which is what gets people through the door.
+- **Socials** turns work into attention — and what you claim has to be backed by the work, or
+  the room turns on you. Attention fades a little every day.
+- **The calendar under the clock** shows today, the monthly bill, a client's deadline, parts
+  arriving, and the awards night at the end of the year.
+- **Seventeen other hackerspaces** — fourteen real ones, three invented underdogs — are getting
+  on with it. A year is 100 days, and on day 90 there is an awards night: most projects, biggest
+  crew, deepest pockets, space of the year and best project.
+- **Four leases**: the Garage, Unit 4B, the Warehouse, the Old Factory. Reputation unlocks the
+  next one; signing it is your call. You may run an overdraft down to −₺30,000 — get back above
+  zero within 60 days, or the lease is gone.
+
+## Development
 
 **Stack:** Three.js · TypeScript · Vite · Zustand
 
 ```bash
 npm install
-npm run dev          # http://localhost:5174
+npm run dev            # http://localhost:5174
 npm run typecheck
 npm run build
+npm run itch           # release/hackerspace-tycoon-web.zip, ready for itch.io's HTML upload
+```
 
-npm run sim-check      # replay full playthroughs headlessly, under three player archetypes
+The simulation imports neither `three` nor the DOM, so a whole playthrough replays in Node.
+That is what makes the balance testable:
+
+```bash
+npm run sim-check      # full playthroughs under three player archetypes
+npm run era-pace       # 8 seeds by default: era pacing, awards nights, final standings
+npm run project-times  # every brief against its declared length tier
+npm run hype-check     # does posting pay for the hour it costs?
+npm run kickoff-check  # a kickoff needs the whole crew at once
 npm run time-budget    # where a volunteer's day actually goes
-npm run project-times  # every project measured against its declared length tier
-npm run era-pace       # what day each era arrives for a committed player
 npm run click-check    # drives the real UI with real mouse events (needs `npm run dev`)
 ```
 
-The simulation imports neither `three` nor the DOM, so a whole playthrough replays in Node
-in milliseconds. That is what makes the balance testable — and it has already caught a
-fabrication soft-lock and a bug where volunteers spent 80% of every visit walking.
+Type `debug` in the game (or press the backtick key) for the developer console.
 
-Name the place, pick a badge, open the doors. You start with one other person — Safa, who keeps
-office hours while you are there at any time of night — and everybody else has to be hired out of
-the People panel as your reputation brings them to the door.
-
-Five other hackerspaces are getting on with it in the background, and every 90 days there is an
-awards night: most projects, biggest crew, deepest pockets, and space of the year. All four are
-judged on the year just gone, so a quiet year costs you even if you are ahead overall.
-
-Start as many projects at once as you like — there's no cap. The limit is people: somebody can
-only be on one project at a time, and writing a pitch costs two hours of your day. Start more than
-the space can carry and the untouched ones end up on the shelf, along with the money you spent on
-their parts.
-
-Every project has a team size, and you allocate people to it — but they're volunteers, so they can
-turn you down, and a refusal sticks. Someone can only be on one project at a time, which is what
-makes running two things at once cost something. Ship something good and people you've never met
-turn up because they saw the write-up.
-
-Projects come in three sizes and the catalog keeps its promise about them: **weekend builds take
-1-5 days, medium projects 5-10, the big ones 10-30.** `npm run project-times` measures every
-entry and fails the ones that drift.
-
-Projects come in genres, the way games do — 💻 Software, 🔌 Electronics, 🌐 IoT, 📡 Radio,
-🦾 Robotics, ⚙️ Mechanical, 🕹️ Retro, 🍕 Home, 🛠️ Tooling, 🤝 Civic — and the genre is more than a
-label: a software build runs Spec → Architecture → Implementation → QA → Launch at a desk, has
-nothing to print, and never touches the machine queue. It also pays several times what hardware
-pays while earning a fraction of the reputation. **Software pays the bills; hardware builds the
-name.**
-
-**Current state:** Phase 1.12. One garage, six people to start, nine more who show up as your
-reputation grows, one printer — and you. Thirty projects from a desk cable tidy to a
-3D-printed motorcycle, arriving through a backlog of catalog picks, member proposals, sponsor
-offers and Reddit trends. You're a maker too, with about seven hours a day shared between building
-things yourself and running the place.
-
-See [CLAUDE.md](./CLAUDE.md) for the full design document.
+See [CLAUDE.md](./CLAUDE.md) for the full design document — every system, why it is the way it
+is, and what each balance change measured.

@@ -485,19 +485,19 @@ export const build: typeof en = {
   'tour.welcome.title': () => `Hackerspace Tycoon'a hoş geldin`,
   'tour.welcome.body': (p) =>
     `<b>${p.name}</b> artık senin: bir garajda, küçük bir hackerspace. Projeler tasarla, gönüllü ekibinle ` +
-    '<b>bitir</b>, kirayı öde, büyü. Her yıl şehirdeki öteki hackerspace\'lerle ödül gecesinde ' +
-    'karşılaşacaksın — hedef zirve. Tur bitene kadar saat durdu.',
+    '<b>bitir</b>, kirayı öde, büyü. Her yıl öteki hackerspace\'lerle ödül gecesinde karşılaşacaksın — ' +
+    'hedef zirve. Tur bitene kadar saat durdu.',
   'tour.top.title': () => 'Mekân bir bakışta',
   'tour.top.body': () =>
-    'Kasa, itibar ve süren işler burada. Daha büyük bir yere taşınmanın yolu itibardan geçer. Sağdaki ' +
-    'çubuk da öteki mekânlarla yarışacağın yıllık ödül gecesine kaç gün kaldığını gösterir.',
+    'Kasa, itibar ve süren işler burada. Daha büyük bir yerin kapısını itibar açar — açıldığında burada ' +
+    'bir taşınma butonu çıkar, taşınıp taşınmamak senin kararın.',
   'tour.new.title': () => 'İlk işi başlat',
   'tour.new.body': () => 'Her şey <b>+ Yeni Proje</b> ile başlar. Hadi bas, bekliyorum.',
   'tour.wizard.title': () => 'Önce ekip, sonra tasarım',
   'tour.wizard.body': () =>
-    'Bir tür ve bir iş seç, sonra kimi <b>çağıracağına</b> karar ver — herkes gönüllü, hayır diyebilir. ' +
-    'Tasarımın sınırını ekip çizer: iyi araç, onu kullanabilen birini ister. İlk seferde küçük bir iş ' +
-    'seç, sonunda başlat.',
+    'Bir tür ve bir iş seç, sonra ekibi: proje işin adıyla gelir, istersen değiştirirsin; işaretlediğin ' +
+    'kişiler ekiptir. Tasarımın sınırını ekip çizer — iyi araç, onu kullanabilen birini ister. İlk seferde ' +
+    'küçük bir iş seç, sonunda başlat.',
   'tour.bench.title': () => 'Tezgâh',
   'tour.bench.body': () =>
     'Projelerin burada. Her proje bir masada <b>açılış toplantısıyla</b> başlar ve ekibin tamamı aynı ' +
@@ -505,13 +505,23 @@ export const build: typeof en = {
     'varsa kırmızı ya da sarıyla burada görürsün.',
   'tour.you.title': () => 'Senin günün',
   'tour.you.body': () =>
-    'Saatin altındaki çubuk, gününden kalan zaman. Her gün gelen tek kişi sensin: elin boşsa en eski ' +
+    'Saatin altındaki ince çubuk, gününden kalan zaman. Her gün gelen tek kişi sensin: elin boşsa en eski ' +
     'projeye kendin girişirsin. Prim koymak, sipariş vermek, birini almak — hepsi aynı saatlerden gider.',
+  'tour.calendar.title': () => 'Yaklaşanlar',
+  'tour.calendar.body': () =>
+    'Bugünün tarihi, <b>ödül gecesine</b> kadar yıl — sondaki altın nokta — ve tarihi olan her şey için ' +
+    'bir nokta: aylık hesap, müşterinin istediği tarih, gelecek parçalar, yeni biri. Sıradaki adıyla ' +
+    'yazar. Liste için tıkla.',
+  'tour.log.title': () => 'Herkes biri',
+  'tour.log.body': () =>
+    'Ekibindekilerin <b>huyları</b> var — baştan savma işi onaylamayan bir Perfectionist, hep bir fikri ' +
+    'daha olan bir Scope Creeper, bir Mentor, bir Night Owl. Biri bir şey yaptığında tezgâhın yanında ' +
+    'belirir; olan her şey de bu kayda düşer.',
   'tour.menu.title': () => 'Gerisi',
   'tour.menu.body': () =>
-    '<b>İnşa</b>\'dan masa, istasyon, yazıcı ve keyif eşyası alırsın. <b>Ekip</b>\'te yeni üye alır, ' +
-    'eğitime gönderirsin. <b>Atölye</b> baskı kuyruğunu gösterir. <b>Sosyal</b> emeği ilgiye çevirir — ' +
-    'ama ilgi her gün biraz söner.',
+    '<b>İnşa</b>\'dan masa, istasyon, yazıcı ve keyif eşyası alırsın — <b>İnşa modundan çık</b> seni geri ' +
+    'getirir. <b>Ekip</b>\'te yeni üye alır, huylarını görür, eğitime gönderirsin. <b>Atölye</b> yazıcıları ' +
+    've ücretli baskı siparişlerini yönetir. <b>Sosyal</b> emeği ilgiye çevirir — ama ilgi her gün biraz söner.',
   'tour.money.title': () => 'Hesap kitap',
   'tour.money.body': () =>
     'Her 30 günde bir hesap kapanır: üyeler aidatını öder, ev sahibi kirasını alır. Eksiye düşmek ' +
