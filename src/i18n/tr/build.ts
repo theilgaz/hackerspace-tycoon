@@ -110,7 +110,7 @@ export const build: typeof en = {
   'build.np.back': 'Geri',
   'build.np.foot.design':
     'Üç yıldız, brifte ne yazıyorsa o. Bir yıldız daha çabuk biter ama belli olur; beş yıldız daha pahalıdır, o da belli olur.',
-  'build.np.foot.crew': 'Açılış toplantısı için hepsi aynı anda masada olmalı.',
+  'build.np.foot.crew': 'Açılış toplantısı için hepsi aynı anda masada olmalı — büyük ekipte herhangi beşi yeter.',
   'build.np.foot.other': 'Parçalar proje başlar başlamaz sipariş edilir. Sınırı slotlar değil, insanlar belirler.',
   'build.np.pickBrief': 'Önce bir brif seç.',
 
@@ -147,7 +147,7 @@ export const build: typeof en = {
   'build.fx.asBrief': 'brifte yazdığı gibi',
 
   'build.np.crewSize': 'Ekip büyüklüğü',
-  'build.np.seatBlocked': (p) => `${num(p.count)} kişilik ekip için ${p.table} gerekiyor — İnşa'dan al`,
+  'build.np.seatBlocked': (p) => `${num(p.count)} kişilik ekip, beşi masaya oturunca açılışı yapar — bunun için ${p.table} ya da ${p.other} gerekiyor. İnşa'dan al`,
   'build.np.fitQuality': (p) => `kalite ${p.value}`,
   'build.np.fitQualityHint': 'planı yapan ekibin büyüklüğünden gelen kalite',
   'build.np.fitExplain': (p) =>
@@ -167,7 +167,7 @@ export const build: typeof en = {
   'build.np.everyoneBusy':
     'Herkes bir şeyle meşgul. Yine de başlatıp ekibini sonra tezgâhtan kurabilirsin — ya da ' +
     'kendin katılırsın.',
-  'build.np.largeHint': (p) => `Beş ve on kişilik ekipler için ${p.table} gerekir; ${p.build} menüsünde bulunur.`,
+  'build.np.largeHint': (p) => `Dört kişiden büyük ekip, beşi masaya oturunca açılışı yapar: ${p.table} ya da ${p.other} yeter. İkisi de ${p.build} menüsünde.`,
 
   'build.review.quality': 'Kalite',
   'build.review.qualityHint': 'ekibin ustalığı + tasarım + ekip büyüklüğü',
@@ -373,7 +373,9 @@ export const build: typeof en = {
   'build.np.ownLocked': 'Bu kirada değil ya da gereken bir makine yok',
   // --- Tasarım adımı, üç soru (tasarım §5.4) --------------------------------------
   'build.np.fDays': 'Süre',
-  'build.np.fDaysHint': 'Bu ekiple yaklaşık ne kadar: el işi mesai günlerinde, parçalar yolda, baskılar saatte.',
+  'build.np.fDaysHint': 'Bu ekiple yaklaşık ne kadar: el işi mesai günlerinde, parçalar yolda, baskılar saatte — ve testin kalma ihtimali.',
+  'build.np.fDaysRisk': (p) => `İlk test geçerse ${p.clean}; kalırsa (%${p.pct}) yaklaşık ${p.retry} ekler.`,
+  'build.np.fDaysFail': (p) => `%${p.pct} testten kalır · +${p.retry}`,
   'build.np.fQuality': 'Kalite',
   'build.np.fQualityHint': 'Bu planın ulaşması beklenen kalite — ekibin en ustasının koyduğu tavanı asla geçmez.',
   'build.np.fCeiling': (p) => `tavan ${num(p.stars)}★`,
@@ -536,4 +538,51 @@ export const build: typeof en = {
   'build.fx.inPlace': (p) => `${money(p.cost)} · zaten kurulu`,
   'build.log.infraBuilt': (p) => `${p.item} ${money(p.cost)} ile kuruldu — bundan sonraki her projede hazır.`,
   'build.moving.howWall': 'Asmak için arka duvarın altındaki yanan yerlerden birine tıkla. Esc geri koyar.',
+
+  'report.title': (p) => `${p.project} tamamlandı`,
+  'report.verdict.above': 'Planın üstünde',
+  'report.verdict.asPlanned': 'Planlandığı gibi',
+  'report.verdict.below': 'Planın altında',
+  'report.verdict.none': 'Tamamlandı',
+  'report.planned': (p) => `plan: ${p.value}`,
+  'report.quality': 'Kalite',
+  'report.pay': 'Kazanç',
+  'report.reputation': 'İtibar',
+  'report.took': 'Süre',
+  'report.profit': (p) => `kâr ${p.amount}`,
+  'report.wishes': (p) => `Müşterinin istekleri · ${p.total} istekten ${p.met} tanesi karşılandı`,
+  'report.noWishes': 'Kimse bir şey istemedi: tamamen senin projendi.',
+  'report.madeBy': 'Yapanlar',
+  'report.campaign.title': 'Reklamını yap',
+  'report.campaign.hint': (p) =>
+    `Kampanya bu projenin kendi itibarını katlar, ilgi de satışa döner: ${p.week} gün boyunca satış olarak geri gelir. ` +
+    `İyi ve yeni bir proje kampanyasını geri öder; zayıf ya da tekrar bir proje ödemez. Proje başına bir kez, ` +
+    `gününden bir saat, çıkıştan sonraki ${p.days} gün içinde.`,
+  'report.campaign.expect': (p) => (p.gain >= 0 ? `+${num(p.gain)} itibar` : `−${num(-p.gain)} itibar`),
+  'report.campaign.judged': 'kaliteye bağlı',
+  'report.campaign.range': (p) =>
+    `${p.min >= 0 ? '+' : '−'}${num(Math.abs(p.min))} … ${p.max >= 0 ? '+' : '−'}${num(Math.abs(p.max))}`,
+  'report.campaign.back': (p) => (p.sales > 0 ? `≈ ${money(p.sales)} satış olarak döner` : 'geri dönüşü yok'),
+  'report.campaign.backRange': (p) => (p.max > 0 ? `en fazla ${money(p.max)} satış olarak döner` : 'geri dönüşü yok'),
+  'report.campaign.sales': (p) => `şimdiye kadar ${money(p.total)} satışın ${money(p.paid)} kadarı geldi`,
+  'report.campaign.launch': (p) => `${p.campaign} · ${money(p.cost)}`,
+  'report.campaign.pick': 'Bir kampanya seç',
+  'report.campaign.done': (p) =>
+    p.gain >= 0 ? `${p.campaign} yapıldı: +${num(p.gain)} itibar.` : `${p.campaign} ters tepti: −${num(-p.gain)} itibar.`,
+  'report.campaign.closed': 'Reklam için geç — artık eski haber.',
+  'report.campaign.order': 'Bir baskı siparişi: müşteri ödedi, reklamı yapılacak bir şey yok.',
+  'report.campaign.noHours': 'Gününden bunun için yeterli saat kalmadı.',
+  'report.campaign.flyers.name': 'El ilanı ve meetup sunumu',
+  'report.campaign.flyers.blurb': 'Bir deste el ilanı ve bir sonraki meetup\'ta on dakika. Ucuz ve risksiz.',
+  'report.campaign.social.name': 'Sponsorlu gönderiler',
+  'report.campaign.social.blurb': 'Akışlarda ücretli erişim. Daha çok kişi görür; kimse yargılamaz.',
+  'report.campaign.review.name': 'YouTube incelemesi',
+  'report.campaign.review.blurb': 'Bir maker inceler — dürüstçe. İyi iş parlar; zayıf iş herkesin önünde yerden yere vurulur.',
+  'report.campaign.launch.name': 'Lansman gecesi',
+  'report.campaign.launch.blurb': 'Basın, demo masası ve içecekler. En büyük ses, ama pahalı.',
+  'report.close': 'İşe dön',
+  'report.log.ran': (p) => `${p.project} için ${p.campaign}: +${num(p.gain)} itibar.`,
+  'report.log.backfired': (p) => `${p.project} için ${p.campaign} ters tepti: −${num(p.gain)} itibar.`,
+  'report.log.tooLate': (p) => `${p.project} artık eski haber — reklam için geç.`,
+  'report.log.cantAfford': (p) => `${p.project} için ${money(p.cost)} reklamı eksi bakiye bile karşılamıyor.`,
 };

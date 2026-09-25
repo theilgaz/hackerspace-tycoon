@@ -71,6 +71,7 @@ export const ui: typeof en = {
   'ui.top.allocatedHint': 'herkes aynı anda yalnızca bir projede çalışabilir',
   'ui.top.reputationHint': 'teslim ettiğin her şeyden biriken ilgi',
   'ui.top.seasonHint': (p) => `${p.year} · ödüllere ${p.days} gün (yılın 90. günü)`,
+  'ui.top.mySpaceHint': 'Mekânın: sıralama, itibar, ekip ve ödüller',
   'ui.cal.hint': 'Bugün, ödül gecesine kadar yıl ve yaklaşanlar. Liste için tıkla.',
   'ui.cal.title': 'Yaklaşanlar',
   'ui.cal.today': 'Bugün',

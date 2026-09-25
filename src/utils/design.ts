@@ -10,7 +10,7 @@ import type {
   ProjectPlan,
   StageKey,
 } from '@/game/types';
-import { DESIGN, MEMBER, STAGE_MAP, STAGE_ORDER, TIER_PACE } from './constants';
+import { DESIGN, MEMBER, REPEAT, STAGE_MAP, STAGE_ORDER, TEST, TIER_PACE } from './constants';
 
 /**
  * Designing a project (CLAUDE.md §4d).
@@ -926,6 +926,32 @@ export function forecastDays(summary: PlanSummary, seats: number): number {
 }
 
 /**
+ * The chance a build fails a test — the one formula, read by the sim's test and by the
+ * forecast alike. `testRisk` carries every risk the design took on (skipping simulation is
+ * one of them); `kit` is what the space owns that finds faults first; each earlier attempt
+ * makes it likelier to pass.
+ */
+export function testFailChance(quality: number, testRisk = 1, attempts = 0, kit = 1): number {
+  const pass = TEST.basePass + (quality - 0.5) * 2 * TEST.qualityWeight;
+  let fail = Math.max(0.02, 1 - pass) * testRisk * kit;
+  fail = Math.max(0.02, fail - attempts * TEST.attemptBonus);
+  return Math.min(0.95, fail);
+}
+
+/**
+ * About how long one failed test costs: the Iterate stage's hand work, one part printed
+ * again (most failures break one), and a day to test it again. **The forecast used to leave
+ * this out**, and measured in `era-pace` it was nearly the whole miss: a medium build that
+ * passed first time shipped on the forecast to the day, and one that failed ran about nine
+ * days over.
+ */
+export function retryDays(summary: PlanSummary, seats: number): number {
+  const iterate = (crewHours(summary.work.iterate, seats) / 8) * (7 / 5);
+  const reprint = summary.parts.length ? Math.max(...summary.parts.map((part) => part.hours)) / 24 : 0;
+  return Math.max(1, Math.round((iterate + reprint + 1) * 2) / 2);
+}
+
+/**
  * What the client asked for (design §5.4): one or two wishes per brief, the same every
  * time for the same brief. Own projects and print orders ask nothing.
  */
@@ -993,6 +1019,56 @@ export function presetDesign(def: ProjectDef, preset: Preset, plan: ProjectPlan,
     return pay / days;
   };
   return designs.reduce((best, d) => (score(d) > score(best) ? d : best), designs[0]);
+}
+
+/** What a plan promises at the pitch: the review screen's numbers, and the ship report's yardstick. */
+export interface BuildForecast {
+  quality: number;
+  /** Expected days: the clean run, plus a failed test's cost weighted by its chance. */
+  days: number;
+  /** Days if the first test passes. */
+  clean: number;
+  /** Chance the first test fails, and what that adds. */
+  fail: number;
+  retry: number;
+  wishes: { wish: Wish; ok: boolean }[];
+  payout: number;
+  hype: number;
+}
+
+/**
+ * **The forecast, worked out once** (design §5.4). The wizard's review shows it and the pitch
+ * stores it on the build, so the report at release compares the build against exactly what
+ * the player was promised — two copies of this sum would drift, and the report would then
+ * be judging the build against a number nobody saw.
+ *
+ * `crew` is each crew member's level in the build's wing; `built` how many of this brief
+ * have shipped before.
+ */
+export function forecastBuild(
+  def: ProjectDef,
+  plan: ProjectPlan,
+  summary: PlanSummary,
+  crew: number[],
+  market: { demand: number; built: number; hypeMultiplier?: number },
+): BuildForecast {
+  const craft = crew.length ? crew.reduce((sum, level) => sum + level, 0) / crew.length / 5 : 0.5;
+  const team = teamFit(Math.max(1, crew.length || plan.seats), def.teamSize);
+  const quality = Math.max(0.05, Math.min(summary.ceiling, craft + summary.designQuality + team.quality));
+  const clean = forecastDays(summary, plan.seats);
+  const fail = testFailChance(quality, summary.testRisk);
+  const retry = retryDays(summary, plan.seats);
+  // Each failure is likelier to be the last: the attempt bonus makes a second one rarer.
+  const second = fail * testFailChance(quality, summary.testRisk, 1);
+  const days = Math.round((clean + (fail + second) * retry) * 2) / 2;
+  const wishes = wishesFor(def).map((wish) => ({ wish, ok: wishPlanned(wish, plan, quality, days) }));
+  const met = wishes.filter((w) => w.ok).length;
+  const novelty = Math.max(REPEAT.floor, REPEAT.falloff ** market.built);
+  const payout = Math.round(def.payout * novelty * market.demand * summary.appeal * qualityPay(quality) * (1 + DESIGN.wishPay * met));
+  const hype = Math.round(
+    def.hype * (market.hypeMultiplier ?? 1) * novelty * Math.sqrt(summary.appeal) * qualityHype(quality) * (1 + DESIGN.wishHype * met),
+  );
+  return { quality, days, clean, fail, retry, wishes, payout, hype };
 }
 
 /**

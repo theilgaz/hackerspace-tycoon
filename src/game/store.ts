@@ -114,6 +114,12 @@ export interface GameState {
   filamentStock: number;
   /** Traits the player has been told about this run — the first sighting is a notification. */
   traitsSeen: TraitKey[];
+  /**
+   * The ship report on screen: which shipped build, and whether the clock was running when
+   * it opened (so closing it starts it again). Not saved — a report is a moment, and the
+   * same numbers are on the build's page in Projects.
+   */
+  shipReport: { id: string; resume: boolean } | null;
   /** The order applicants were dealt onto the reputation ladder this run. */
   ladder: string[];
   /** Seat licences the space owns, by option (§4c). Bought once, kept for good. */
@@ -161,6 +167,10 @@ export interface GameState {
   pushNotice: (text: Text, kind?: LogEntry['kind'], icon?: string) => void;
   /** First sighting of a trait this run; false if the player has already been told. */
   markTraitSeen: (trait: TraitKey) => boolean;
+  /** Open the ship report for a build, pausing the clock; null closes it and gives the clock back. */
+  setShipReport: (id: string | null) => void;
+  /** Change a shipped record after the fact — a campaign run on it. */
+  updateShipped: (id: string, patch: Partial<ShippedRecord>) => void;
   /** The toast has gone: into the log with it. */
   retireNotice: (id: string) => void;
 
@@ -243,6 +253,7 @@ export const store = createStore<GameState>((set, get) => ({
   printOffers: [],
   filamentStock: 0,
   traitsSeen: [],
+  shipReport: null,
   market: freshMarket(),
   licences: {},
   rankPrev: {},
@@ -348,6 +359,14 @@ export const store = createStore<GameState>((set, get) => ({
     const { day, simTime, notices } = get();
     set({ notices: [...notices, { id: uid('note'), day, time: simTime, text, kind, ...(icon ? { icon } : {}) }] });
   },
+  setShipReport: (id) =>
+    set((s) =>
+      id
+        ? { shipReport: { id, resume: s.shipReport?.resume ?? !s.paused }, paused: true }
+        : { shipReport: null, paused: s.shipReport?.resume && !s.bill && !s.ceremony ? false : s.paused },
+    ),
+  updateShipped: (id, patch) =>
+    set((s) => ({ shipped: s.shipped.map((r) => (r.id === id ? { ...r, ...patch } : r)) })),
   markTraitSeen: (trait) => {
     const seen = get().traitsSeen ?? [];
     if (seen.includes(trait)) return false;

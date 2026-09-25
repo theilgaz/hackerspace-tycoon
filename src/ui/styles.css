@@ -2458,6 +2458,22 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 }
 #topbar .tb-group:first-child { border-left: none; padding-left: 6px; }
 #topbar .tb-identity { gap: 10px; }
+/* The badge and the name are one button: they open your own page on the standings. */
+#topbar .tb-me {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -4px -6px;
+  padding: 4px 6px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#topbar .tb-me:hover { background: var(--muted); }
 #topbar .tb-icon { display: grid; place-items: center; color: var(--subtle-foreground); }
 #topbar .tb-icon .ui-icon { width: 16px; height: 16px; }
 #topbar .tb-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -3173,3 +3189,44 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .agenda-icon svg { width: 13px; height: 13px; display: block; }
 .agenda-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agenda-row.urgent .agenda-in { color: var(--destructive); }
+
+/*
+ * The ship report: what was promised against what shipped, and a campaign to shout about
+ * it. The planned figure sits under each result, green past it and red short of it — and
+ * plain when the build did what it said, because a wall of green says nothing.
+ */
+.modal.report { width: min(700px, calc(100vw - 48px)); }
+.report-planned { font-family: var(--font); font-size: 10.5px; color: var(--muted-foreground); }
+.report-planned.up { color: var(--success); }
+.report-planned.down { color: var(--destructive); }
+.report-crew { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 12px 0 0; font-size: 11.5px; }
+.report-crew .mono { color: var(--muted-foreground); font-size: 10.5px; }
+.report-foot { display: flex; justify-content: space-between; align-items: center; }
+.report-done { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 12px; }
+.report-done svg { width: 14px; height: 14px; flex: none; }
+.report-done.up { color: var(--success); }
+.report-done.down { color: var(--destructive); }
+.campaign-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.campaign-card { position: relative; align-items: stretch; gap: 5px; min-height: 104px; }
+.campaign-card__head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
+.campaign-card__head svg { width: 15px; height: 15px; flex: none; color: var(--primary); }
+.campaign-card .ui-desc { margin: 0; font-size: 11px; }
+.campaign-card__foot { display: flex; justify-content: space-between; margin-top: auto; font-size: 11.5px; }
+.campaign-gain.up { color: var(--success); }
+.campaign-gain.down { color: var(--destructive); }
+.campaign-gain.risk { color: var(--warning); }
+.campaign-card__back { font-size: 10.5px; color: var(--muted-foreground); text-align: right; }
+.campaign-card__back.up { color: var(--success); }
+.report-sales { margin-left: 8px; font-size: 11px; color: var(--muted-foreground); }
+.campaign-card__tag {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--warning);
+}
+.campaign-card[aria-pressed='true'] { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+
+.forecast__sub { display: block; margin-top: 2px; font-family: var(--font); font-size: 10px; color: var(--muted-foreground); }

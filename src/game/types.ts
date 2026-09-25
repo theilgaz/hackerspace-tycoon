@@ -441,6 +441,11 @@ export interface ProjectData {
   traitNotes?: string[];
   /** A Documenter wrote this build's docs: louder at release. */
   documented?: boolean;
+  /**
+   * What the review promised at the pitch (`forecastBuild`), for the ship report — with which
+   * of the client's wishes the plan said it would meet, in `wishesFor` order.
+   */
+  forecast?: { quality: number; days: number; payout: number; hype: number; wishes?: boolean[] };
   /** A print order: the agreed price, whose it is, and the last day it can be handed over. */
   order?: { pay: number; client: string; dueDay: number };
   /** How it was designed (§4d). */
@@ -601,6 +606,9 @@ export interface ScoreRow {
 }
 
 /** A project that made it out of the door. */
+/** The four ways to advertise a shipped build (`utils/campaigns.ts`). */
+export type CampaignId = 'flyers' | 'social' | 'review' | 'launch';
+
 export interface ShippedRecord {
   id: string;
   defId: string;
@@ -625,6 +633,17 @@ export interface ShippedRecord {
   design?: DesignChoice;
   /** How the payout was reached: the brief's price and each multiplier on it. */
   pay?: { base: number; market: number; appeal: number; quality: number; novelty: number };
+  /** What the review promised at the pitch — the ship report's yardstick. */
+  forecast?: { quality: number; days: number; payout: number; hype: number; wishes?: boolean[] };
+  /** The client's wishes, and which were met. */
+  wishes?: { wish: Wish; met: boolean }[];
+  /** A print order: what the client paid is the whole story, and there is nothing to advertise. */
+  order?: boolean;
+  /**
+   * An advertising campaign run after release: what it cost, what it did to the build's
+   * hype, and the sales it brings in over a week — `paid` of `sales` so far.
+   */
+  campaign?: { id: CampaignId; cost: number; hype: number; sales?: number; paid?: number };
 }
 
 /**

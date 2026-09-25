@@ -111,6 +111,52 @@ check(
   crew.map((m) => `${m.name}:${m.activity}`).join(' '),
 );
 
+// **A big crew kicks off with a quorum** (`KICKOFF.quorum`, five). Six on the crew, a
+// Meeting Corner (six chairs) to meet at: two kept home and nothing moves, one kept home and
+// the five who are in hold the meeting without them.
+store.getState().earn(200000);
+sim.player.hoursLeft = 17;
+for (const a of APPLICANTS) {
+  if (sim.members.filter((m) => !m.team).length >= 6) break;
+  if (sim.members.some((m) => m.id === a.id)) continue;
+  store.setState({ applicants: [a.id] });
+  sim.player.hoursLeft = 17;
+  sim.hire(a.id);
+}
+const bought = sim.buyFurniture('meeting-corner');
+const big = sim.members.filter((m) => !m.team).slice(0, 6);
+const pitched = sim.pitch('fpv-drone', undefined, [], { design: { cadtool: 0, material: 0, validation: 0 }, seats: 6 });
+const six = sim.projects[sim.projects.length - 1];
+for (const m of big) {
+  m.interest = 5; // drift is not what is under test
+  six.team.push(m.id);
+  m.team = six.id;
+}
+check('a crew of six can be pitched once a table seats five', bought && pitched && big.length === 6 && six.teamSize >= 6,
+  `bought ${bought}, pitched ${pitched}, crew ${big.length}`);
+let home = big.slice(4);
+const stepBig = (hours: number) => {
+  for (let i = 0; i < hours * 20; i += 1) {
+    for (const m of home) {
+      plans.set(m.id, { attending: false, arriveAt: 0, leaveAt: 0 });
+      if (m.present) m.leave();
+    }
+    sim.tick(0.125, 1);
+    if (store.getState().bill) store.getState().setBill(null);
+  }
+};
+// Into tomorrow's working day with everybody but the two rostered in.
+while (sim.time > 8) stepBig(0.5);
+for (const m of big.slice(0, 4)) plans.set(m.id, { attending: true, arriveAt: 9, leaveAt: 18 });
+while (sim.time < 11) stepBig(0.5);
+stepBig(3);
+check('four of six at the table is not a meeting', six.progress.concept === 0, `progress ${six.progress.concept.toFixed(2)}`);
+home = big.slice(5);
+plans.set(big[4].id, { attending: true, arriveAt: 9, leaveAt: 18 });
+if (!big[4].present) big[4].arrive({ x: 0, y: 7 });
+stepBig(2);
+check('five of six is — the kickoff moves without the sixth', six.progress.concept > 0, `progress ${six.progress.concept.toFixed(2)}`);
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n  ${failed ? `${failed}/${results.length} checks failed` : `all ${results.length} checks passed`}\n`);
 process.exit(failed ? 1 : 0);

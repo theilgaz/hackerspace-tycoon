@@ -18,6 +18,8 @@ import { STAGE_STATION, STATIONS, GRID, DOOR, IDLE_TILES, isBlocked } from '@/ma
 import { findPath } from '@/utils/grid';
 import { furnish } from './furnish';
 import { freshMarket } from '@/utils/market';
+import { CAMPAIGNS, campaignGain, campaignRange, campaignSales } from '@/utils/campaigns';
+import type { CampaignId } from '@/game/types';
 
 const rows: string[] = [];
 const standings: string[] = [];
@@ -37,6 +39,16 @@ const LEVEL: DifficultyKey = 'normal';
 /** `NO_SHOP=1` plays the same run without buying a single comfort — the A/B that says
  *  whether the shop is worth its money, the way `hype-check` does for posting. */
 const SHOPS = process.env.NO_SHOP !== '1';
+/**
+ * `CAMPAIGN=flyers|social|review|launch|best` advertises every build that ships with that
+ * campaign (`best`: whichever would add the most) — the reckless end of the A/B for the ship
+ * report's campaigns. `CAMPAIGN=smart` is the careful end: the biggest campaign that cannot
+ * lose reputation, whose price net of the sales it brings back is under `SMART_PRICE` a
+ * point, and that leaves `SMART_FLOOR` in the bank. Unset, the player never advertises.
+ */
+const CAMPAIGN_MODE = process.env.CAMPAIGN as CampaignId | 'best' | 'smart' | undefined;
+const SMART_PRICE = Number(process.env.SMART_PRICE ?? 25);
+const SMART_FLOOR = 40000;
 for (let seed = 1; seed <= SEEDS; seed += 1) {
   rng.reseed(seed);
   // Every field, every seed (§13): a leftover ceremony once made three rounds of tuning
@@ -51,6 +63,8 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     shipped: [],
     failed: [],
     notices: [],
+    traitsSeen: [],
+    shipReport: null,
     reputation: 0,
     ceremony: null,
     ceremonies: [],
@@ -87,6 +101,8 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   const spent = new Map<string, Record<string, number>>();
   let sampledHour = -1;
   const banked = new Set<string>();
+  const advertised = new Set<string>();
+  const ads = { runs: 0, spent: 0, gain: 0 };
   // Past the first awards night (day 90) and well into the third year.
   while (sim.day <= DAYS) {
     if (sim.day !== eveDay) {
@@ -94,6 +110,32 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       eveDay = sim.day;
     }
     sim.tick(0.05, 4);
+    if (CAMPAIGN_MODE) {
+      for (const record of store.getState().shipped) {
+        if (record.order || advertised.has(record.id)) continue;
+        advertised.add(record.id);
+        let id: CampaignId | null;
+        if (CAMPAIGN_MODE === 'smart') {
+          const worth = CAMPAIGNS.filter((c) => {
+            const gain = campaignGain(c.id, record.hype, record.quality);
+            const [low] = campaignRange(c.id, record.hype, record.quality);
+            const net = c.cost - campaignSales(gain);
+            return low > 0 && net <= SMART_PRICE * gain && store.getState().cash - c.cost >= SMART_FLOOR;
+          });
+          id = worth.length
+            ? worth.reduce((a, b) => (campaignGain(b.id, record.hype, record.quality) > campaignGain(a.id, record.hype, record.quality) ? b : a)).id
+            : null;
+        } else if (CAMPAIGN_MODE === 'best') {
+          id = CAMPAIGNS.reduce((a, b) => (campaignGain(b.id, record.hype, record.quality) > campaignGain(a.id, record.hype, record.quality) ? b : a)).id;
+        } else id = CAMPAIGN_MODE;
+        if (id && sim.launchCampaign(record.id, id)) {
+          const ran = store.getState().shipped.find((r) => r.id === record.id)?.campaign;
+          ads.runs += 1;
+          ads.spent += ran?.cost ?? 0;
+          ads.gain += ran?.hype ?? 0;
+        }
+      }
+    }
     if (Math.floor(sim.totalHours) !== sampledHour) {
       sampledHour = Math.floor(sim.totalHours);
       const open = isWorkingDay(sim.day) && sim.time >= WORKDAY.start && sim.time < WORKDAY.end;
@@ -305,6 +347,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       if (t) sim.workOn(t.id);
     }
   }
+  if (CAMPAIGN_MODE) console.log(`  campaigns seed ${seed}: ${ads.runs} run · ₺${ads.spent} spent · ${ads.gain >= 0 ? '+' : ''}${ads.gain} reputation`);
   // Where does an engaged player actually sit at the first awards night?
   const board = sim.scoreboard();
   const me = board.findIndex((r) => r.isPlayer) + 1;

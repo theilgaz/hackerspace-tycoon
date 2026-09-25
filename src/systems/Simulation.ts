@@ -14,6 +14,7 @@ import type {
   ProjectDef,
   StageKey,
   TraitKey,
+  CampaignId,
   Tag,
   ClaimKey,
   Post,
@@ -66,11 +67,13 @@ import {
   defaultPlan,
   crewLevels,
   wishMet,
+  forecastBuild,
   planProject,
   qualityHype,
   qualityPay,
   teamFit,
 } from '@/utils/design';
+import { CAMPAIGN, CAMPAIGN_MAP, campaignGain, campaignSales } from '@/utils/campaigns';
 import { coolMarket, driftMarket, warmMarket } from '@/utils/market';
 import { FURNITURE_MAP, furnitureOf } from '@/utils/furniture';
 import { manhattan, sameTile, type Tile } from '@/utils/grid';
@@ -105,6 +108,8 @@ import {
   TEST,
   TIME,
   KICKOFF,
+  kickoffSeats,
+  crewCap,
   TRAIN,
   ROLES,
   RESALE,
@@ -428,6 +433,7 @@ export class Simulation {
       this.ownerStopped = false;
       tickRivals(this.rivals, this.rivalPressure());
       this.runBilling();
+      this.payCampaignSales();
       this.checkAwards();
       this.tickStandings();
       this.awardsCountdown();
@@ -1206,6 +1212,10 @@ export class Simulation {
         : t('build.note.waitingTable', { project: project.name });
       return false;
     }
+    // A big crew kicks off with a quorum (`KICKOFF.quorum`): once the table's chairs are all
+    // taken, whoever else turns up gets on with something else rather than standing round it.
+    const seated = this.kickoffSeated(project, table);
+    if (!seated.includes(who.id) && seated.length >= (seatsOf(table) ?? 0)) return false;
     if (!this.atStand(who, table)) {
       if (!who.walking) who.walkTo(table.stand);
       who.note = t('build.note.toKickoff', { project: project.name });
@@ -1224,10 +1234,22 @@ export class Simulation {
     return true;
   }
 
-  /** Crew who are not at the table yet — the names the waiting ones are waiting for. */
+  /** Crew sat at the kickoff table right now, in team order. */
+  private kickoffSeated(project: ProjectData, table: StationDef): string[] {
+    return project.team.filter((id) => {
+      const m = this.member(id);
+      return !!m && m.present && this.atStand(m, table) && m.activity !== 'resting';
+    });
+  }
+
+  /**
+   * Crew who are not at the table yet — the names the waiting ones are waiting for. Empty
+   * once a quorum is sat down: nobody is being waited for any more.
+   */
   private kickoffMissing(project: ProjectData): string[] {
     const table = project.tableId ? STATION_MAP[project.tableId] : null;
     if (!table) return [];
+    if (this.kickoffSeated(project, table).length >= kickoffSeats(project.team.length)) return [];
     return project.team
       .map((id) => this.member(id))
       .filter((m): m is MemberEntity => !!m)
@@ -1236,8 +1258,8 @@ export class Simulation {
   }
 
   /**
-   * Is everybody sitting down? The whole crew, every one of them — and if nobody has been
-   * allocated, you on your own will do. You are never *required*: your hours are yours, and
+   * Is everybody sitting down? The whole crew — or, for a crew bigger than
+   * `KICKOFF.quorum`, any five of them — and if nobody has been allocated, you on your own will do. You are never *required*: your hours are yours, and
    * a kickoff that stalled because you went to buy filament would be the game punishing the
    * one person it can command.
    */
@@ -1515,7 +1537,7 @@ export class Simulation {
    * never required at a kickoff (see `kickoffReady`), so you are never what sizes it.
    */
   private tableNeed(project: ProjectData): number {
-    return Math.max(1, project.team.length);
+    return kickoffSeats(project.team.length);
   }
 
   /** Is there a chair for you at this kickoff, if you are on it? */
@@ -1529,7 +1551,8 @@ export class Simulation {
   /** Is everybody on it actually here today? You on your own count if nobody else is on it. */
   private crewInBuilding(project: ProjectData): boolean {
     if (!project.team.length) return this.player.project === project.id && this.player.present;
-    return project.team.every((id) => this.member(id)?.present);
+    const here = project.team.filter((id) => this.member(id)?.present).length;
+    return here >= kickoffSeats(project.team.length);
   }
 
   /** Where somebody is sitting right now, for the renderer. Null when they are not seated. */
@@ -1543,7 +1566,8 @@ export class Simulation {
     if (project && !project.kickedOff && project.tableId) {
       const table = STATION_MAP[project.tableId];
       if (table && this.atStand(who, table)) {
-        const order = [...project.team, 'player'];
+        // Chairs go to whoever is at the table, so a quorum of a big crew fills the first ones.
+        const order = [...this.kickoffSeated(project, table), 'player'];
         return seatPosition(table, Math.max(0, order.indexOf(who.id)));
       }
     }
@@ -2353,9 +2377,11 @@ export class Simulation {
     const appeal = project.appeal ?? 1;
     // What the client asked for (design §5.4): each wish met adds to the pay and the hype.
     const wishes = project.wishes ?? [];
-    const met = wishes.filter((wish) =>
-      wishMet(wish, { quality: project.quality, design: project.design, days: this.day - project.startedOnDay }),
-    ).length;
+    const judged = wishes.map((wish) => ({
+      wish,
+      met: wishMet(wish, { quality: project.quality, design: project.design, days: this.day - project.startedOnDay }),
+    }));
+    const met = judged.filter((w) => w.met).length;
     // A print order pays what was agreed — no market, no novelty, no design appeal.
     const payout = project.order
       ? project.order.pay
@@ -2404,7 +2430,18 @@ export class Simulation {
       crew: this.crewShares(project),
       design: { ...project.design },
       pay: { base: def.payout, market: demand, appeal, quality: qualityPay(project.quality), novelty },
+      forecast: project.forecast,
+      wishes: judged,
+      order: !!project.order,
     });
+    // **The report is a moment, so it is not every moment.** A bigger build opens it over the
+    // room, and so does the very first ship of the run, so the player meets it; a weekend
+    // build is a log line, with the same report on its page in Projects. The autoplayer ships
+    // one and a half small builds a day — a popup for each would be the whole game.
+    const shipped = store.getState().shipped;
+    if (!project.order && (def.tier !== 'small' || shipped.filter((r) => !r.order).length === 1)) {
+      store.getState().setShipReport(project.id);
+    }
     const after = store.getState().era;
     if (after > before) {
       this.log(msg('log.eraUp', { era: eraDef(after).name }), 'good');
@@ -3550,7 +3587,7 @@ export class Simulation {
     // Every project is planned round a table (§4d), so the crew it is planned for has to
     // fit at one the space owns. The wizard never offers a size that does not; the
     // harnesses take the brief's size, capped to what there is.
-    const maxSeats = this.maxTableSeats();
+    const maxSeats = crewCap(this.maxTableSeats());
     if (maxSeats <= 0) {
       this.log(msg('build.log.noTable'), 'bad');
       return false;
@@ -3603,6 +3640,27 @@ export class Simulation {
     const entry: BacklogEntry = offer ?? { id: uid('offer'), defId, source: 'catalog' };
     const project = startProject(entry, this.day, chosen, state.ownedMachines);
     project.spent += summary.tooling;
+    // What the review promised, kept for the report at release — the same sum the wizard ran.
+    if (!def.order) {
+      const promised = forecastBuild(
+        def,
+        chosen,
+        summary,
+        crewSkills.map((c) => c.skills[def.category] ?? 2),
+        {
+          demand: state.market[def.category] ?? 1,
+          built: state.shipped.filter((r) => r.defId === def.id).length,
+          hypeMultiplier: entry.hypeMultiplier,
+        },
+      );
+      project.forecast = {
+        quality: promised.quality,
+        days: promised.days,
+        payout: promised.payout,
+        hype: promised.hype,
+        wishes: promised.wishes.map((w) => w.ok),
+      };
+    }
     // Every build carries the name it was given (design §6.2) — the one the projects table
     // ranks it by. The harnesses pass none and keep the brief's.
     if (name?.trim()) project.name = name.trim().slice(0, 40);
@@ -3651,6 +3709,62 @@ export class Simulation {
       if (member && !member.team) this.addToTeam(project, member);
     }
     return true;
+  }
+
+  /**
+   * Advertise a build after release (the ship report). Once per build, within
+   * `CAMPAIGN.windowDays` of shipping, an hour of your day and the campaign's price. What it
+   * adds is a multiple of the build's own hype — so a great new build is worth shouting about
+   * and a fourth copy of the same one is not — and the YouTube review rides on quality, so a
+   * weak build can come out of it worse.
+   */
+  launchCampaign(recordId: string, id: CampaignId): boolean {
+    const state = store.getState();
+    const record = state.shipped.find((r) => r.id === recordId);
+    const def = CAMPAIGN_MAP[id];
+    if (!record || !def || record.order || record.campaign) return false;
+    if (this.day - record.day > CAMPAIGN.windowDays) {
+      this.log(msg('report.log.tooLate', { project: record.name }), 'warn');
+      return false;
+    }
+    if (!this.player.canAfford(CAMPAIGN.hours)) {
+      this.log(msg('log.noHours'), 'bad');
+      return false;
+    }
+    if (!state.spend(def.cost, 'marketing')) {
+      this.log(msg('report.log.cantAfford', { project: record.name, cost: def.cost }), 'bad');
+      return false;
+    }
+    this.player.spendHours(CAMPAIGN.hours);
+    // A reviewer reads the build a little better or worse than it is; the others do not judge.
+    const gain = campaignGain(id, record.hype, record.quality, def.judged ? rng.range(-1, 1) : 0);
+    const sales = campaignSales(gain);
+    state.recordReputation(gain);
+    state.setHype(Math.max(0, state.hype + gain * CAMPAIGN.attention));
+    state.updateShipped(record.id, { hype: record.hype + gain, campaign: { id, cost: def.cost, hype: gain, sales, paid: 0 } });
+    this.log(
+      msg(gain >= 0 ? 'report.log.ran' : 'report.log.backfired', {
+        project: record.name,
+        campaign: msg(`report.campaign.${id}.name` as MessageKey),
+        gain: Math.abs(gain),
+      }),
+      gain >= 0 ? 'good' : 'bad',
+    );
+    this.publish();
+    return true;
+  }
+
+  /** A day's sales from every campaign still paying out: an even share of its total a day. */
+  private payCampaignSales() {
+    const state = store.getState();
+    for (const record of state.shipped) {
+      const c = record.campaign;
+      if (!c?.sales || (c.paid ?? 0) >= c.sales) continue;
+      const share = Math.min(c.sales - (c.paid ?? 0), Math.ceil(c.sales / CAMPAIGN.salesDays));
+      state.earn(share, 'adSales');
+      this.incomeThisMonth += share;
+      state.updateShipped(record.id, { campaign: { ...c, paid: (c.paid ?? 0) + share } });
+    }
   }
 
   /** Put yourself on a project. The one place in the game you can give a direct order. */

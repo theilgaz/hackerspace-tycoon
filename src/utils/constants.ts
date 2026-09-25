@@ -421,6 +421,7 @@ export const VERB_HOURS: Record<string, number> = {
   filament: 0.5,
   maintain: 1,
   hire: 1,
+  campaign: 1,
 };
 
 // --- Eras (§8) --------------------------------------------------------------
@@ -1041,7 +1042,24 @@ export const MARKET = {
  */
 export const KICKOFF = {
   missLimit: 2,
+  /**
+   * **Five is a meeting.** A crew bigger than this kicks off once any five of them are sat
+   * down; a smaller one still needs everybody. Getting eight or ten volunteers into one room
+   * on one day was a miracle the big builds waited on, and it made a table for ten the only
+   * way to start one.
+   */
+  quorum: 5,
 };
+
+/** How many of a crew have to sit down for its kickoff to move — and so the table it needs. */
+export function kickoffSeats(crew: number): number {
+  return Math.max(1, Math.min(crew, KICKOFF.quorum));
+}
+
+/** The biggest crew the space's tables can kick off: any size, once one seats a quorum. */
+export function crewCap(biggestTable: number): number {
+  return biggestTable >= KICKOFF.quorum ? 10 : biggestTable;
+}
 
 /**
  * Seats per station (§4d). **One person to a workstation** is the rule that makes the space

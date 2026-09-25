@@ -137,7 +137,7 @@ async function openPanel(action) {
   // A bill or an awards night is modal and has no jobs-close, so it has to be dismissed on
   // its own terms first — otherwise the bar button underneath is covered by the backdrop and
   // the click silently does nothing. That made this suite intermittent once already.
-  for (const dismiss of ['bill-close', 'ceremony-close']) {
+  for (const dismiss of ['bill-close', 'ceremony-close', 'report-close']) {
     if (await evaluate(`!!document.querySelector('[data-action="${dismiss}"]')`)) {
       await click(`[data-action="${dismiss}"]`);
     }
@@ -513,9 +513,12 @@ await check('People opens and hiring works', async () => {
     })()
   `);
   // The first person now gets in touch around the same day as the first bill, and the bill
-  // is modal — so clear it or People opens behind it and there is nothing to click.
-  if (await evaluate(`!!document.querySelector('[data-action="bill-close"]')`)) {
-    await click('[data-action="bill-close"]');
+  // is modal — so clear it or People opens behind it and there is nothing to click. A build
+  // shipped on the way opens its report, which is modal too.
+  for (const dismiss of ['bill-close', 'ceremony-close', 'report-close']) {
+    if (await evaluate(`!!document.querySelector('[data-action="${dismiss}"]')`)) {
+      await click(`[data-action="${dismiss}"]`);
+    }
   }
   // This check is about the panel wiring, not the economy: make sure the hire is
   // affordable so a spent day cannot make it flaky.
@@ -789,6 +792,24 @@ await check('Ranking: a row opens that space, and Escape comes back', async () =
   return ok;
 });
 
+await check('the space\'s name in the top bar opens its own page', async () => {
+  // Close whatever is open first, from a known state; then press the name itself.
+  await openPanel('ranking-open');
+  await click('#modal header [data-action="jobs-close"]');
+  await click('#topbar [data-action="my-space"]');
+  const got = JSON.parse(
+    await evaluate(`JSON.stringify({
+      detail: !!document.querySelector('#modal .space-detail'),
+      name: document.querySelector('#modal .space-head-text b')?.textContent.trim() ?? '',
+      mine: __store.getState().identity?.name ?? '',
+    })`),
+  );
+  await click('#modal header [data-action="jobs-close"]');
+  const ok = got.detail && got.name.startsWith(got.mine) && got.mine.length > 0;
+  if (!ok) console.log(`      ${JSON.stringify(got)}`);
+  return ok;
+});
+
 await check('Projects: opens on In progress, and the filter narrows one list', async () => {
   await ensureWorkInFlight();
   await openPanel('projects-open');
@@ -814,6 +835,42 @@ await check('Projects: opens on In progress, and the filter narrows one list', a
   if (!ok) {
     console.log(`      opens on ${opensOn} (${first}), all ${all}, done ${onlyDone}/${totals.done}, open ${onlyOpen}/${totals.open}, failed ${totals.failed}`);
   }
+  return ok;
+});
+
+await check('a bigger build ships with a report, and a campaign can be run from it', async () => {
+  // A medium software build (nothing to print, nothing to wait for), pushed through by the
+  // dev hook the console uses; the report must open over the room and stop the clock.
+  const id = await evaluate(`(() => {
+    const sim = __game.sim, st = __store.getState();
+    st.setShipReport(null);
+    st.earn(60000);
+    sim.player.hoursLeft = 8;
+    st.setPaused(false);
+    if (!sim.pitch('basic-cms', undefined, [])) return null;
+    const p = sim.projects[sim.projects.length - 1];
+    sim.dev.complete(p.id, true);
+    sim.publish();
+    return p.id;
+  })()`);
+  await sleep(300);
+  const opened = await evaluate(`JSON.stringify({
+    report: __store.getState().shipReport?.id ?? null,
+    paused: __store.getState().paused,
+    modal: !!document.querySelector('#modal .modal.report'),
+    cards: document.querySelectorAll('#modal .campaign-card').length,
+  })`);
+  await click('#modal .campaign-card[data-value="flyers"]:not([disabled])');
+  await click('#modal [data-action="campaign-run"]');
+  const ran = await evaluate(`JSON.stringify(__store.getState().shipped.find((r) => r.id === ${JSON.stringify(id)})?.campaign ?? null)`);
+  await click('#modal [data-action="report-close"]');
+  const after = await evaluate(`JSON.stringify({ report: __store.getState().shipReport, paused: __store.getState().paused })`);
+  const o = JSON.parse(opened);
+  const r = JSON.parse(ran);
+  const a = JSON.parse(after);
+  const ok = !!id && o.report === id && o.paused === true && o.modal && o.cards === 4 &&
+    r?.id === 'flyers' && a.report === null && a.paused === false;
+  if (!ok) console.log(`      ${JSON.stringify({ id, o, r, a })}`);
   return ok;
 });
 

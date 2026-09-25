@@ -6,9 +6,9 @@ import type {
   ProjectPlan,
   StageKey,
 } from '@/game/types';
-import { STAGE_ORDER, SOURCING, TEST } from '@/utils/constants';
+import { STAGE_ORDER, SOURCING } from '@/utils/constants';
 import { CATALOG_MAP } from '@/utils/catalog';
-import { defaultPlan, planProject, wishesFor } from '@/utils/design';
+import { defaultPlan, planProject, testFailChance, wishesFor } from '@/utils/design';
 import { uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
 
@@ -209,16 +209,11 @@ export interface TestOutcome {
 
 /** §13.6 — does it work, or does it become a lesson? */
 export function resolveTest(project: ProjectData, kit = 1): TestOutcome {
-  const pass = TEST.basePass + (project.quality - 0.5) * 2 * TEST.qualityWeight;
-  let fail = Math.max(0.02, 1 - pass);
   // Every risk the build carries lives in one multiplier: the design's (eyeballing it
   // instead of simulating is one of them) and the Skip button's, which multiplies itself in
-  // when pressed. Two places deciding the same penalty is how it gets applied twice.
-  fail *= project.testRisk ?? 1;
-  // What the space owns that finds faults first — a measurement bench, for electronics.
-  fail *= kit;
-  fail = Math.max(0.02, fail - project.testAttempts * TEST.attemptBonus);
-  fail = Math.min(0.95, fail);
+  // when pressed. Two places deciding the same penalty is how it gets applied twice. The
+  // formula itself is shared with the forecast (`testFailChance`).
+  const fail = testFailChance(project.quality, project.testRisk ?? 1, project.testAttempts, kit);
 
   project.testAttempts += 1;
   if (!rng.chance(fail)) {

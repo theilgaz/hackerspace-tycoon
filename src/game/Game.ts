@@ -160,6 +160,8 @@ export class Game {
       },
       savedRun: () => readSave()?.summary ?? null,
       dismissBill: () => store.getState().setBill(null),
+      dismissReport: () => store.getState().setShipReport(null),
+      launchCampaign: (recordId, id) => act(() => sim.launchCampaign(recordId, id)),
       letGo: (memberId) => act(() => sim.letGo(memberId)),
       previewBill: () => sim.previewBill(),
       scoreboard: () => sim.scoreboard(),

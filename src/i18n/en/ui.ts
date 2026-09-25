@@ -74,6 +74,7 @@ export const ui = {
   'ui.top.allocatedHint': 'somebody can only be on one project at a time',
   'ui.top.reputationHint': "cumulative hype from everything you've shipped",
   'ui.top.seasonHint': (p: { year: number; days: number }) => `${p.year} · ${p.days} days to the awards (day 90 of the year)`,
+  'ui.top.mySpaceHint': 'Your space: rank, reputation, crew and trophies',
   'ui.cal.hint': 'Today, the year up to its awards night, and what is coming. Click for the list.',
   'ui.cal.title': 'Coming up',
   'ui.cal.today': 'Today',

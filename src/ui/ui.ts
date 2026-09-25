@@ -3,6 +3,7 @@ import type {
   BacklogEntry,
   BuyItem,
   Wish,
+  CampaignId,
   ProjectCategory,
   ScoreRow,
   MemberSnapshot,
@@ -37,7 +38,7 @@ import {
   MACHINE,
   PLAYER,
   ORDERS,
-  REPEAT,
+  crewCap,
   ROSTER,
   STAGE_MAP,
   STAGE_ORDER,
@@ -80,7 +81,7 @@ import {
   type Licences,
   optionCost,
   crewLevels,
-  forecastDays,
+  forecastBuild,
   isMulti,
   optionLevel,
   picked,
@@ -88,10 +89,7 @@ import {
   shortBy,
   TECH_LABELS,
   wishesFor,
-  wishPlanned,
   type Preset,
-  qualityHype,
-  qualityPay,
   qualityStars,
   teamFit,
   type DesignOption,
@@ -102,6 +100,7 @@ import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { AWARDS, LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import type { DifficultyKey } from '@/utils/difficulty';
 import { ECONOMY } from '@/utils/economy';
+import { CAMPAIGN, CAMPAIGNS, CAMPAIGN_MAP, REPORT, campaignGain, campaignRange, campaignSales } from '@/utils/campaigns';
 import { MACHINE_LABEL, STATIONS, STATION_MAP } from '@/machines/layout';
 import { partsEta, partsPending, projectProgress } from '@/systems/ProjectSystem';
 import { SHELVE } from '@/utils/constants';
@@ -176,6 +175,8 @@ export interface UIHandlers {
   begin(name: string, logo: number, difficulty: DifficultyKey, player: string): void;
   dismissCeremony(): void;
   dismissBill(): void;
+  dismissReport(): void;
+  launchCampaign(recordId: string, id: CampaignId): void;
   continueRun(): void;
   discardSave(): void;
   savedRun(): {
@@ -357,7 +358,7 @@ function fitMeter(ideal: number, seats: number, max: number, free = Infinity): s
     // Too big for any table, or more people than there are free to pick.
     const blocked = n > max || n > free;
     const tip = n > max
-      ? t('build.np.seatBlocked', { count: n, table: FURNITURE_MAP['table-large'].name })
+      ? t('build.np.seatBlocked', { count: n, table: FURNITURE_MAP['meeting-corner'].name, other: FURNITURE_MAP['table-large'].name })
       : n > free
         ? t('build.np.seatNoPeople', { count: n, free })
         : `${t('build.people', { count: n })}: ${fitLabel(n, ideal)}`;
@@ -533,6 +534,8 @@ export class UI {
 
   /** The agenda under the clock: what is coming, as a list. */
   private agendaOpen = false;
+  /** The campaign chosen on a ship report, before it is paid for. */
+  private campaignPick: { record: string; id: CampaignId } | null = null;
 
   /** The New Project wizard (§4d). Survives re-renders; reset each time it is opened. */
   private np: {
@@ -741,6 +744,7 @@ export class UI {
       const state = this.lastState;
       if (state?.bill) this.handlers.dismissBill();
       else if (state?.ceremony) this.handlers.dismissCeremony();
+      else if (state?.shipReport) this.handlers.dismissReport();
       // Build mode unwinds one layer a press: the question, then the item in hand, then the
       // mode itself. Something picked up from the room is Game's to put down.
       else if (this.agendaOpen) this.agendaOpen = false;
@@ -833,6 +837,15 @@ export class UI {
           this.trophyYear = value ? Number(value) : null;
           this.rerender();
           break;
+        // The space's own name opens its own page: the drill-in every other space has on the
+        // standings, reached from where your name already is. The crumb goes back to the table.
+        case 'my-space':
+          this.openModal = 'ranking';
+          this.rankTab = 'table';
+          this.rankSpace = 'player';
+          this.agendaOpen = false;
+          this.rerender();
+          break;
         case 'rank-space':
           // '' is the way back to whichever table you came from.
           this.rankSpace = value || null;
@@ -909,6 +922,20 @@ export class UI {
           break;
         case 'bill-close':
           h.dismissBill();
+          this.rerender();
+          break;
+        case 'report-close':
+          this.campaignPick = null;
+          h.dismissReport();
+          this.rerender();
+          break;
+        case 'campaign-pick':
+          if (id && value) this.campaignPick = { record: id, id: value as CampaignId };
+          this.rerender();
+          break;
+        case 'campaign-run':
+          if (this.campaignPick) h.launchCampaign(this.campaignPick.record, this.campaignPick.id);
+          this.campaignPick = null;
           this.rerender();
           break;
         case 'let-go':
@@ -2117,13 +2144,15 @@ export class UI {
      */
     this.setHTML(this.topbar, 'topbar', `
       <div class="tb-group tb-identity">
-        <span class="icon-chip" style="--tone:${state.identity?.colour ?? 'var(--primary)'};width:30px;height:30px">
-          ${icon((state.identity?.icon ?? 'wrench') as IconName)}
-        </span>
-        <div class="tb-text">
-          <b class="tb-name">${esc(state.identity?.name ?? t('ui.top.yourSpace'))}</b>
-          <span class="tb-sub">${esc(era.name)}</span>
-        </div>
+        <button class="tb-me" data-action="my-space" title="${esc(t('ui.top.mySpaceHint'))}">
+          <span class="icon-chip" style="--tone:${state.identity?.colour ?? 'var(--primary)'};width:30px;height:30px">
+            ${icon((state.identity?.icon ?? 'wrench') as IconName)}
+          </span>
+          <span class="tb-text">
+            <b class="tb-name">${esc(state.identity?.name ?? t('ui.top.yourSpace'))}</b>
+            <span class="tb-sub">${esc(era.name)}</span>
+          </span>
+        </button>
         ${
           lease?.ready
             ? `<button class="ui-btn ${lease.afford ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
@@ -3106,12 +3135,171 @@ export class UI {
     return true;
   }
 
+  /**
+   * **What was promised, against what shipped** — the ship report. A build used to leave as a
+   * log line, so whether it had been a good one was a thing to work out from the Projects
+   * table. The yardstick is the review screen's own forecast, kept on the build at the pitch,
+   * so the report judges the build against exactly the numbers the player saw.
+   */
+  private reportVerdict(record: ShippedRecord): 'above' | 'asPlanned' | 'below' | 'none' {
+    const f = record.forecast;
+    if (!f) return 'none';
+    // Only a wish the plan said it would meet counts against the build: missing one it never
+    // promised is not a surprise. Days count only when clearly late (`REPORT.lateFactor`).
+    const missed = (record.wishes ?? []).some((w, i) => !w.met && (f.wishes?.[i] ?? true));
+    if (record.quality < f.quality - REPORT.belowQuality || missed || this.reportLate(record)) return 'below';
+    // Beating the plan has to be a real margin: traits and the owner joining in lift a build
+    // a little past its forecast as a matter of course (§3).
+    if (record.quality > f.quality + REPORT.aboveQuality || record.payout > f.payout * REPORT.abovePay) return 'above';
+    return 'asPlanned';
+  }
+
+  private reportLate(record: ShippedRecord): boolean {
+    const f = record.forecast;
+    return !!f && record.days > f.days * REPORT.lateFactor + REPORT.lateSlack;
+  }
+
+  /** The report's substance, for the popup and for the build's page in Projects alike. */
+  private reportBlocks(state: GameState, record: ShippedRecord): { stats: string; wishes: string; campaign: string } {
+    const f = record.forecast;
+    const baseHype = record.hype - (record.campaign?.hype ?? 0);
+    // A figure, and under it what the review said it would be — green past it, red short.
+    const stat = (label: string, value: string, planned: string | null, better: boolean | null, hint = '') =>
+      `<div class="review-stat" title="${esc(hint)}"><span class="ui-label">${label}</span>
+        <span class="review-stat__value">${value}</span>
+        ${planned ? `<span class="report-planned ${better === null ? '' : better ? 'up' : 'down'}">${esc(t('report.planned', { value: planned }))}</span>` : ''}
+      </div>`;
+    const profit = record.payout - record.spent;
+    const stats = `
+      ${stat(
+        t('report.quality'),
+        `${starRow(qualityStars(record.quality))}<span class="mono">${pct(record.quality)}</span>`,
+        f ? pct(f.quality) : null,
+        f ? (Math.abs(record.quality - f.quality) < 0.02 ? null : record.quality > f.quality) : null,
+      )}
+      ${stat(
+        t('report.pay'),
+        `<span class="mono">${money(record.payout)}</span>`,
+        f ? money(f.payout) : null,
+        f ? (Math.abs(record.payout - f.payout) <= f.payout * 0.03 ? null : record.payout > f.payout) : null,
+        t('report.profit', { amount: `${profit < 0 ? '−' : ''}${money(Math.abs(profit))}` }),
+      )}
+      ${stat(
+        t('report.reputation'),
+        `<span class="mono">+${num(baseHype)}</span>`,
+        f ? num(f.hype) : null,
+        f ? (Math.abs(baseHype - f.hype) <= f.hype * 0.03 ? null : baseHype > f.hype) : null,
+      )}
+      ${stat(
+        t('report.took'),
+        `<span class="mono">${t('ui.days.short', { days: record.days })}</span>`,
+        f ? t('ui.days.short', { days: f.days }) : null,
+        f ? (this.reportLate(record) ? false : record.days <= f.days ? true : null) : null,
+      )}`;
+    const judged = record.wishes ?? [];
+    const wishes = judged.length
+      ? `<div class="ui-label" style="margin:12px 0 6px">${t('report.wishes', { met: judged.filter((w) => w.met).length, total: judged.length })}</div>
+         <div class="row" style="gap:6px;flex-wrap:wrap">${judged.map((w) => this.wishChip(w.wish, w.met)).join('')}</div>`
+      : `<p class="ui-desc" style="margin:12px 0 0">${t('report.noWishes')}</p>`;
+
+    // Advertising it: once, soon, and priced against what this build is worth.
+    let campaign: string;
+    if (record.order) campaign = `<p class="ui-desc">${t('report.campaign.order')}</p>`;
+    else if (record.campaign) {
+      const c = record.campaign;
+      campaign = `<p class="report-done ${c.hype < 0 ? 'down' : 'up'}">${icon(CAMPAIGN_MAP[c.id].icon)}${esc(
+        t('report.campaign.done', { campaign: t(`report.campaign.${c.id}.name` as MessageKey), gain: c.hype }),
+      )}${c.sales ? `<span class="report-sales">${esc(t('report.campaign.sales', { paid: c.paid ?? 0, total: c.sales }))}</span>` : ''}</p>`;
+    } else if (state.day - record.day > CAMPAIGN.windowDays) {
+      campaign = `<p class="ui-desc">${t('report.campaign.closed')}</p>`;
+    } else {
+      const hoursOk = (state.runtime.player?.hoursLeft ?? 0) >= CAMPAIGN.hours;
+      const pick = this.campaignPick?.record === record.id ? this.campaignPick.id : null;
+      const cards = CAMPAIGNS.map((c) => {
+        const gain = campaignGain(c.id, baseHype, record.quality);
+        const [low, high] = campaignRange(c.id, baseHype, record.quality);
+        const ok = hoursOk && this.affordable(state, c.cost);
+        // A review is a reading, so it shows a spread; the rest are what they are.
+        const expect = c.judged ? t('report.campaign.range', { min: low, max: high }) : t('report.campaign.expect', { gain });
+        const back = c.judged
+          ? t('report.campaign.backRange', { min: campaignSales(low), max: campaignSales(high) })
+          : t('report.campaign.back', { sales: campaignSales(gain) });
+        const tone = high < 0 ? 'down' : low < 0 ? 'risk' : 'up';
+        return `<button class="ui-option campaign-card" data-action="campaign-pick"
+            data-id="${record.id}" data-value="${c.id}" aria-pressed="${pick === c.id}" ${ok ? '' : 'disabled'}
+            title="${esc(ok ? t(`report.campaign.${c.id}.blurb` as MessageKey) : hoursOk ? t('build.review.pastOverdraft') : t('report.campaign.noHours'))}">
+            <span class="campaign-card__head">${icon(c.icon)}<b>${esc(t(`report.campaign.${c.id}.name` as MessageKey))}</b></span>
+            <span class="ui-desc ui-clamp-2">${esc(t(`report.campaign.${c.id}.blurb` as MessageKey))}</span>
+            <span class="campaign-card__foot">
+              <span class="mono">${money(c.cost)}</span>
+              <span class="mono campaign-gain ${tone}">${esc(expect)}</span>
+            </span>
+            <span class="campaign-card__back ${campaignSales(high) >= c.cost ? 'up' : ''}">${esc(back)}</span>
+            ${c.judged ? `<span class="campaign-card__tag">${t('report.campaign.judged')}</span>` : ''}
+          </button>`;
+      }).join('');
+      campaign = `<p class="ui-desc" style="margin:0 0 8px">${t('report.campaign.hint', { days: CAMPAIGN.windowDays, week: CAMPAIGN.salesDays })}</p>
+        <div class="campaign-grid">${cards}</div>`;
+    }
+    return { stats, wishes, campaign };
+  }
+
+  /** The Run button for the chosen campaign, or a quiet prompt to choose one. */
+  private campaignButton(record: ShippedRecord): string {
+    const pick = this.campaignPick?.record === record.id ? CAMPAIGN_MAP[this.campaignPick.id] : null;
+    if (!pick) return `<button class="ui-btn ui-btn--outline" disabled>${t('report.campaign.pick')}</button>`;
+    return `<button class="ui-btn ui-btn--primary" data-action="campaign-run">${icon(pick.icon)}${esc(
+      t('report.campaign.launch', { campaign: t(`report.campaign.${pick.id}.name` as MessageKey), cost: pick.cost }),
+    )}</button>`;
+  }
+
+  private renderShipReport(state: GameState): boolean {
+    const record = state.shipReport ? state.shipped.find((r) => r.id === state.shipReport!.id) : undefined;
+    if (!record) return false;
+    const verdict = this.reportVerdict(record);
+    const tone = { above: 'var(--success)', asPlanned: 'var(--primary)', below: 'var(--warning)', none: 'var(--muted-foreground)' }[verdict];
+    const blocks = this.reportBlocks(state, record);
+    const crew = (record.crew ?? [])
+      .slice(0, 4)
+      .map((c) => `${esc(c.id === 'player' ? state.identity?.player || t('ui.space.you') : c.name)} <span class="mono">${pct(c.share)}</span>`)
+      .join(' · ');
+    const open = !record.order && !record.campaign && state.day - record.day <= CAMPAIGN.windowDays;
+    this.setHTML(
+      this.modal,
+      'modal',
+      `<div class="modal-backdrop">
+        <div class="modal modal--fit report" data-action="noop">
+          <header>
+            <div class="modal-head">
+              <span class="icon-chip" style="--tone:${profileOf(record.category).accent};width:30px;height:30px">${icon(CATEGORY_ICON[record.category])}</span>
+              <b>${esc(t('report.title', { project: record.name }))}</b>
+              <span class="ui-badge ui-badge--tone" style="--tone:${tone}">${t(`report.verdict.${verdict}` as MessageKey)}</span>
+            </div>
+          </header>
+          <div class="modal-body">
+            <div class="review-grid">${blocks.stats}</div>
+            ${blocks.wishes}
+            ${crew ? `<p class="ui-desc report-crew"><span class="ui-label">${t('report.madeBy')}</span> ${crew}</p>` : ''}
+            <hr class="ui-sep" />
+            <div class="ui-label" style="margin-bottom:6px">${t('report.campaign.title')}</div>
+            ${blocks.campaign}
+          </div>
+          <footer class="report-foot">
+            <button class="ui-btn ui-btn--ghost" data-action="report-close">${t('report.close')}</button>
+            ${open ? this.campaignButton(record) : ''}
+          </footer>
+        </div>
+      </div>`,
+    );
+    return true;
+  }
+
   /** Which panel shell is standing, and which of its views; see `renderModal`. */
   private modalShell = '';
   private modalSection = '';
 
   private renderModal(state: GameState) {
-    if (this.renderBill(state) || this.renderCeremony(state)) {
+    if (this.renderBill(state) || this.renderCeremony(state) || this.renderShipReport(state)) {
       this.modalShell = '';
       return;
     }
@@ -3751,8 +3939,12 @@ export class UI {
   }
 
   /** The biggest crew any table in the space can seat — what the size picker is capped at. */
+  /**
+   * The biggest crew the tables allow. A crew kicks off with a quorum of five (§4d), so
+   * once any table seats five, every size is open; before that, the biggest table is the cap.
+   */
   private maxSeats(state: GameState): number {
-    return Math.max(0, ...state.runtime.tables.map((t) => t.seats));
+    return crewCap(Math.max(0, ...state.runtime.tables.map((t) => t.seats)));
   }
 
   /** The seat option closest to what the brief was scoped for, within what the tables allow. */
@@ -4020,22 +4212,16 @@ export class UI {
     const crew = [...this.np.crew]
       .map((id) => state.runtime.members.find((m) => m.id === id))
       .filter((m): m is MemberSnapshot => !!m);
-    const craft = crew.length
-      ? crew.reduce((sum, m) => sum + (m.skills[def.category] ?? 2), 0) / crew.length / 5
-      : 0.5;
-    const team = teamFit(Math.max(1, crew.length || plan.seats), def.teamSize);
-    const quality = Math.max(0.05, Math.min(summary.ceiling, craft + summary.designQuality + team.quality));
-    const days = forecastDays(summary, plan.seats);
-    const wishes = wishesFor(def).map((wish) => ({ wish, ok: wishPlanned(wish, plan, quality, days) }));
-    const met = wishes.filter((w) => w.ok).length;
     const demand = state.market[def.category] ?? 1;
     const built = state.shipped.filter((r) => r.defId === def.id).length;
-    const novelty = Math.max(REPEAT.floor, REPEAT.falloff ** built);
-    const payout = Math.round(def.payout * novelty * demand * summary.appeal * qualityPay(quality) * (1 + DESIGN.wishPay * met));
-    const hype = Math.round(
-      def.hype * (entry?.hypeMultiplier ?? 1) * novelty * Math.sqrt(summary.appeal) * qualityHype(quality) * (1 + DESIGN.wishHype * met),
+    const forecast = forecastBuild(
+      def,
+      plan,
+      summary,
+      crew.map((m) => m.skills[def.category] ?? 2),
+      { demand, built, hypeMultiplier: entry?.hypeMultiplier },
     );
-    return { def, entry, plan, summary, crew, quality, days, wishes, payout, hype, demand };
+    return { def, entry, plan, summary, crew, demand, ...forecast };
   }
 
   /** A client wish, in words, ticked when the plan would meet it. */
@@ -4069,7 +4255,8 @@ export class UI {
     const rank = (n: number) => (n > 0 ? t(`build.rank.${Math.min(5, n)}` as MessageKey) : t('build.np.rankNone'));
 
     const strip = `<div class="forecast">
-      <div class="forecast__item" title="${esc(t('build.np.fDaysHint'))}"><span class="ui-label">${t('build.np.fDays')}</span><b>≈ ${esc(span(f.days * 24))}</b></div>
+      <div class="forecast__item" title="${esc(`${t('build.np.fDaysHint')}\n${t('build.np.fDaysRisk', { clean: span(f.clean * 24), retry: span(f.retry * 24), pct: Math.round(f.fail * 100) })}`)}"><span class="ui-label">${t('build.np.fDays')}</span><b>≈ ${esc(span(f.days * 24))}</b>
+        <span class="forecast__sub">${esc(t('build.np.fDaysFail', { pct: Math.round(f.fail * 100), retry: span(f.retry * 24) }))}</span></div>
       <div class="forecast__item" title="${esc(t('build.np.fQualityHint'))}"><span class="ui-label">${t('build.np.fQuality')}</span>
         <span class="row" style="gap:6px">${starRow(qualityStars(f.quality))}<span class="ui-desc">${t('build.np.fCeiling', { stars: qualityStars(f.summary.ceiling) })}</span></span></div>
       <div class="forecast__item"><span class="ui-label">${t('build.np.fPays')}</span><b class="mono">~${money(f.payout)}</b></div>
@@ -4252,7 +4439,8 @@ export class UI {
       ${
         max < 5
           ? `<p class="ui-desc" style="margin:10px 0 0;font-size:10.5px">${icon('table')} ${t('build.np.largeHint', {
-              table: `<b>${esc(FURNITURE_MAP['table-large'].name)}</b>`,
+              table: `<b>${esc(FURNITURE_MAP['meeting-corner'].name)}</b>`,
+              other: `<b>${esc(FURNITURE_MAP['table-large'].name)}</b>`,
               build: `<b>${t('build.bar.build')}</b>`,
             })}</p>`
           : ''
@@ -5667,6 +5855,7 @@ export class UI {
 
     const facts = record
       ? [
+          record.forecast ? t(`report.verdict.${this.reportVerdict(record)}` as MessageKey) : '',
           t('ui.projects.shippedOn', { day: record.day }),
           t('build.detail.tests', { count: record.testAttempts }),
           record.failedPrints ? t('build.detail.failedPrints', { count: record.failedPrints }) : '',
@@ -5696,7 +5885,22 @@ export class UI {
           <p class="ui-desc" style="margin:2px 0 0">${facts.filter(Boolean).map(esc).join(' · ')}</p>
         </div>
       </div>
-      <div class="review-grid">${stats}</div>
+      ${record ? '' : `<div class="review-grid">${stats}</div>`}
+      ${
+        // A shipped build carries its report: what was promised, the client's wishes, and —
+        // for a few days — the chance to advertise it, the same as the popup offered.
+        record
+          ? (() => {
+              const blocks = this.reportBlocks(state, record);
+              const open = !record.order && !record.campaign && state.day - record.day <= CAMPAIGN.windowDays;
+              return `<div class="review-grid">${blocks.stats}</div>
+                ${blocks.wishes}
+                <div class="ui-label" style="margin:14px 0 6px">${t('report.campaign.title')}</div>
+                ${blocks.campaign}
+                ${open ? `<div class="row" style="justify-content:flex-end;margin-top:8px">${this.campaignButton(record)}</div>` : ''}`;
+            })()
+          : ''
+      }
       <div class="detail-grid">
         <section>
           <div class="ui-label" style="margin:14px 0 6px">${t('build.detail.whoMadeIt')}</div>

@@ -117,7 +117,7 @@ export const build = {
   'build.np.back': 'Back',
   'build.np.foot.design':
     'Three stars is the brief as written. One is quicker and it shows; five is dearer and it shows.',
-  'build.np.foot.crew': 'The kickoff needs every one of them at the table at once.',
+  'build.np.foot.crew': 'The kickoff needs every one of them at the table at once — any five, for a bigger crew.',
   'build.np.foot.other': 'The parts are ordered the moment it starts. People are the limit, not slots.',
   'build.np.pickBrief': 'Pick a brief first.',
 
@@ -155,8 +155,8 @@ export const build = {
   'build.fx.asBrief': 'as the brief says',
 
   'build.np.crewSize': 'Crew size',
-  'build.np.seatBlocked': (p: { count: number; table: string }) =>
-    `A crew of ${num(p.count)} needs a ${p.table} — Build one`,
+  'build.np.seatBlocked': (p: { count: number; table: string; other: string }) =>
+    `A crew of ${num(p.count)} kicks off once five of them sit down — that needs a ${p.table} or a ${p.other}. Build one`,
   'build.np.fitQuality': (p: { value: string }) => `quality ${p.value}`,
   'build.np.fitQualityHint': 'quality from the size of the crew that plans it',
   'build.np.fitExplain': (p: { count: number }) =>
@@ -176,8 +176,8 @@ export const build = {
   'build.np.everyoneBusy':
     'Everybody is already on something. You can still start it and crew it later from the ' +
     'bench — or put yourself on it.',
-  'build.np.largeHint': (p: { table: string; build: string }) =>
-    `Crews of five and ten need a ${p.table}. It is in ${p.build}.`,
+  'build.np.largeHint': (p: { table: string; other: string; build: string }) =>
+    `A crew bigger than four kicks off once five of them sit down, round a ${p.table} or a ${p.other}. Both are in ${p.build}.`,
 
   'build.review.quality': 'Quality',
   'build.review.qualityHint': 'crew craft + design + crew size',
@@ -391,7 +391,10 @@ export const build = {
   'build.np.ownLocked': 'Not at this lease, or the space is missing a machine for it',
   // --- The design step, as three questions (design §5.4) -----------------------
   'build.np.fDays': 'Takes',
-  'build.np.fDaysHint': 'About how long, for this crew: hand work on working days, parts in the post, prints on the clock.',
+  'build.np.fDaysHint': 'About how long, for this crew: hand work on working days, parts in the post, prints on the clock — and the chance a test fails.',
+  'build.np.fDaysRisk': (p: { clean: string; retry: string; pct: number }) =>
+    `${p.clean} if the first test passes; a failed one (${p.pct}%) adds about ${p.retry}.`,
+  'build.np.fDaysFail': (p: { pct: number; retry: string }) => `${p.pct}% test fails · +${p.retry}`,
   'build.np.fQuality': 'Quality',
   'build.np.fQualityHint': 'What this plan should reach — never above the ceiling the crew\'s best sets.',
   'build.np.fCeiling': (p: { stars: number }) => `ceiling ${num(p.stars)}★`,
@@ -562,4 +565,56 @@ export const build = {
   'build.log.infraBuilt': (p: { item: string; cost: number }) =>
     `${p.item} set up for ${money(p.cost)} — it stays for every project after this one.`,
   'build.moving.howWall': 'Click a lit spot under the back wall to hang it there. Escape puts it back.',
+
+  // --- The ship report, and advertising a build -----------------------------------
+  'report.title': (p: { project: string }) => `${p.project} has shipped`,
+  'report.verdict.above': 'Beat the plan',
+  'report.verdict.asPlanned': 'As planned',
+  'report.verdict.below': 'Short of the plan',
+  'report.verdict.none': 'Shipped',
+  'report.planned': (p: { value: string }) => `planned ${p.value}`,
+  'report.quality': 'Quality',
+  'report.pay': 'Paid',
+  'report.reputation': 'Reputation',
+  'report.took': 'Took',
+  'report.profit': (p: { amount: string }) => `profit ${p.amount}`,
+  'report.wishes': (p: { met: number; total: number }) => `The client's wishes · ${p.met} of ${p.total} met`,
+  'report.noWishes': 'Nobody asked for anything: it was yours to build.',
+  'report.madeBy': 'Made by',
+  'report.campaign.title': 'Advertise it',
+  'report.campaign.hint': (p: { days: number; week: number }) =>
+    `A campaign multiplies this build's own reputation, and the attention sells: it comes back as sales over ` +
+    `${p.week} days. A good new build pays for its campaign; a weak or repeated one does not. Once per build, ` +
+    `an hour of your day, within ${p.days} days of release.`,
+  'report.campaign.expect': (p: { gain: number }) => (p.gain >= 0 ? `+${num(p.gain)} reputation` : `−${num(-p.gain)} reputation`),
+  'report.campaign.judged': 'rides on quality',
+  'report.campaign.range': (p: { min: number; max: number }) =>
+    `${p.min >= 0 ? '+' : '−'}${num(Math.abs(p.min))} … ${p.max >= 0 ? '+' : '−'}${num(Math.abs(p.max))}`,
+  'report.campaign.back': (p: { sales: number }) => (p.sales > 0 ? `≈ ${money(p.sales)} back in sales` : 'nothing back'),
+  'report.campaign.backRange': (p: { min: number; max: number }) =>
+    p.max > 0 ? `up to ${money(p.max)} back in sales` : 'nothing back',
+  'report.campaign.sales': (p: { paid: number; total: number }) => `${money(p.paid)} of ${money(p.total)} in sales so far`,
+  'report.campaign.launch': (p: { campaign: string; cost: number }) => `Run ${p.campaign} · ${money(p.cost)}`,
+  'report.campaign.pick': 'Pick a campaign',
+  'report.campaign.done': (p: { campaign: string; gain: number }) =>
+    p.gain >= 0 ? `${p.campaign} ran: +${num(p.gain)} reputation.` : `${p.campaign} backfired: −${num(-p.gain)} reputation.`,
+  'report.campaign.closed': 'Too late to advertise — it is old news now.',
+  'report.campaign.order': 'A print order: the client paid, and there is nothing to advertise.',
+  'report.campaign.noHours': 'Not enough of your day left for this.',
+  'report.campaign.flyers.name': 'Flyers and a meetup talk',
+  'report.campaign.flyers.blurb': 'A stack of flyers and ten minutes at the next meetup. Cheap and safe.',
+  'report.campaign.social.name': 'Sponsored posts',
+  'report.campaign.social.blurb': 'Paid reach on the feeds. More people see it; nobody judges it.',
+  'report.campaign.review.name': 'A YouTube review',
+  'report.campaign.review.blurb': 'A maker reviews it — honestly. A good build is made; a weak one is torn apart, in public.',
+  'report.campaign.launch.name': 'Launch night',
+  'report.campaign.launch.blurb': 'Press, a demo table and drinks. The biggest splash there is, at a price.',
+  'report.close': 'Back to work',
+  'report.log.ran': (p: { project: string; campaign: string; gain: number }) =>
+    `${p.campaign} for ${p.project}: +${num(p.gain)} reputation.`,
+  'report.log.backfired': (p: { project: string; campaign: string; gain: number }) =>
+    `${p.campaign} for ${p.project} backfired: −${num(p.gain)} reputation.`,
+  'report.log.tooLate': (p: { project: string }) => `${p.project} is old news — too late to advertise it.`,
+  'report.log.cantAfford': (p: { project: string; cost: number }) =>
+    `Not even the overdraft covers ${money(p.cost)} of advertising for ${p.project}.`,
 };

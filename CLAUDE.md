@@ -358,6 +358,15 @@ assembly table.
   refused at the till rather than paid for and never shown. Reachability is one flood fill
   from the door, not a path search per station — it runs for every candidate tile.
 
+**Five is a meeting** (`KICKOFF.quorum`, `kickoffSeats`, `crewCap`). A crew of six, eight
+or ten kicks off once any five of them are sat down; four or fewer still need everybody.
+Every one of eight volunteers in one room on one day was a miracle the big builds waited
+on, and it made a table for ten the only way to start one. The table a crew books now seats
+the quorum, so a Meeting Corner (six chairs) starts a crew of ten; crew who arrive once the
+chairs are full get on with something else. The wizard opens every size once any table
+seats five. `kickoff-check` holds six to it: four of six is not a meeting, five is — and was
+seen to fail with the quorum raised to six.
+
 **You never size a kickoff.** The owner is never *required* at a kickoff, so a table is booked
 for the crew alone (`tableNeed`), and if you are on the project and there is no chair left you
 stand aside and the crew plans without you — with a line on the bench, the moment it happens,
@@ -369,6 +378,67 @@ on a full crew and was seen to fail with the old sizing.
 **A seat is a drawing position, not a tile.** Ten people round a table would need a room the
 garage does not have; the path finder walks everybody to the stand tile and the renderer
 puts them in their chair (`seatPosition`), facing the table.
+
+### The ship report and advertising (`renderShipReport`, `src/utils/campaigns.ts`)
+
+**A build used to leave as a log line**, so whether it had been a good one was something to
+work out from the Projects table. It now ships with a report: quality, pay, reputation and
+days, each with **what the review promised under it** — green past it, red short, plain when
+it did what it said — the client's wishes ticked or not, who made it, and a verdict: *beat
+the plan*, *as planned*, *short of the plan*.
+
+- **The yardstick is the review's own forecast** (`forecastBuild` in design.ts), stored on the
+  build at the pitch (`ProjectData.forecast`). The wizard and the pitch call the same function
+  — it used to live inside the wizard, and a second copy for the report would have judged
+  builds against a number nobody saw.
+- **Only a wish the plan promised counts against it**, and **days count only when clearly
+  late** — past 1.5× the forecast plus two days (`REPORT.lateFactor`). Measured first
+  (`era-pace`, 2 seeds, 150 days): with every wish and every day over judged, 90%+ of builds
+  were "short", because the autoplayer ignores wishes and the forecast then left out failed
+  tests (see *the forecast counts a failed test*, below).
+- **"Beat the plan" needs a margin** (`REPORT.aboveQuality` 0.1): traits and the owner joining
+  in lift a bigger build past its forecast as a matter of course, and at +0.03 three in four
+  "beat" it. At 0.1 it is still about three in five for the autoplayer's full crews.
+- **It pops up for medium and large builds, and for the run's first ship**; a weekend build is
+  a log line, with the same report on its page in Projects. The autoplayer ships one and a
+  half small builds a day; a modal for each would be the whole game. It stops the clock and
+  gives it back on close, like a bill.
+
+**Advertising is on the report**, once per build, within three days of release, for an hour
+of your day and a fixed price. **A campaign multiplies the build's own hype**, so its worth is
+decided by the build — a fresh good build is worth shouting about, a fourth Space Website is
+not — and that is the decision: not *which* campaign, but *is this one worth it*. Flyers
+(₺1,200, ×0.25), sponsored posts (₺4,500, ×0.6), a YouTube review (₺9,000) and a launch
+night (₺20,000, ×1.5). The gain lands on reputation, on attention and on the build's record,
+so it can win Best Project. Costs book as `marketing`.
+
+- **Attention sells** (`CAMPAIGN.salesPerRep`, ₺25 a point, paid over seven days as
+  `adSales`). This is what makes advertising an investment: a campaign on a good new build
+  pays for itself and the next build's budget — flyers break even from about 190 hype, the
+  review at quality 0.8 from about 200 — and one on a weak or repeated build does not. The
+  card says what comes back, green when it covers the price.
+- **The review tears a weak build apart.** It is `6 × (quality − 0.5)`, from ×2.4 down to
+  **−2** — the space can lose twice what the build earned — and the reviewer reads the build
+  ±0.1 either way (`reviewNoise`), so the card shows a spread and the middle is a gamble.
+
+Measured with `CAMPAIGN=… npm run era-pace 4` (the A/B switch, like `NO_SHOP`), with the
+sales in: flyers on everything ends level on reputation with fewer ships; the review on
+everything ends 7th-15th of 18, because most builds are not good enough for it; the biggest
+campaign on everything ends 14th in most seeds. `CAMPAIGN=smart` — only a campaign that
+cannot lose, costing under ₺25 a point net of its sales, keeping ₺40,000 in the bank — runs
+one to three a run and finishes first in 4/4, up to 9% ahead. **The reckless player loses
+badly and the careful one gains** — the §13 shape. The autoplayer rarely clears the cash
+floor, so how often a human finds a campaign worth it is the open question.
+
+**The forecast counts a failed test** (`testFailChance`, `retryDays` in design.ts). Measured
+over 1,600 builds in `era-pace`: a medium build that passed its first test shipped on the
+wizard's forecast to the day, and one that failed ran about nine days over — the forecast
+had simply left testing out. It now adds the Iterate work, one part printed again and a day
+to retest, weighted by the chance of failing (the sim's own formula, moved to design.ts so
+there is one). The wizard shows the expected days with the risk under them. Actual ÷
+forecast went from 1.53 to 1.27 for medium builds and 1.83 to 1.49 for large; over the first
+90 days — fewer builds at once, closer to a human — medium ships a little early (0.75) and
+large a little late (1.29). What is left is the autoplayer's congestion and its short crews.
 
 ### The market (`src/utils/market.ts`)
 
@@ -2319,6 +2389,9 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     default (`DAYS=n` to change it), which reaches two awards nights. Run it after changing
     throughput, team sizes, the catalog, traits, or anything in `rivals.ts`. There is one
     setting now (§3c); the level argument is kept only so old commands still run.
+  - `CAMPAIGN=flyers|social|review|launch|best|smart npm run era-pace [seeds]` — the same run
+    advertising builds as they ship (§4c's ship report): one campaign on everything, the
+    biggest on everything, or only the ones worth it. Run it after touching `campaigns.ts`.
   - `NO_SHOP=1 npm run era-pace [seeds] [level]` — the same run with the Shop never opened.
     Run both after touching `amenities.ts` or `COMFORT`: a comfort is only worth its upkeep
     if the pair disagree, and §7b records what the gap currently is.
