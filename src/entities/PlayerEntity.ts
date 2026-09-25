@@ -20,8 +20,6 @@ export class PlayerEntity extends MemberEntity {
    * team, you stay through the stage changes and work whatever currently needs hands.
    */
   project: string | null = null;
-  /** Set while you are levelling the printer bed rather than doing project work. */
-  calibrating = false;
 
   constructor(startTile: Tile) {
     const data: MemberData = {

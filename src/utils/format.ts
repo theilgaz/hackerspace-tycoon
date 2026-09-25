@@ -18,8 +18,33 @@ export function uidPast(saved: string) {
   }
 }
 
+/**
+ * The run's currency, chosen on the start screen. **A symbol, not an exchange rate**: every
+ * balance number in `constants.ts` is tuned in one unit, and ₺50,000 becomes €50,000 rather
+ * than a sum nobody tuned. Module state, like the locale, so the Simulation can format money
+ * headless; harnesses never set it and run in lira.
+ */
+export type CurrencyKey = 'TRY' | 'EUR' | 'USD' | 'GBP';
+
+export const CURRENCIES: { key: CurrencyKey; symbol: string }[] = [
+  { key: 'TRY', symbol: '₺' },
+  { key: 'EUR', symbol: '€' },
+  { key: 'USD', symbol: '$' },
+  { key: 'GBP', symbol: '£' },
+];
+
+let currency: CurrencyKey = 'TRY';
+
+export function setCurrency(key: CurrencyKey | undefined) {
+  currency = CURRENCIES.some((c) => c.key === key) ? (key as CurrencyKey) : 'TRY';
+}
+
+export function currencySymbol(key: CurrencyKey = currency): string {
+  return CURRENCIES.find((c) => c.key === key)?.symbol ?? '₺';
+}
+
 export function money(value: number): string {
-  return `₺${num(Math.round(value))}`;
+  return `${currencySymbol()}${num(Math.round(value))}`;
 }
 
 /** Sim hours → "14:20" style clock within a day. */

@@ -22,7 +22,6 @@ export default defineConfig({
         'time-budget': 'tools/time-budget.ts',
         'project-times': 'tools/project-times.ts',
         'era-pace': 'tools/era-pace.ts',
-        'hype-check': 'tools/hype-check.ts',
         'kickoff-check': 'tools/kickoff-check.ts',
         'layout-check': 'tools/layout-check.ts',
       },

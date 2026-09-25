@@ -33,13 +33,13 @@ export interface TourStep {
 
 export const TOUR: TourStep[] = [
   { id: 'welcome', target: null, title: 'tour.welcome.title', body: 'tour.welcome.body' },
-  { id: 'top', target: '#topbar', title: 'tour.top.title', body: 'tour.top.body', place: 'below' },
+  { id: 'top', target: '#menubar', title: 'tour.top.title', body: 'tour.top.body', place: 'below' },
   {
     id: 'new',
     target: '[data-action="new-open"]',
     title: 'tour.new.title',
     body: 'tour.new.body',
-    place: 'above',
+    place: 'below',
     done: (ctx) => ctx.openModal === 'new' || ctx.state.runtime.projects.length > 0,
   },
   {
@@ -52,11 +52,11 @@ export const TOUR: TourStep[] = [
     done: (ctx) => ctx.state.runtime.projects.length > 0,
   },
   { id: 'bench', target: '#left', title: 'tour.bench.title', body: 'tour.bench.body', place: 'right' },
-  { id: 'you', target: '#clockpanel', title: 'tour.you.title', body: 'tour.you.body', place: 'right' },
-  { id: 'calendar', target: '#clockpanel .cal', title: 'tour.calendar.title', body: 'tour.calendar.body', place: 'right' },
-  { id: 'log', target: '#log', title: 'tour.log.title', body: 'tour.log.body', place: 'below' },
-  { id: 'menu', target: '#bottombar', title: 'tour.menu.title', body: 'tour.menu.body', place: 'above' },
-  { id: 'money', target: '#topbar .tb-group:nth-of-type(2)', title: 'tour.money.title', body: 'tour.money.body', place: 'below' },
+  { id: 'you', target: '#clockpanel', title: 'tour.you.title', body: 'tour.you.body', place: 'below' },
+  { id: 'calendar', target: '#timeline', title: 'tour.calendar.title', body: 'tour.calendar.body', place: 'right' },
+  { id: 'log', target: '#log', title: 'tour.log.title', body: 'tour.log.body', place: 'above' },
+  { id: 'menu', target: '#bottombar', title: 'tour.menu.title', body: 'tour.menu.body', place: 'below' },
+  { id: 'money', target: '#stats .mb-cash', title: 'tour.money.title', body: 'tour.money.body', place: 'below' },
   { id: 'done', target: null, title: 'tour.done.title', body: 'tour.done.body' },
 ];
 

@@ -1,3 +1,4 @@
+import type { CurrencyKey } from '@/utils/format';
 import type { Text } from '@/i18n';
 import type { Tile } from '@/utils/grid';
 
@@ -76,36 +77,13 @@ export interface Assignment {
 }
 
 /** What the sim knows about a member right now; mirrored to the store for the UI. */
-/**
- * A standing job somebody holds on top of their build work (§3b). Roles exist to take the
- * chores off the player: the whole point of having fifteen people is that you should not
- * still be the one buying filament. A role is acted on at the holder's **next availability**
- * — it is a person doing it, not a background rule, so it waits until they are in.
- */
-export type Role = 'host' | 'printer' | 'quartermaster' | 'social';
-
-export const ROLE_LABEL: Record<Role, string> = {
-  host: 'Host',
-  printer: 'Printer Keeper',
-  quartermaster: 'Quartermaster',
-  social: 'Social Media Manager',
-};
-
-export const ROLE_BLURB: Record<Role, string> = {
-  host: 'Shows visitors round, so word gets out faster. Who joins is still up to you.',
-  printer: 'Keeps the printers fed and level: fills them before they run dry, levels a drifting bed between prints.',
-  quartermaster: 'Gets the parts on order so assembly is never waiting.',
-  social: 'Keeps the feeds ticking over so attention never quite dies.',
-};
-
 export interface MemberSnapshot {
   id: string;
   name: string;
   /** Their primary role's wing (design §3.1) — the badge beside their name. */
   primary: ProjectCategory;
   /** Sent for a drink already today (§7b) — once a person a day. */
-  treated?: boolean;
-  role: Role | null;
+  treated?: string[];
   present: boolean;
   activity: MemberActivity;
   /** Project they are on the team of, if any. One project at a time. */
@@ -300,7 +278,7 @@ export interface PrintOffer {
   expiresOnDay: number;
 }
 
-export type BacklogSource = 'catalog' | 'member' | 'sponsor' | 'trending';
+export type BacklogSource = 'catalog' | 'member' | 'sponsor';
 
 /**
  * The decisions a project is designed with (CLAUDE.md §4d). Each genre asks three of these,
@@ -336,43 +314,10 @@ export interface ProjectPlan {
   /** Seats at the table — the crew size the project is planned for. */
   seats: number;
   /**
-   * The crew's best level in each wing (design §5.4). It picks the technology, sets the
-   * quality ceiling, and prices every option above it. Absent, the crew is taken to be
-   * exactly what each option asks — the harnesses' default.
+   * The crew's best level in each wing (design §5.4). It picks the technology and locks any
+   * option above it. Absent, nothing is locked — the harnesses' default.
    */
   levels?: Partial<Record<ProjectCategory, number>>;
-}
-
-/**
- * Something the client asked for (design §5.4): met at release, it adds to the pay; missed,
- * it does not — never a penalty. What makes the design choices mean something.
- */
-export type Wish =
-  | { kind: 'stars'; min: number }
-  | { kind: 'platform'; bit: number }
-  | { kind: 'scope'; axis: DesignAxisId; min: number }
-  | { kind: 'days'; within: number };
-
-/** How loudly you said it (§6). The claim is the decision; the room judges it. */
-export type ClaimKey = 'wip' | 'works' | 'bold';
-
-/** The projectId a post carries when it is about the space rather than a build. */
-export const SPACE_SUBJECT = '__space__';
-
-/** One thing you put in front of Reddit, and what came back. */
-export interface Post {
-  id: string;
-  projectId: string;
-  projectName: string;
-  subreddit: string;
-  stage: StageKey;
-  claim: ClaimKey;
-  upvotes: number;
-  hype: number;
-  /** The top comment — it exists to explain the number, not to decorate it. */
-  comment: string;
-  burned: boolean;
-  day: number;
 }
 
 /** An offer sitting in the backlog waiting to be pitched. */
@@ -384,8 +329,6 @@ export interface BacklogEntry {
   proposerId?: string;
   /** Sponsor money paid up front, with strings. */
   sponsorCash?: number;
-  /** Trending topics pay out more hype if you ship while the wave lasts. */
-  hypeMultiplier?: number;
   /** Day the offer disappears. */
   expiresOnDay?: number;
 }
@@ -409,8 +352,6 @@ export interface ProjectData {
   teamSize: number;
   parts: PartData[];
   defects: string[];
-  /** Stages that have an active bounty on them. */
-  bounties: StageKey[];
   simulationSkipped: boolean;
   testAttempts: number;
   shipped: boolean;
@@ -420,20 +361,13 @@ export interface ProjectData {
   partsOrdered: boolean;
   /** Absolute sim-hour the order arrives. */
   partsArriveAt: number;
-  /** Expedited once already — the courier only goes faster the one time. */
-  expedited?: boolean;
   sponsorCash: number;
-  hypeMultiplier: number;
-  /** Everything this build has cost: parts, bounties, expediting. */
+  /** Everything this build has cost: design budget and parts. */
   spent: number;
   proposerId?: string;
   startedOnDay: number;
   /** Consecutive days with nobody — crew or player — working on it. */
   idleDays: number;
-  /** The best quality the crew that pitched it can reach (design §4.2). */
-  ceiling?: number;
-  /** What the client asked for (design §5.4), judged at release. */
-  wishes?: Wish[];
   /**
    * Trait moments this build has already had (§3): 'scope:kickoff', 'perfectionist:cad',
    * 'mentor', … — so each is told once per build rather than on every tick.
@@ -441,11 +375,8 @@ export interface ProjectData {
   traitNotes?: string[];
   /** A Documenter wrote this build's docs: louder at release. */
   documented?: boolean;
-  /**
-   * What the review promised at the pitch (`forecastBuild`), for the ship report — with which
-   * of the client's wishes the plan said it would meet, in `wishesFor` order.
-   */
-  forecast?: { quality: number; days: number; payout: number; hype: number; wishes?: boolean[] };
+  /** What the review promised at the pitch (`forecastBuild`), for the ship report. */
+  forecast?: { quality: number; days: number; payout: number; hype: number };
   /** A print order: the agreed price, whose it is, and the last day it can be handed over. */
   order?: { pay: number; client: string; dueDay: number };
   /** How it was designed (§4d). */
@@ -514,9 +445,6 @@ export interface MachineSnapshot {
   tile: Tile;
   running: boolean;
   /** 0-1 — drifts down with use, raises failure odds (CLAUDE.md §5). */
-  calibration: number;
-  consumable: number;
-  consumableMax: number;
   current: JobSnapshot | null;
   queue: JobSnapshot[];
   /** Estimated failure chance for the current job, for the UI. */
@@ -573,8 +501,6 @@ export interface RivalState {
   reputation: number;
   /** Fraction of their current build that is done. */
   progress: number;
-  /** Upvotes their builds have drawn, all time. Shown on a space's own screen. */
-  upvotes: number;
   /** Their best single build since the last awards night, by hype. Cleared on the night. */
   bestBuild: { name: string; score: number } | null;
   /**
@@ -598,17 +524,12 @@ export interface ScoreRow {
   reputationThisYear: number;
   /** Reputation earned this year as a share of what they walked in with. */
   growthThisYear: number;
-  /** Upvotes this year. */
-  upvotesThisYear: number;
   /** The best single build this year, by the hype it made — Best Project. */
   bestBuild: { name: string; score: number } | null;
   isPlayer: boolean;
 }
 
 /** A project that made it out of the door. */
-/** The four ways to advertise a shipped build (`utils/campaigns.ts`). */
-export type CampaignId = 'flyers' | 'social' | 'review' | 'launch';
-
 export interface ShippedRecord {
   id: string;
   defId: string;
@@ -634,16 +555,14 @@ export interface ShippedRecord {
   /** How the payout was reached: the brief's price and each multiplier on it. */
   pay?: { base: number; market: number; appeal: number; quality: number; novelty: number };
   /** What the review promised at the pitch — the ship report's yardstick. */
-  forecast?: { quality: number; days: number; payout: number; hype: number; wishes?: boolean[] };
-  /** The client's wishes, and which were met. */
-  wishes?: { wish: Wish; met: boolean }[];
-  /** A print order: what the client paid is the whole story, and there is nothing to advertise. */
+  forecast?: { quality: number; days: number; payout: number; hype: number };
+  /** A print order: what the client paid is the whole story. */
   order?: boolean;
   /**
-   * An advertising campaign run after release: what it cost, what it did to the build's
-   * hype, and the sales it brings in over a week — `paid` of `sales` so far.
+   * A promotion bought from the report (§4c): what it cost, the reputation it adds in all,
+   * and how much of that has arrived — it drips in over `PROMO.days`.
    */
-  campaign?: { id: CampaignId; cost: number; hype: number; sales?: number; paid?: number };
+  promo?: { cost: number; gain: number; paid: number };
 }
 
 /**
@@ -673,6 +592,10 @@ export interface Identity {
   colour: string;
   /** What the player is called in the room. Older saves have none and read as "You". */
   player?: string;
+  /** The money's symbol (never a rate). Older saves have none and are in lira. */
+  currency?: CurrencyKey;
+  /** The two on day one, renamed at the start. Missing or blank: Safa and Abdullah. */
+  founders?: string[];
 }
 
 export interface LogEntry {

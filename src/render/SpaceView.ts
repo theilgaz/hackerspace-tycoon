@@ -17,7 +17,6 @@ import {
 } from '@/machines/layout';
 import { FURNITURE_MAP } from '@/utils/furniture';
 import { amenityDef, type AmenityDef } from '@/utils/amenities';
-import { MACHINE } from '@/utils/constants';
 import { iconDataUrl, type IconName } from '@/ui/icons';
 
 const TILE = 1;
@@ -2207,8 +2206,6 @@ export class SpaceView {
         return this.propMate(def.tone);
       case 'teamaker':
         return this.propTeaMaker(def.tone);
-      case 'spoolshelf':
-        return this.propSpoolShelf(def.tone);
       case 'lava':
         return this.propLava(def.tone);
       default:
@@ -2564,66 +2561,6 @@ export class SpaceView {
       g.add(glass);
     }
     return g;
-  }
-
-  /**
-   * The Filament Shelf: a steel rack, four shelves of four spools. **The spools are the
-   * stock** — one drawn per kilo on the shelf (`setFilamentStock`), so buying ahead fills it
-   * and every refill empties it a spool at a time, bottom shelf last.
-   */
-  private propSpoolShelf(tone: string): THREE.Group {
-    const g = new THREE.Group();
-    const w = 0.9;
-    const d = 0.4;
-    for (const x of [-w / 2, w / 2]) {
-      for (const z of [-d / 2, d / 2]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.5, 0.04), mat(tone));
-        post.position.set(x, 0.75, z - 0.05);
-        post.castShadow = true;
-        g.add(post);
-      }
-    }
-    const colours = ['#e2725b', '#5aa9f0', '#f0b429', '#8fd88f', '#e8ecf2', '#1d2027', '#c58ef0', '#f08fa4'];
-    let index = 0;
-    for (let shelf = 0; shelf < 4; shelf += 1) {
-      const y = 0.08 + shelf * 0.36;
-      const plank = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.03, d + 0.02), mat('#5b636f'));
-      plank.position.set(0, y, -0.05);
-      g.add(plank);
-      for (let i = 0; i < 4; i += 1) {
-        const spool = new THREE.Group();
-        const colour = colours[(shelf * 4 + i * 3) % colours.length];
-        // The filament's colour is what reads from across the room, so the flanges are
-        // clear plastic and the winding nearly fills them.
-        const wound = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.115, 0.13, 16), mat(colour));
-        wound.rotation.x = Math.PI / 2;
-        spool.add(wound);
-        for (const side of [-0.07, 0.07]) {
-          const flange = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.12, 0.12, 0.01, 16),
-            new THREE.MeshStandardMaterial({ color: '#dfe6ee', transparent: true, opacity: 0.35, flatShading: true }),
-          );
-          flange.rotation.x = Math.PI / 2;
-          flange.position.z = side;
-          spool.add(flange);
-        }
-        spool.position.set(-0.33 + i * 0.22, y + 0.135, -0.05);
-        // Bottom shelf first to fill, last to empty: index 0 is the bottom-left spool.
-        spool.userData.spool = index++;
-        g.add(spool);
-      }
-    }
-    return g;
-  }
-
-  /** Show as many spools on the Filament Shelf as there are kilos in stock. */
-  setFilamentStock(grams: number) {
-    const node = this.amenityNodes.get('filament-shelf');
-    if (!node) return;
-    const spools = Math.ceil(grams / 1000);
-    node.traverse((child) => {
-      if (typeof child.userData.spool === 'number') child.visible = child.userData.spool < spools;
-    });
   }
 
   private mateCanvas: THREE.CanvasTexture | null = null;
@@ -3408,14 +3345,6 @@ export class SpaceView {
       if (machine.running) {
         color = '#5ecfc0';
         emissive = '#1f7a6d';
-      }
-      if (machine.calibration < MACHINE.calibrationWarning) {
-        color = '#f0b429';
-        emissive = '#6b4d05';
-      }
-      if (machine.consumableMax > 0 && machine.consumable <= 0) {
-        color = '#d94f3d';
-        emissive = '#6d1f16';
       }
       light.color.set(color);
       light.emissive.set(emissive);

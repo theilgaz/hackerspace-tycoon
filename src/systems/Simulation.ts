@@ -3,7 +3,6 @@ import { caseLocale, msg, t, type Message, type MessageKey, type Text } from '@/
 import type {
   BacklogEntry,
   BuyItem,
-  DesignAxisId,
   MemberData,
   RivalState,
   ScoreRow,
@@ -14,10 +13,7 @@ import type {
   ProjectDef,
   StageKey,
   TraitKey,
-  CampaignId,
   Tag,
-  ClaimKey,
-  Post,
   ProjectPlan,
   SkillKey,
   Seat,
@@ -36,6 +32,7 @@ import {
   growAmenityPlacements,
   installStation,
   installedStations,
+  removedStartingStations,
   removeStation,
   STATION_MAP,
   amenityMoveSafe,
@@ -64,23 +61,21 @@ import {
   newStationFitsAt,
 } from '@/machines/layout';
 import {
-  AXES,
   defaultPlan,
+  clampDesign,
   crewLevels,
-  wishMet,
   forecastBuild,
   planProject,
   qualityHype,
   qualityPay,
   teamFit,
 } from '@/utils/design';
-import { CAMPAIGN, CAMPAIGN_MAP, campaignGain, campaignSales } from '@/utils/campaigns';
-import { coolMarket, driftMarket, warmMarket } from '@/utils/market';
-import { FURNITURE_MAP, furnitureOf } from '@/utils/furniture';
+import { coolMarket, driftMarket } from '@/utils/market';
+import { DILEMMA, DILEMMAS, DILEMMA_MAP, effectCash, effectRep, type DilemmaEffect, type DilemmaMod } from '@/utils/dilemmas';
+import { FURNITURE_MAP, UPGRADES, furnitureOf } from '@/utils/furniture';
 import { manhattan, sameTile, type Tile } from '@/utils/grid';
 import {
   BACKLOG,
-  BOUNTY,
   COMFORT,
   DRIFT,
   FAB,
@@ -90,7 +85,6 @@ import {
   MEMBER,
   LEISURE,
   HOURS_OFF,
-  DESIGN,
   STAGE_ORDER,
   ORDERS,
   PERFECTIONIST_QUALITY_GATE,
@@ -98,13 +92,11 @@ import {
   APPLICANTS,
   shuffleLadder,
   PLAYER,
-  HYPE,
   RECRUIT,
   REPEAT,
   SHELVE,
   ROSTER,
   TEAM,
-  SOURCING,
   STAGE_MAP,
   TEST,
   TIME,
@@ -112,7 +104,6 @@ import {
   kickoffSeats,
   crewCap,
   TRAIN,
-  ROLES,
   RESALE,
   AWARDS_COUNTDOWN,
   VERB_HOURS,
@@ -123,10 +114,10 @@ import {
   isLunch,
   isWorkingDay,
   WEEKLY_HOURS,
+  PROMO,
 } from '@/utils/constants';
 import { CATALOG_MAP, canBuild, catalogForEra } from '@/utils/catalog';
 import { PRINT_JOBS } from '@/utils/printjobs';
-import { ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
 import { AWARDS, RIVAL_MAP, RISING_FLOOR } from '@/utils/rivals';
 import { createRivals, runCeremony, tickRivals } from './RivalSystem';
 import { DIFFICULTY_MAP } from '@/utils/difficulty';
@@ -151,28 +142,17 @@ import {
   type AmenityUse,
   type Comforts,
 } from '@/utils/amenities';
-import {
-  decayHype,
-  hypePressure,
-  novelty,
-  projectSubject,
-  react,
-  spaceSubject,
-} from '@/systems/HypeSystem';
-import { SUBREDDITS, SUBREDDIT_MAP, tasteMatch } from '@/utils/subreddits';
 import { PRINTER_MAP, PRINTERS, STARTING_PRINTER, resaleValue, type PrinterModel } from '@/utils/printers';
 import { categoryAffinity, stageLabel, stageSkill, stageStation } from '@/utils/categories';
 import { CALENDAR, awardsDay, clock, gameDate, uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
 import {
   addWork,
-  expediteCost,
   generateParts,
   partsOutstanding,
   partsPending,
   projectProgress,
   refreshQuality,
-  remainingWork,
   resolveTest,
   stageComplete,
   startProject,
@@ -232,12 +212,22 @@ export class Simulation {
   private requeueTimers = new Map<string, number>();
   /** The other spaces in town, and where we are in the awards year (§11). */
   rivals: RivalState[] = createRivals();
-  private yearStart = { day: 1, projects: 0, reputation: 0, upvotes: 0 };
-  private rivalYearStart = new Map<string, { projects: number; reputation: number; upvotes: number }>();
+  private yearStart = { day: 1, projects: 0, reputation: 0 };
+  private rivalYearStart = new Map<string, { projects: number; reputation: number }>();
   /** Bumped every day so the host can autosave without polling. */
   dayRolled = false;
   /** Machine-hours run since the last bill, for the utilities line. */
   private machineHoursThisMonth = 0;
+  /** The last whole hour print orders were staffed (§5): once an hour is plenty. */
+  private staffedAt = -1;
+  /** The next day a dilemma card is dealt (§7c). */
+  private nextDilemmaDay = DILEMMA.every[0];
+  /** Multipliers a dilemma left on the space, each until the end of a day. */
+  private mods: { mod: DilemmaMod; value: number; until: number }[] = [];
+  /** People a dilemma sent home, until the end of a day. */
+  private awayUntil = new Map<string, number>();
+  /** Grams of filament the printers drew this month; billed on the statement (§5). */
+  private filamentThisMonth = 0;
   /** What the work actually brought in since the last bill — payouts and sponsor money. */
   private incomeThisMonth = 0;
 
@@ -249,9 +239,6 @@ export class Simulation {
 
   /** Days of word of mouth banked toward the next person getting in touch (§3c). */
   private recruitClock = 0;
-
-  /** The last day the social media manager put something out. One a day, not one a tick. */
-  private socialDay = 0;
 
   /** The last thing you shipped, while it is still what people are talking about. */
   private recentShip: { tags: Tag[]; name: string; day: number } | null = null;
@@ -297,7 +284,7 @@ export class Simulation {
     this.player = new PlayerEntity(DOOR);
     this.player.arrive(DOOR);
     for (const rival of this.rivals) {
-      this.rivalYearStart.set(rival.id, { projects: 0, reputation: 0, upvotes: 0 });
+      this.rivalYearStart.set(rival.id, { projects: 0, reputation: 0 });
     }
     this.planDay();
     this.player.startDay();
@@ -314,14 +301,10 @@ export class Simulation {
     return (this.day - 1) * TIME.hoursPerDay + this.time;
   }
 
-  /** The printer worth standing next to: the one running, else the one drifting furthest. */
+  /** The printer worth standing next to: the one running, else the first on the wall. */
   get printer(): Machine {
     const all = this.machines.filter((m) => m.type === 'fdm');
-    return (
-      all.find((m) => m.running && m.calibration < MACHINE.calibrationWarning) ??
-      [...all].sort((a, b) => a.calibration - b.calibration)[0] ??
-      all[0]
-    );
+    return all.find((m) => m.running) ?? all[0];
   }
 
   /** Owned kit that changes how the machines behave. */
@@ -337,8 +320,7 @@ export class Simulation {
    * Which machine a part goes to: **the one that would finish it first** — what it has on
    * already plus this part, over its speed — and the more reliable of two that would finish
    * together. An idle H2S takes the job before an idle A1; a small part goes to the A1 only
-   * when the H2S is busy enough that it would still be first. Never a starved machine while
-   * a fed one is free. It used to be the shortest queue, which sent a two-day print to the
+   * when the H2S is busy enough that it would still be first. It used to be the shortest queue, which sent a two-day print to the
    * slowest printer on the floor because it happened to be empty.
    */
   machineFor(type: MachineType, hours = 0): Machine | undefined {
@@ -349,12 +331,7 @@ export class Simulation {
       const queued = m.queue.reduce((sum, job) => sum + job.hoursRequired, 0);
       return (now + queued + hours) / Math.max(0.1, m.speed);
     };
-    return [...all].sort(
-      (a, b) =>
-        Number(a.starved) - Number(b.starved) ||
-        finish(a) - finish(b) ||
-        a.reliability - b.reliability,
-    )[0];
+    return [...all].sort((a, b) => finish(a) - finish(b) || a.reliability - b.reliability)[0];
   }
 
   project(id: string): ProjectData | undefined {
@@ -391,7 +368,7 @@ export class Simulation {
 
   /**
    * A Scope Creeper on the crew may add a requirement (§3): more work on the stage it lands
-   * on, a better build and a higher ceiling at the end of it. Once at the kickoff and once
+   * on, and a better build at the end of it. Once at the kickoff and once
    * on going into Iterate, per build.
    */
   private maybeCreep(project: ProjectData, moment: 'kickoff' | 'iterate', stage: StageKey) {
@@ -402,7 +379,6 @@ export class Simulation {
     if (!rng.chance(TRAITS.scopeCreeper.chance)) return;
     project.required[stage] = Math.round(project.required[stage] * (1 + TRAITS.scopeCreeper.work));
     project.bonus += TRAITS.scopeCreeper.quality;
-    if (project.ceiling !== undefined) project.ceiling = Math.min(1, project.ceiling + TRAITS.scopeCreeper.ceiling);
     refreshQuality(project);
     this.traitSays(
       'scopeCreeper',
@@ -434,11 +410,10 @@ export class Simulation {
       this.ownerStopped = false;
       tickRivals(this.rivals, this.rivalPressure());
       this.runBilling();
-      this.payCampaignSales();
+      this.dripPromos();
       this.checkAwards();
       this.tickStandings();
       this.awardsCountdown();
-      store.getState().setHype(decayHype(store.getState().hype));
       store.getState().setMarket(driftMarket(store.getState().market));
       this.checkSolvency();
       this.tickRecruiting();
@@ -449,12 +424,16 @@ export class Simulation {
       this.checkOrderDeadlines();
     }
 
-    this.runRoles();
     this.tickMembers(dt);
     this.tickPlayer(dt);
     this.tickRequeue(dt);
     this.tickMachines(dt);
     this.advanceProjects();
+    this.maybeDilemma();
+    if (Math.floor(this.totalHours) !== this.staffedAt) {
+      this.staffedAt = Math.floor(this.totalHours);
+      this.staffOrders();
+    }
 
     store.getState().setClock(this.day, this.time);
 
@@ -737,6 +716,11 @@ export class Simulation {
 
   private shelveAbandoned() {
     for (const project of [...this.projects]) {
+      // A print order is never shelved: it has a due date, and missing that is its failure.
+      if (project.order) {
+        project.idleDays = 0;
+        continue;
+      }
       // A project with parts on a machine is alive even with nobody standing over it —
       // that is the whole point of jobs running on the clock.
       const onAMachine = this.machines.some(
@@ -779,13 +763,17 @@ export class Simulation {
         continue;
       }
 
+      // Sent home by a dilemma (§7c): not in, whatever their mood.
+      if ((this.awayUntil.get(m.id) ?? 0) >= this.day) {
+        this.plans.set(m.id, { attending: false, arriveAt: 0, leaveAt: 0 });
+        m.leaveAt = 0;
+        continue;
+      }
       const moodFactor = 0.85 + m.data.mood / 400;
       const base = WORKDAY.attendanceBase;
       const attending = rng.chance(Math.min(0.99, Math.max(0.3, base * m.ghostFactor * moodFactor)));
 
-      // **In at nine, out at six, everybody** (§3d). A bounty used to buy overtime to eight,
-      // which put the crew in the building after hours — the owner is the only one who stays
-      // late. What a bounty buys now is effort inside the day (`BOUNTY.rateBonus`).
+      // **In at nine, out at six, everybody** (§3d) — the owner is the only one who stays late.
       const span = m.span;
       let arriveAt = span.start;
       let leaveAt = span.end;
@@ -847,7 +835,7 @@ export class Simulation {
     // Only builds with a bill of materials: sponsor money is sized against the parts, and a
     // sponsor offering ₺0 for a cable tidy is a line in the log that reads as a bug.
     const sponsorable = options.filter((d) => d.bomCost > 0);
-    if (sponsorable.length && rng.chance(BACKLOG.sponsorChance * (1 + this.pressure * (HYPE.sponsorSpeedUp - 1)))) {
+    if (sponsorable.length && rng.chance(BACKLOG.sponsorChance)) {
       const def = rng.pick(sponsorable);
       const [lo, hi] = BACKLOG.sponsorCashRatio;
       const cash = Math.round((def.bomCost * rng.range(lo, hi)) / 100) * 100;
@@ -859,21 +847,6 @@ export class Simulation {
         expiresOnDay: this.day + rng.int(dlo, dhi),
       });
       this.log(msg('log.offer.sponsor', { item: def.name, cash }), 'good');
-    }
-
-    // Reddit is briefly obsessed with something. Ship while the wave lasts.
-    if (rng.chance(BACKLOG.trendingChance)) {
-      const def = rng.pick(options);
-      const [mlo, mhi] = BACKLOG.trendingHypeMultiplier;
-      const [dlo, dhi] = BACKLOG.trendingDeadlineDays;
-      this.addOffer({
-        defId: def.id,
-        source: 'trending',
-        hypeMultiplier: Number(rng.range(mlo, mhi).toFixed(2)),
-        expiresOnDay: this.day + rng.int(dlo, dhi),
-      });
-      store.getState().setMarket(warmMarket(store.getState().market, def.category));
-      this.log(msg('log.offer.trending', { item: def.name }), 'info');
     }
   }
 
@@ -1013,8 +986,6 @@ export class Simulation {
         // bench is not eight times the throughput.
         const factor =
           index === 0 ? 1 : MEMBER.extraWorkerFactor * Math.pow(MEMBER.crowdDecay, index - 1);
-        // A live bounty on this stage is effort, not hours: the same day, worked harder.
-        const bountied = project.bounties.includes(project.stage) && m !== this.player ? BOUNTY.rateBonus : 1;
         const own = skill ? m.data.skills[skill] : 2;
         const boost = mentor && m !== mentor ? Math.max(0, Math.min(TRAITS.mentor.levels, mentorLevel - own)) : 0;
         if (boost && this.firstFor(project, 'mentor')) {
@@ -1025,7 +996,7 @@ export class Simulation {
         // A Documenter does the docs — the release stage — without being asked.
         const docs = project.stage === 'release' && m.hasTrait('documenter') ? TRAITS.documenter.releaseRate : 1;
         const rate =
-          m.workRate(skill, project.tags, boost) * factor * this.comforts.focus * bountied * this.deskRate(m, project) * checked * docs;
+          m.workRate(skill, project.tags, boost) * factor * this.comforts.focus * this.deskRate(m, project) * checked * docs * this.mod('work');
         if (docs > 1 && this.firstFor(project, 'documenter')) {
           project.documented = true;
           this.traitSays('documenter', msg('trait.documenter', { member: m.name, project: project.name }));
@@ -1129,9 +1100,8 @@ export class Simulation {
         if (m.isCoolingOff(project.id)) continue;
         const stage = STAGE_MAP[project.stage];
         const match = m.passionMatch(project.tags);
-        const bounty = project.bounties.includes(project.stage);
         const proposer = project.proposerId === m.id ? BACKLOG.proposerInterestBonus : 0;
-        const appetite = match * (0.45 + stage.appeal * 0.55) + (bounty ? 0.5 : 0) + proposer;
+        const appetite = match * (0.45 + stage.appeal * 0.55) + proposer;
         if (!best || appetite > best.appetite) best = { project, appetite };
       }
       if (best && best.appetite >= DRIFT.signupThreshold && rng.chance(0.4)) {
@@ -1167,10 +1137,10 @@ export class Simulation {
     const printer = this.printer;
     // One person watches a print; a crowd round the printer is the whole crew doing nothing.
     const watched = this.members.some((o) => o !== m && o.present && o.activity === 'babysitting');
-    if ((printer.calibration < MACHINE.calibrationWarning || printer.running) && !watched) {
+    if (printer?.running && !watched) {
       if (this.atStation(m, 'fdm')) {
         m.activity = 'babysitting';
-        m.note = printer.calibration < MACHINE.calibrationWarning ? t('note.levelling') : t('note.watchingPrint');
+        m.note = t('note.watchingPrint');
       } else if (!m.walking) {
         m.walkTo(printer.def.stand);
       }
@@ -1493,6 +1463,63 @@ export class Simulation {
     return { value: Math.round((def?.price ?? 0) * RESALE.share), reason: null };
   }
 
+  /**
+   * What a piece of the room can become, and what it costs (§4d): the new piece's price less
+   * half the old one's — the garage's kit included, which cannot be sold but can be traded in.
+   */
+  upgradeOptions(id: string): { to: string; name: string; cost: number; reason: MessageKey | null }[] {
+    const station = STATION_MAP[id];
+    if (!station || station.type === 'fdm') return [];
+    const from = furnitureOf(station);
+    if (!from) return [];
+    const inUse = this.projects.some((p) => p.tableId === id);
+    return (UPGRADES[from.id] ?? []).map((toId) => {
+      const to = FURNITURE_MAP[toId];
+      const cost = Math.max(0, to.price - Math.round(from.price * RESALE.share));
+      const reason: MessageKey | null = inUse ? 'build.sell.inUse' : to.era > store.getState().era ? 'build.upgrade.later' : null;
+      return { to: toId, name: to.name, cost, reason };
+    });
+  }
+
+  /** Trade a piece in for a bigger one, on the same spot when there is room for it. */
+  upgradePiece(id: string, toId: string): boolean {
+    const option = this.upgradeOptions(id).find((o) => o.to === toId);
+    const old = STATION_MAP[id];
+    const to = FURNITURE_MAP[toId];
+    if (!option || !old || !to) return false;
+    if (option.reason) {
+      this.log(msg(option.reason), 'warn');
+      return false;
+    }
+    const state = store.getState();
+    if (!state.spend(option.cost, 'kit')) {
+      this.log(msg('log.amenity.cantAfford', { item: to.name }), 'bad');
+      return false;
+    }
+    const from = { type: old.type, label: old.label, span: old.span, model: old.model, tile: { ...old.tile }, yaw: yawOf(old) };
+    for (const [who, claim] of [...this.claims]) if (claim.stationId === id) this.claims.delete(who);
+    removeStation(id);
+    state.forgetStation(id);
+    const station = installFurniture(to.type, `${to.id}-${uid()}`, to.name, to.span, to.id);
+    if (!station) {
+      // No room anywhere for the bigger one: the old piece goes back where it was.
+      const back = installFurniture(from.type, id, from.label, from.span, from.model);
+      if (back) this.placeStation(back.id, from.tile.x, from.tile.y, from.yaw);
+      state.earn(option.cost, 'kit');
+      this.log(msg('build.log.noRoom', { item: to.name }), 'warn');
+      this.publish();
+      return false;
+    }
+    // On the old spot when the bigger piece fits there; otherwise where the room found for it.
+    if (!this.placeStation(station.id, from.tile.x, from.tile.y, from.yaw)) {
+      state.placeStation(station.id, { x: station.tile.x, y: station.tile.y, yaw: yawOf(station) });
+    }
+    state.setMoving(null);
+    this.log(msg('build.log.upgraded', { from: from.label, to: to.name, cost: option.cost }), 'good');
+    this.publish();
+    return true;
+  }
+
   /** Sell a piece of the room. Whoever was sitting at it gets up and finds somewhere else. */
   sellPiece(id: string): boolean {
     const { value, reason } = this.resaleOf(id);
@@ -1639,12 +1666,17 @@ export class Simulation {
     return true;
   }
 
-  /** Who has been sent for a drink today — once a person a day. Cleared every morning. */
-  private treatedToday = new Set<string>();
+  /**
+   * Who has been sent to which comfort today, cleared every morning. **Once a comfort, not
+   * once a day**: a single daily treat meant a Club-Mate at ten used up the table tennis at
+   * four, and the picker said "had a break today" to a question about a different thing.
+   */
+  private treatedToday = new Map<string, Set<string>>();
 
   /**
    * Send somebody for a tea (§7b): they put down what they are doing, go to this comfort,
-   * and come back in a better mood. The owner's gesture, not a policy — once a person a day.
+   * and come back in a better mood. The owner's gesture, not a policy — once a person a
+   * comfort a day.
    */
   /**
    * Send people to a comfort (§7b): a drink, the sofa, the console, a game of table tennis.
@@ -1671,7 +1703,7 @@ export class Simulation {
       this.log(msg('build.log.treatBusy', { item: def.name }), 'warn');
       return false;
     }
-    const again = people.find((m) => this.treatedToday.has(m.id));
+    const again = people.find((m) => this.treatedToday.get(m.id)?.has(amenityId));
     if (again) {
       this.log(msg('build.log.treatAgain', { member: again.name }), 'warn');
       return false;
@@ -1694,7 +1726,7 @@ export class Simulation {
         treat: true,
       });
       this.leisureKept.add(m.id);
-      this.treatedToday.add(m.id);
+      this.treatedToday.set(m.id, (this.treatedToday.get(m.id) ?? new Set()).add(amenityId));
     });
     this.log(
       msg('build.log.treatSent', { member: people.map((m) => m.name).join(' & '), item: def.name }),
@@ -1894,7 +1926,6 @@ export class Simulation {
       case 'babysitting': {
         const printer = this.printer;
         printer.operatorSkill = Math.max(printer.operatorSkill, m.data.skills.mechanical);
-        if (printer.calibration < 0.98) printer.calibrate(dt);
         m.data.energy = Math.max(
           0,
           m.data.energy - MEMBER.energyDrain * 0.4 * comfort.fatigue * dt,
@@ -1928,7 +1959,6 @@ export class Simulation {
         p.note = t('note.doneForToday');
         return;
       }
-      p.calibrating = false;
       this.releaseSeat(p.id);
       p.note = t('note.outOfHours');
       if (!p.walking) p.walkTo(DOOR);
@@ -1954,7 +1984,7 @@ export class Simulation {
     // oldest build still open, and when it ships you move to the next. This replaced the
     // Project Manager, which started projects for you: the space's work is yours to choose,
     // but once it is chosen, your hands going spare is the one waste you can always avoid.
-    if (!p.project && !p.calibrating && !this.ownerStopped) {
+    if (!p.project && !this.ownerStopped) {
       // Never into somebody else's kickoff: a crew that has not sat down yet was planned
       // for its own chairs, and one more at a full table is a meeting that never starts.
       // Never a build with no hand work left in it — a series print is the printer's job.
@@ -1966,25 +1996,6 @@ export class Simulation {
         p.project = next.id;
         this.log(msg('build.log.ownerPicksUp', { project: next.name }), 'info');
       }
-    }
-
-    if (p.calibrating) {
-      const printer = this.printer;
-      if (this.atStation(p, 'fdm')) {
-        p.activity = 'babysitting';
-        p.note = t('note.levelling');
-        printer.operatorSkill = Math.max(printer.operatorSkill, p.data.skills.mechanical);
-        printer.calibrate(dt);
-        this.spendPlayerTime(dt);
-        if (printer.calibration >= 0.99) {
-          p.calibrating = false;
-          p.note = t('note.bedFlat');
-        }
-      } else if (!p.walking) {
-        p.walkTo(printer.def.stand);
-      }
-      p.advance(dt);
-      return;
     }
 
     if (p.project) {
@@ -2075,9 +2086,8 @@ export class Simulation {
         this.requeueTimers.set(project.id, 0);
         continue;
       }
-      // No point queueing onto a machine with nothing to make it from.
-      const starved = pending.every((p) => this.machineFor(p.machineType)?.starved ?? true);
-      if (starved) continue;
+      // No point queueing when there is no machine to print it on.
+      if (pending.every((p) => !this.machineFor(p.machineType))) continue;
       // Accumulate only while somebody is around, but do NOT reset when they go home:
       // volunteers arrive in 2-3 hour bursts and a continuous-presence timer never elapses.
       if (!witness) continue;
@@ -2119,10 +2129,14 @@ export class Simulation {
       const operated = this.members.some(
         (m) => m.present && m.activity === 'babysitting' && this.atStation(m, machine.type),
       );
-      if (!operated && !(this.player.present && this.player.calibrating)) machine.operatorSkill = 0;
+      if (!operated) machine.operatorSkill = 0;
 
-      if (machine.running) this.machineHoursThisMonth += dt;
+      // A dilemma may have stopped the printers for a few days (§7c): the job waits on the bed.
+      if (machine.type === 'fdm' && this.mod('printers') === 0) continue;
+      if (machine.running) this.machineHoursThisMonth += dt * this.mod('power');
       const result = machine.tick(dt);
+      this.filamentThisMonth += machine.filamentUsed * this.mod('filament');
+      machine.filamentUsed = 0;
       if (!result) continue;
 
       const project = this.project(result.job.projectId);
@@ -2376,20 +2390,10 @@ export class Simulation {
     // well it was designed for that market, and how good it actually turned out.
     const demand = store.getState().market[project.category] ?? 1;
     const appeal = project.appeal ?? 1;
-    // What the client asked for (design §5.4): each wish met adds to the pay and the hype.
-    const wishes = project.wishes ?? [];
-    const judged = wishes.map((wish) => ({
-      wish,
-      met: wishMet(wish, { quality: project.quality, design: project.design, days: this.day - project.startedOnDay }),
-    }));
-    const met = judged.filter((w) => w.met).length;
     // A print order pays what was agreed — no market, no novelty, no design appeal.
     const payout = project.order
       ? project.order.pay
-      : Math.round(def.payout * novelty * demand * appeal * qualityPay(project.quality) * (1 + DESIGN.wishPay * met));
-    if (wishes.length) {
-      this.log(msg('build.log.wishes', { project: project.name, met, total: wishes.length }), met ? 'good' : 'info');
-    }
+      : Math.round(def.payout * novelty * demand * appeal * qualityPay(project.quality));
     if (payout > 0) {
       store.getState().earn(payout, 'work');
       this.incomeThisMonth += payout;
@@ -2410,8 +2414,8 @@ export class Simulation {
     const hype = project.order
       ? def.hype
       : Math.round(
-          def.hype * project.hypeMultiplier * novelty * Math.sqrt(appeal) * qualityHype(project.quality) *
-            (1 + DESIGN.wishHype * met) * (project.documented ? 1 + TRAITS.documenter.hype : 1),
+          def.hype * novelty * Math.sqrt(appeal) * qualityHype(project.quality) *
+            (project.documented ? 1 + TRAITS.documenter.hype : 1),
         );
     // The market has one fewer thing to want. Somebody else's print order is not ours.
     if (!project.order) store.getState().setMarket(coolMarket(store.getState().market, project.category));
@@ -2432,7 +2436,6 @@ export class Simulation {
       design: { ...project.design },
       pay: { base: def.payout, market: demand, appeal, quality: qualityPay(project.quality), novelty },
       forecast: project.forecast,
-      wishes: judged,
       order: !!project.order,
     });
     // **The report is a moment, so it is not every moment.** A bigger build opens it over the
@@ -2466,11 +2469,11 @@ export class Simulation {
       .sort((a, b) => b.share - a.share);
   }
 
-  /** A printer's physical character — capacity, speed, how often it lets you down. */
+  /** A printer's physical character — speed, and how often it lets you down. */
   private makeMachine(def: StationDef): Machine {
-    if (def.type !== 'fdm') return new Machine(def, 0);
+    if (def.type !== 'fdm') return new Machine(def);
     const model = PRINTER_MAP[def.model ?? STARTING_PRINTER.id] ?? STARTING_PRINTER;
-    return new Machine(def, model.capacity, { speed: model.speed, reliability: model.reliability });
+    return new Machine(def, { speed: model.speed, reliability: model.reliability });
   }
 
   /** Printers you could buy right now: era-gated, and only while there is floor for them. */
@@ -2685,6 +2688,10 @@ export class Simulation {
       yearStart: { ...this.yearStart },
       rivalYearStart: [...this.rivalYearStart],
       machineHoursThisMonth: this.machineHoursThisMonth,
+      filamentThisMonth: this.filamentThisMonth,
+      nextDilemmaDay: this.nextDilemmaDay,
+      mods: this.mods.map((m) => ({ ...m })),
+      awayUntil: [...this.awayUntil.entries()],
       incomeThisMonth: this.incomeThisMonth,
       recruitClock: this.recruitClock,
       recentShip: this.recentShip ? { ...this.recentShip, tags: [...this.recentShip.tags] } : null,
@@ -2693,9 +2700,9 @@ export class Simulation {
       rivals: this.rivals.map((r) => ({ ...r })),
       projects: this.projects.map((p) => structuredClone(p)),
       installedStations: installedStations(),
+      removedKit: removedStartingStations(),
       members: this.members.map((m) => ({
         id: m.id,
-        role: m.role,
         team: m.team,
         interest: m.interest,
         skills: { ...m.data.skills },
@@ -2712,15 +2719,12 @@ export class Simulation {
         hoursLeft: this.player.hoursLeft,
         energy: this.player.data.energy,
         project: this.player.project,
-        calibrating: this.player.calibrating,
         present: this.player.present,
         tile: { ...this.player.tile },
       },
       machines: this.machines.map((machine) => ({
         id: machine.id,
         type: machine.type,
-        calibration: machine.calibration,
-        consumable: machine.consumable,
         current: machine.current ? { ...machine.current } : null,
         queue: machine.queue.map((job) => ({ ...job })),
       })),
@@ -2736,18 +2740,21 @@ export class Simulation {
     this.comfortKey = '\u0000';
     this.day = data.day;
     this.time = data.time;
-    // Upvotes and best builds arrived with the second set of awards; older saves have neither.
-    this.yearStart = { upvotes: 0, ...data.yearStart };
+    this.yearStart = { day: data.yearStart.day, projects: data.yearStart.projects, reputation: data.yearStart.reputation };
     this.rivalYearStart = new Map(
-      data.rivalYearStart.map(([id, since]) => [id, { upvotes: 0, ...since }] as const),
+      data.rivalYearStart.map(([id, since]) => [id, { projects: since.projects, reputation: since.reputation }] as const),
     );
     this.machineHoursThisMonth = data.machineHoursThisMonth;
+    this.filamentThisMonth = data.filamentThisMonth ?? 0;
+    // Older files had no dilemmas: the first one is a fortnight from the day they load.
+    this.nextDilemmaDay = data.nextDilemmaDay ?? this.day + DILEMMA.every[0];
+    this.mods = (data.mods ?? []).map((m) => ({ ...m }));
+    this.awayUntil = new Map(data.awayUntil ?? []);
     this.incomeThisMonth = data.incomeThisMonth;
     this.seeded = new Set(data.seeded);
     this.requeueTimers = new Map(data.requeueTimers);
     this.rivals = data.rivals.map((rival) => ({
       ...rival,
-      upvotes: rival.upvotes ?? 0,
       bestBuild: rival.bestBuild ?? null,
     }));
     // A save from before a space joined the field: it starts from scratch, as if it just opened.
@@ -2768,6 +2775,11 @@ export class Simulation {
         : installStation(station.type, station.id, station.model, station.label);
       if (def && FAB_MACHINES.includes(station.type)) this.machines.push(this.makeMachine(def));
     }
+    // The kit that was traded in or sold stays gone: the layout above put all of it back.
+    for (const id of data.removedKit ?? []) {
+      removeStation(id);
+      this.machines = this.machines.filter((m) => m.id !== id);
+    }
     setStationLayout(store.getState().stationPlacements);
     this.applyPerks();
 
@@ -2779,7 +2791,6 @@ export class Simulation {
       const source = everyone.find((person) => person.id === saved.id);
       if (!source) continue;
       const member = this.joinMember(source);
-      member.role = saved.role ?? null;
       member.team = saved.team;
       member.interest = saved.interest;
       // Skills can be trained, so a save carries them; an older file keeps the roster's.
@@ -2801,14 +2812,11 @@ export class Simulation {
     this.player.hoursLeft = player.hoursLeft;
     this.player.data.energy = player.energy;
     this.player.project = player.project;
-    this.player.calibrating = player.calibrating;
     if (player.present) this.player.arrive(player.tile);
 
     for (const saved of data.machines) {
       const machine = this.machines.find((m) => m.id === saved.id);
       if (!machine) continue;
-      machine.calibration = saved.calibration;
-      machine.consumable = saved.consumable;
       machine.current = saved.current;
       machine.queue = saved.queue;
     }
@@ -2850,8 +2858,7 @@ export class Simulation {
 
   /**
    * Ask somebody to join a project. They are volunteers, so this is a request: a poor
-   * passion match is usually declined, and a refusal sticks for a while. A live bounty
-   * makes a "yes" much likelier — which is the influence model doing its job.
+   * passion match is usually declined, and a refusal sticks for a while.
    */
   inviteMember(projectId: string, memberId: string): boolean {
     const project = this.project(projectId);
@@ -2883,8 +2890,7 @@ export class Simulation {
 
     // Rate against the genre, not a single tag: it is what the crew picker shows.
     const match = Math.max(member.passionMatch(project.tags), categoryAffinity(member.data.passions, project.category));
-    const bounty = project.bounties.includes(project.stage) ? TEAM.bountyAcceptBonus : 0;
-    const chance = Math.min(0.97, TEAM.acceptBase + match * TEAM.acceptFromPassion + bounty);
+    const chance = Math.min(0.97, TEAM.acceptBase + match * TEAM.acceptFromPassion);
     if (!rng.chance(chance)) {
       member.setCooldown(projectId, TEAM.declineCooldownHours);
       this.log(msg('log.team.declined', { member: member.name, project: project.name }), 'warn');
@@ -2915,6 +2921,10 @@ export class Simulation {
    * see the default difficulty — picking Hard and starting with four people was exactly that.
    */
   seedRoster() {
+    // A new run's first card is a couple of weeks in, and nothing from a last run lingers.
+    this.nextDilemmaDay = this.day + rng.int(DILEMMA.every[0], DILEMMA.every[1]);
+    this.mods = [];
+    this.awayUntil.clear();
     // Who turns up in what order is dealt fresh for every run (and kept for the save).
     store.setState({ ladder: shuffleLadder(undefined, () => rng.range(0, 1)) });
     const wanted = DIFFICULTY_MAP[store.getState().difficulty].startMembers;
@@ -2987,17 +2997,14 @@ export class Simulation {
     }
   }
 
-  /** Paying members of the public — the passive income a reputation earns you. */
-  get membership(): number {
-    // Hype behaves like reputation you have not earned yet: it brings the public in while it
-    // lasts and takes them away again when it fades, through the same curve and the same cap.
-    const borrowed = this.pressure * HYPE.extraMembers * ECONOMY.reputationPerMember;
-    return membershipFor(store.getState().reputation + borrowed, store.getState().era);
+  /** The month's filament at the spool price: bought as it is used, never stocked (§5). */
+  private filamentCost(): number {
+    return Math.round((this.filamentThisMonth / FILAMENT.spoolGrams) * FILAMENT.spoolCost);
   }
 
-  /** How loudly the place is being talked about, 0-1. Everything hype feeds scales off this. */
-  get pressure(): number {
-    return hypePressure(store.getState().hype);
+  /** Paying members of the public — the passive income a reputation earns you. */
+  get membership(): number {
+    return membershipFor(store.getState().reputation, store.getState().era);
   }
 
   /** What the next bill will look like if nothing changes. */
@@ -3007,11 +3014,12 @@ export class Simulation {
     const rent = rentFor(state.era);
     const utilities = Math.round(this.machineHoursThisMonth * ECONOMY.utilityPerMachineHour);
     const upkeep = this.comforts.upkeep;
+    const filament = this.filamentCost();
     const dues = this.members.length * ECONOMY.crewDues + this.membership * ECONOMY.duesPerMember;
     return {
       income: dues,
-      costs: rent + utilities + upkeep,
-      net: dues - rent - utilities - upkeep,
+      costs: rent + utilities + upkeep + filament,
+      net: dues - rent - utilities - upkeep - filament,
       dueInDays: ECONOMY.billEvery - ((this.day - 1) % ECONOMY.billEvery),
     };
   }
@@ -3029,11 +3037,12 @@ export class Simulation {
     const rent = rentFor(state.era);
     const utilities = Math.round(this.machineHoursThisMonth * ECONOMY.utilityPerMachineHour);
     const upkeep = this.comforts.upkeep;
+    const filament = this.filamentCost();
 
     // Only dues and the running costs move cash at the bill; everything else was banked or
     // paid as it happened, and the ledger kept count of it.
     const balanceBefore = state.cash;
-    const balanceAfter = balanceBefore + crewDues + communityDues - rent - utilities - upkeep;
+    const balanceAfter = balanceBefore + crewDues + communityDues - rent - utilities - upkeep - filament;
     const shortfall = Math.max(0, -balanceAfter);
     const opening = state.monthOpen;
     const ledger: Ledger = {
@@ -3043,6 +3052,7 @@ export class Simulation {
       rent: -rent,
       power: -utilities,
       comforts: -upkeep,
+      filament: (state.ledger.filament ?? 0) - filament,
     };
     // **The statement has to add up** (§7a): opening + income − costs = closing, to the lira.
     // Whatever moved cash without naming itself — the dev console, a save from before the
@@ -3057,6 +3067,7 @@ export class Simulation {
       rent: eraDef(state.era).name,
       power: msg('bill.powerDetail', { hours: Math.round(this.machineHoursThisMonth) }),
       comforts: msg('bill.comfortsDetail', { count: state.amenities.length }),
+      filament: msg('bill.filamentDetail', { kilos: Math.round(this.filamentThisMonth / 100) / 10 }),
     };
     // Rent and dues are listed even at zero — they are the month's fixed shape. Anything
     // else only when it happened, so a quiet month is a short statement.
@@ -3071,7 +3082,7 @@ export class Simulation {
         detail: detail[kind] ?? msg(`bill.${kind}Detail` as MessageKey),
         amount,
       };
-      const isIncome = kind === 'other' ? amount > 0 : INCOME_KINDS.includes(kind);
+      const isIncome = kind === 'other' || kind === 'events' ? amount > 0 : INCOME_KINDS.includes(kind);
       (isIncome ? income : costs).push(line);
     }
     const total = balanceAfter - opening;
@@ -3097,6 +3108,7 @@ export class Simulation {
     store.getState().setBill(bill);
     store.getState().closeMonth();
     this.machineHoursThisMonth = 0;
+    this.filamentThisMonth = 0;
     this.incomeThisMonth = 0;
 
     if (shortfall > 0) {
@@ -3126,6 +3138,7 @@ export class Simulation {
     return {
       pace: difficulty.rivalPace * (1 + (this.yearIndex - 1) * difficulty.yearRamp),
       reputation: difficulty.rivalRep,
+      player: store.getState().reputation,
     };
   }
 
@@ -3159,7 +3172,7 @@ export class Simulation {
       .reduce<ShippedRecord | null>((top, record) => (!top || record.hype > top.hype ? record : top), null);
     const rows: ScoreRow[] = this.rivals.map((rival) => {
       const def = RIVAL_MAP[rival.id];
-      const since = this.rivalYearStart.get(rival.id) ?? { projects: 0, reputation: 0, upvotes: 0 };
+      const since = this.rivalYearStart.get(rival.id) ?? { projects: 0, reputation: 0 };
       const reputationThisYear = rival.reputation - since.reputation;
       return {
         id: rival.id,
@@ -3173,7 +3186,6 @@ export class Simulation {
         reputation: rival.reputation,
         reputationThisYear,
         growthThisYear: growth(reputationThisYear, since.reputation),
-        upvotesThisYear: rival.upvotes - since.upvotes,
         bestBuild: rival.bestBuild ? { ...rival.bestBuild } : null,
         isPlayer: false,
       };
@@ -3190,7 +3202,6 @@ export class Simulation {
       reputation: state.reputation,
       reputationThisYear: state.reputation - this.yearStart.reputation,
       growthThisYear: growth(state.reputation - this.yearStart.reputation, this.yearStart.reputation),
-      upvotesThisYear: state.upvotes - this.yearStart.upvotes,
       bestBuild: best ? { name: best.name, score: best.hype } : null,
       isPlayer: true,
     });
@@ -3294,13 +3305,11 @@ export class Simulation {
       day: this.day,
       projects: this.projectsShipped(),
       reputation: state.reputation,
-      upvotes: state.upvotes,
     };
     for (const rival of this.rivals) {
       this.rivalYearStart.set(rival.id, {
         projects: rival.projects,
         reputation: rival.reputation,
-        upvotes: rival.upvotes,
       });
       rival.bestBuild = null;
     }
@@ -3316,14 +3325,8 @@ export class Simulation {
    */
   private tickRecruiting() {
     const every = DIFFICULTY_MAP[store.getState().difficulty].recruitEvery;
-    // Attention is why people hear about you at all, so it buys days on this clock.
-    // Attention brings people to the door; the comforts are what they hear about when
-    // they ask around, so the two stack on the same clock.
-    // A Host who was in today shows the visitors round (§3b) — the clock moves faster, but
-    // who you take on is still your decision; the role only brings people to the door.
-    const host = this.members.find((m) => m.role === 'host');
-    const hosted = host && this.plans.get(host.id)?.attending ? ROLES.hostDraw : 1;
-    const gain = (1 + this.pressure * (HYPE.recruitSpeedUp - 1)) * this.comforts.draw * hosted;
+    // The comforts are what people hear about when they ask around: they buy days here.
+    const gain = this.comforts.draw;
     this.recruitClock = Math.min(this.recruitClock + gain, every);
     if (this.recruitClock < every) return;
     const next = this.nextApplicant();
@@ -3372,166 +3375,9 @@ export class Simulation {
     return ready.length ? { data: ready[0] } : null;
   }
 
-  /**
-   * What the space itself is known for: the tags of everything it has shipped, commonest
-   * first. A post about the place lands in the room that recognises the work.
-   */
-  spaceSubject() {
-    const counts = new Map<Tag, number>();
-    for (const record of store.getState().shipped) {
-      for (const tag of CATALOG_MAP[record.defId]?.tags ?? []) {
-        counts.set(tag, (counts.get(tag) ?? 0) + 1);
-      }
-    }
-    const tags = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([tag]) => tag);
-    return spaceSubject(store.getState().reputation, tags.length ? tags : ['software']);
-  }
-
   /** §5 — what you just shipped is what the next person through the door cared about. */
   private recruit(project: ProjectData) {
     this.recentShip = { tags: [...project.tags], name: project.name, day: this.day };
-  }
-
-  /**
-   * Put a project in front of a room (§6). The room, the stage you show it at and the claim
-   * you make are three separate decisions, and the claim is the one with teeth: it multiplies
-   * the reaction and sets a merit bar, and a room's skepticism decides how hard the fall is
-   * when the work does not clear it.
-   */
-  post(projectId: string, subredditId: string, claim: ClaimKey, by?: MemberEntity): boolean {
-    const sub = SUBREDDIT_MAP[subredditId];
-    if (!sub) return false;
-    const project = projectId === SPACE_SUBJECT ? null : this.project(projectId);
-    if (projectId !== SPACE_SUBJECT && (!project || project.shipped)) return false;
-
-    // One post per subject per day. Posting the same thing three times before lunch is not
-    // a strategy anybody should be rewarded for finding, and the hour cost alone did not
-    // stop it once the day grew to eighteen.
-    const posts = store.getState().posts;
-    if (posts.some((p) => p.projectId === projectId && p.day === this.day)) {
-      this.log(
-        project ? msg('log.post.alreadyProject', { project: project.name }) : msg('log.post.alreadySpace'),
-        'warn',
-      );
-      return false;
-    }
-    const already = posts.filter(
-      (p) => p.projectId === projectId && p.subreddit === subredditId,
-    ).length;
-    // A keyholder doing it is the entire point of the job: it is their hour, not yours.
-    if (!by && !this.chargeHours('post')) return false;
-
-    const subject = project ? projectSubject(project) : this.spaceSubject();
-    const name = project ? project.name : store.getState().identity?.name ?? 'the space';
-    void by;
-    const reaction = react(subject, sub, claim, already);
-    const entry: Post = {
-      id: uid(),
-      projectId,
-      projectName: name,
-      subreddit: subredditId,
-      stage: project?.stage ?? 'release',
-      claim,
-      upvotes: reaction.upvotes,
-      hype: reaction.hype,
-      comment: reaction.comment,
-      burned: reaction.burned,
-      day: this.day,
-    };
-    store.getState().recordPost(entry, reaction.reputationHit);
-    this.log(
-      msg(reaction.burned ? 'log.post.burned' : 'log.post.did', {
-        room: sub.name,
-        name: project ? project.name : store.getState().identity?.name ?? msg('word.theSpace'),
-        upvotes: reaction.upvotes,
-      }),
-      reaction.burned ? 'bad' : 'good',
-    );
-    this.publish();
-    return true;
-  }
-
-  /** Give somebody a standing job, or take it away. One role each, one holder each. */
-  setRole(memberId: string, role: Role | null) {
-    const member = this.member(memberId);
-    if (!member) return;
-    if (role) {
-      for (const other of this.members) if (other.role === role) other.role = null;
-    }
-    member.role = role;
-    this.log(
-      role
-        ? msg('log.role.set', { member: member.name, role: ROLE_LABEL[role].toLowerCase() })
-        : msg('log.role.cleared', { member: member.name }),
-      'info',
-    );
-    this.publish();
-  }
-
-  /**
-   * Roles act at their holder's **next availability**, which is the whole idea: the chore
-   * gets done because a person who is in the building does it, not because a rule fired.
-   * Somebody who is away, or deep in a build, is not watching the filament.
-   */
-  private runRoles() {
-    for (const member of this.members) {
-      if (!member.role || !member.present) continue;
-      if (member.activity === 'walking') continue;
-      switch (member.role) {
-        case 'printer': {
-          const dry = this.machines.find(
-            (m) => m.consumableMax > 0 && m.consumable < FILAMENT.lowWarning,
-          );
-          if (dry && this.refillFromStockAndShop(dry)) {
-            this.log(msg('log.role.loaded', { member: member.name, machine: dry.label }), 'good');
-          }
-          // And level a drifting bed between prints. This was a separate Technician for a
-          // round, which read as two people doing one job — the printers are one job.
-          const drifting = this.machines.find(
-            (m) => !m.running && m.calibration < ROLES.levelBelow,
-          );
-          if (drifting) {
-            drifting.calibration = 1;
-            this.log(msg('log.role.levelled', { member: member.name, machine: drifting.label }), 'good');
-          }
-          break;
-        }
-        case 'quartermaster': {
-          const unordered = this.projects.find((p) => !p.partsOrdered && p.bomCost > 0);
-          if (unordered && this.placeOrder(unordered)) {
-            this.log(msg('log.role.ordered', { member: member.name, project: unordered.name }), 'good');
-          }
-          break;
-        }
-        case 'social': {
-          // One safe post a day, and never a bold one: keeping the feeds warm is a chore,
-          // but claiming more than the work backs is a judgement call and that stays yours.
-          // Left alone, hype decays to nothing between the posts you remember to make.
-          if (this.socialDay === this.day) break;
-          const state = store.getState();
-          const subjects: { id: string; subject: ReturnType<typeof projectSubject> }[] = [
-            ...this.projects
-              .filter((p) => !p.shipped)
-              .map((p) => ({ id: p.id, subject: projectSubject(p) })),
-            { id: SPACE_SUBJECT, subject: this.spaceSubject() },
-          ].filter((x) => !state.posts.some((p) => p.projectId === x.id && p.day === this.day));
-          const best = subjects.sort((a, b) => b.subject.merit - a.subject.merit)[0];
-          if (!best) break;
-          // Best *unused* pairing, not simply the biggest room: novelty decays per outlet
-          // per build, so posting the same thing to the same feed every day is the one
-          // mistake a social media manager should never make.
-          const seen = (roomId: string) =>
-            state.posts.filter((p) => p.projectId === best.id && p.subreddit === roomId).length;
-          const room = [...SUBREDDITS].sort(
-            (a, b) =>
-              tasteMatch(best.subject.tags, b) * b.audience * novelty(seen(b.id)) -
-              tasteMatch(best.subject.tags, a) * a.audience * novelty(seen(a.id)),
-          )[0];
-          if (this.post(best.id, room.id, 'wip', member)) this.socialDay = this.day;
-          break;
-        }
-      }
-    }
   }
 
   /** Ask somebody to leave. It costs you their dues, so this is a last resort now. */
@@ -3619,16 +3465,15 @@ export class Simulation {
       .map((id) => this.member(id))
       .filter((m): m is MemberEntity => !!m)
       .map((m) => ({ skills: m.data.skills }));
-    // Nothing is locked any more (design §5.4): the crew's levels ride along with the plan
-    // and price whatever it reaches for. A harness pitching with no crew keeps the brief's
-    // numbers — nobody short, the middle technology, no ceiling.
+    // A harness pitching with no crew keeps the brief's numbers and the middle technology.
     const chosen = plan ? { ...plan, design: { ...plan.design } } : defaultPlan(def, maxSeats);
     chosen.levels = crewSkills.length ? crewLevels(crewSkills) : chosen.levels;
+    chosen.design = clampDesign(def.category, chosen.design, chosen.levels);
     if (chosen.seats > maxSeats) {
       this.log(msg('build.log.crewTooBig', { count: chosen.seats }), 'warn');
       return false;
     }
-    const summary = planProject(def, chosen, state.ownedMachines, state.licences);
+    const summary = planProject(def, chosen, state.ownedMachines);
     if (summary.missing.length) {
       this.log(
         msg('build.log.designNeeds', { machines: summary.missing.map((type) => MACHINE_LABEL[type]).join(' + ') }),
@@ -3637,25 +3482,11 @@ export class Simulation {
       return false;
     }
     if (!this.chargeHours('pitch')) return false;
-    // Licences and tools are paid there and then, like the parts.
+    // The design budget is paid there and then, like the parts.
     if (summary.tooling > 0 && !state.spend(summary.tooling, 'design')) {
       this.log(msg('build.log.licencesOut', { item: def.name }), 'bad');
       return false;
     }
-    // Seat licences are the space's from here on (§4c): the next build does not pay again.
-    if (summary.newLicences.length) {
-      store.getState().grantLicences(summary.newLicences);
-      for (const licence of summary.newLicences) {
-        const [axis, index] = licence.key.split(':');
-        const option = AXES[axis as DesignAxisId]?.options[Number(index)];
-        if (option?.keeps) {
-          this.log(msg('build.log.infraBuilt', { item: option.label, cost: licence.cost }), 'info');
-        } else if (option) {
-          this.log(msg('build.log.licenceBought', { item: option.label, seats: licence.seats, cost: licence.cost }), 'info');
-        }
-      }
-    }
-
     const offer = offerId ? state.backlog.find((e) => e.id === offerId) : undefined;
     const entry: BacklogEntry = offer ?? { id: uid('offer'), defId, source: 'catalog' };
     const project = startProject(entry, this.day, chosen, state.ownedMachines);
@@ -3670,7 +3501,6 @@ export class Simulation {
         {
           demand: state.market[def.category] ?? 1,
           built: state.shipped.filter((r) => r.defId === def.id).length,
-          hypeMultiplier: entry.hypeMultiplier,
         },
       );
       project.forecast = {
@@ -3678,7 +3508,6 @@ export class Simulation {
         days: promised.days,
         payout: promised.payout,
         hype: promised.hype,
-        wishes: promised.wishes.map((w) => w.ok),
       };
     }
     // Every build carries the name it was given (design §6.2) — the one the projects table
@@ -3731,59 +3560,42 @@ export class Simulation {
     return true;
   }
 
-  /**
-   * Advertise a build after release (the ship report). Once per build, within
-   * `CAMPAIGN.windowDays` of shipping, an hour of your day and the campaign's price. What it
-   * adds is a multiple of the build's own hype — so a great new build is worth shouting about
-   * and a fourth copy of the same one is not — and the YouTube review rides on quality, so a
-   * weak build can come out of it worse.
-   */
-  launchCampaign(recordId: string, id: CampaignId): boolean {
+  /** What promoting a shipped build would cost and bring (§4c), or null when it cannot be. */
+  promoQuote(recordId: string): { cost: number; gain: number } | null {
+    const record = store.getState().shipped.find((r) => r.id === recordId);
+    if (!record || record.order || record.promo) return null;
+    if (this.day - record.day > PROMO.window) return null;
+    const gain = Math.round(record.hype * PROMO.gainShare);
+    if (gain <= 0) return null;
+    const cost = Math.max(PROMO.min, Math.round((gain * PROMO.costPerRep) / 100) * 100);
+    return { cost, gain };
+  }
+
+  /** Promote a shipped build: pay now, and the name it makes grows over the week. */
+  promote(recordId: string): boolean {
+    const quote = this.promoQuote(recordId);
     const state = store.getState();
     const record = state.shipped.find((r) => r.id === recordId);
-    const def = CAMPAIGN_MAP[id];
-    if (!record || !def || record.order || record.campaign) return false;
-    if (this.day - record.day > CAMPAIGN.windowDays) {
-      this.log(msg('report.log.tooLate', { project: record.name }), 'warn');
+    if (!quote || !record) return false;
+    if (!state.spend(quote.cost, 'marketing')) {
+      this.log(msg('log.amenity.cantAfford', { item: record.name }), 'bad');
       return false;
     }
-    if (!this.player.canAfford(CAMPAIGN.hours)) {
-      this.log(msg('log.noHours'), 'bad');
-      return false;
-    }
-    if (!state.spend(def.cost, 'marketing')) {
-      this.log(msg('report.log.cantAfford', { project: record.name, cost: def.cost }), 'bad');
-      return false;
-    }
-    this.player.spendHours(CAMPAIGN.hours);
-    // A reviewer reads the build a little better or worse than it is; the others do not judge.
-    const gain = campaignGain(id, record.hype, record.quality, def.judged ? rng.range(-1, 1) : 0);
-    const sales = campaignSales(gain);
-    state.recordReputation(gain);
-    state.setHype(Math.max(0, state.hype + gain * CAMPAIGN.attention));
-    state.updateShipped(record.id, { hype: record.hype + gain, campaign: { id, cost: def.cost, hype: gain, sales, paid: 0 } });
-    this.log(
-      msg(gain >= 0 ? 'report.log.ran' : 'report.log.backfired', {
-        project: record.name,
-        campaign: msg(`report.campaign.${id}.name` as MessageKey),
-        gain: Math.abs(gain),
-      }),
-      gain >= 0 ? 'good' : 'bad',
-    );
+    state.updateShipped(recordId, { promo: { cost: quote.cost, gain: quote.gain, paid: 0 } });
+    this.log(msg('promo.log.started', { project: record.name, gain: quote.gain, days: PROMO.days }), 'good');
     this.publish();
     return true;
   }
 
-  /** A day's sales from every campaign still paying out: an even share of its total a day. */
-  private payCampaignSales() {
+  /** A day's share of every promotion still running: reputation, and the build's own record. */
+  private dripPromos() {
     const state = store.getState();
     for (const record of state.shipped) {
-      const c = record.campaign;
-      if (!c?.sales || (c.paid ?? 0) >= c.sales) continue;
-      const share = Math.min(c.sales - (c.paid ?? 0), Math.ceil(c.sales / CAMPAIGN.salesDays));
-      state.earn(share, 'adSales');
-      this.incomeThisMonth += share;
-      state.updateShipped(record.id, { campaign: { ...c, paid: (c.paid ?? 0) + share } });
+      const promo = record.promo;
+      if (!promo || promo.paid >= promo.gain) continue;
+      const share = Math.min(promo.gain - promo.paid, Math.ceil(promo.gain / PROMO.days));
+      state.recordReputation(share);
+      state.updateShipped(record.id, { hype: record.hype + share, promo: { ...promo, paid: promo.paid + share } });
     }
   }
 
@@ -3792,85 +3604,147 @@ export class Simulation {
     const project = this.project(projectId);
     if (!project) return;
     this.ownerStopped = false;
-    this.player.calibrating = false;
     this.player.project = projectId;
+  }
+
+  // -------------------------------------------------------------------------
+  // Dilemmas (§7c) — every fifteen to twenty days, a card with no free answer
+  // -------------------------------------------------------------------------
+
+  /** The product of every multiplier a dilemma left on this kind of thing, today. */
+  mod(kind: DilemmaMod): number {
+    return this.mods.reduce((v, m) => (m.mod === kind && m.until >= this.day ? v * m.value : v), 1);
+  }
+
+  /** Deal a card now (the dev console): a named one, or whatever would come up next. */
+  forceDilemma(id?: string): boolean {
+    if (store.getState().dilemma) return false;
+    this.nextDilemmaDay = this.day;
+    if (id) {
+      const seen = store.getState().dilemmasSeen.filter((x) => x !== id);
+      store.setState({ dilemmasSeen: seen });
+      const def = DILEMMA_MAP[id];
+      if (!def) return false;
+      const people = this.members.filter((m) => !m.training);
+      const target = def.target === 'crew' ? people.find((m) => m.team) ?? people[0] : def.target === 'best' ? people[0] : undefined;
+      store.getState().setDilemma({ id, day: this.day, target: target?.id ?? null });
+      this.publish();
+      return true;
+    }
+    const hour = this.time;
+    this.time = Math.max(this.time, DILEMMA.atHour);
+    this.maybeDilemma();
+    this.time = hour;
+    return !!store.getState().dilemma;
+  }
+
+  /** Deal a card, once it is due and everybody is in. One at a time, never over another modal. */
+  private maybeDilemma() {
+    const state = store.getState();
+    if (state.dilemma || state.bill || state.ceremony || state.shipReport || state.gameOver) return;
+    if (this.day < this.nextDilemmaDay || this.time < DILEMMA.atHour) return;
+    const recent = state.dilemmasSeen.slice(-DILEMMA.memory);
+    const people = this.members.filter((m) => !m.training);
+    const eligible = DILEMMAS.filter((d) => {
+      if (recent.includes(d.id)) return false;
+      if (d.needs === 'printer' && !this.machines.some((m) => m.type === 'fdm')) return false;
+      if (d.needs === 'project' && !this.projects.some((p) => !p.shipped && !p.order)) return false;
+      if (d.needs === 'three' && this.members.length < 3) return false;
+      if (d.target === 'crew' && !people.some((m) => m.team)) return false;
+      if (d.target && !people.length) return false;
+      return true;
+    });
+    if (!eligible.length) {
+      this.nextDilemmaDay = this.day + 1;
+      return;
+    }
+    const def = rng.pick(eligible);
+    let target: MemberEntity | undefined;
+    if (def.target === 'crew') target = rng.pick(people.filter((m) => m.team));
+    if (def.target === 'best') {
+      target = [...people].sort(
+        (a, b) => Math.max(...Object.values(b.data.skills)) - Math.max(...Object.values(a.data.skills)),
+      )[0];
+    }
+    store.getState().setDilemma({ id: def.id, day: this.day, target: target?.id ?? null });
+    this.publish();
+  }
+
+  /** The money and reputation an option comes to right now — what the card shows and what it does. */
+  dilemmaFigures(): { rent: number; reputation: number } {
+    return { rent: rentFor(store.getState().era), reputation: store.getState().reputation };
+  }
+
+  /** Answer the card on the table with one of its options. */
+  resolveDilemma(index: number) {
+    const state = store.getState();
+    const card = state.dilemma;
+    const def = card ? DILEMMA_MAP[card.id] : undefined;
+    const option = def?.options[index];
+    if (!card || !def || !option) return;
+    const target = card.target ? this.member(card.target) : undefined;
+    // Every title takes the same `name` param; the burnout key stands in for the type.
+    const title = msg(`dilemma.${def.id}.title` as 'dilemma.burnout.title', { name: target?.name ?? state.identity?.name ?? '' });
+    this.log(msg('dilemma.log.chose', { title, option: msg(`dilemma.${def.id}.${option.key}` as MessageKey) }), 'info');
+    this.applyDilemma(option.effects, target, title);
+    store.getState().setDilemma(null);
+    this.nextDilemmaDay = this.day + rng.int(DILEMMA.every[0], DILEMMA.every[1]);
+    this.publish();
+  }
+
+  private applyDilemma(effects: DilemmaEffect[], target: MemberEntity | undefined, title: Text) {
+    const { rent, reputation } = this.dilemmaFigures();
+    for (const effect of effects) {
+      switch (effect.kind) {
+        case 'cash': {
+          const amount = effectCash(effect, rent);
+          // A dilemma's bill is paid whatever the balance says: it is not a purchase.
+          if (amount < 0) store.setState((s) => ({ cash: s.cash + amount, ledger: { ...s.ledger, events: (s.ledger.events ?? 0) + amount } }));
+          else store.getState().earn(amount, 'events');
+          if (amount > 0) this.incomeThisMonth += amount;
+          break;
+        }
+        case 'rep':
+          store.getState().recordReputation(effectRep(effect, reputation));
+          break;
+        case 'mood':
+          for (const m of effect.who === 'all' ? this.members : target ? [target] : []) {
+            m.data.mood = Math.max(0, Math.min(100, m.data.mood + effect.delta));
+          }
+          break;
+        case 'away':
+          if (target) {
+            this.awayUntil.set(target.id, this.day + effect.days);
+            if (target.present) {
+              this.releaseSeat(target.id);
+              target.leave();
+            }
+          }
+          break;
+        case 'leave':
+          if (target) this.letGo(target.id);
+          break;
+        case 'mod':
+          this.mods = [...this.mods.filter((m) => m.until >= this.day), { mod: effect.mod, value: effect.value, until: this.day + effect.days - 1 }];
+          break;
+        case 'dayOff':
+          this.player.spendHours(this.player.hoursLeft);
+          break;
+        case 'chance':
+          if (rng.chance(effect.p)) {
+            this.log(msg('dilemma.log.lucky', { title }), 'info');
+            this.applyDilemma(effect.then, target, title);
+          } else {
+            this.log(msg('dilemma.log.unlucky', { title }), 'info');
+          }
+          break;
+      }
+    }
   }
 
   stopWork() {
     this.ownerStopped = true;
     this.player.project = null;
-    this.player.calibrating = false;
-  }
-
-  calibratePrinter() {
-    this.player.calibrating = true;
-  }
-
-  /**
-   * A maintenance round (§5): every bed levelled and nozzle wiped in one go, for one hour of
-   * your day — the per-printer button walks you to one machine and stands you there.
-   */
-  maintainAll(): boolean {
-    const due = this.machines.filter((m) => m.type === 'fdm' && m.calibration < 0.97);
-    if (!due.length) return false;
-    if (!this.chargeHours('maintain')) return false;
-    for (const machine of due) machine.calibration = Math.max(machine.calibration, 0.98);
-    this.log(msg('build.log.maintained', { count: due.length }), 'good');
-    this.publish();
-    return true;
-  }
-
-  /** Re-pitch: another go at tempting unallocated people onto the team. */
-  repitch(projectId: string) {
-    const project = this.project(projectId);
-    if (!project) return;
-    if (!this.chargeHours('repitch')) return;
-    const stage = STAGE_MAP[project.stage];
-    let took = 0;
-    for (const m of this.members) {
-      if (m.team || !m.present || project.team.length >= project.teamSize) continue;
-      if (m.isCoolingOff(projectId)) continue;
-      const match = m.passionMatch(project.tags) + DRIFT.repitchBonus;
-      if (match * (0.45 + stage.appeal * 0.55) >= DRIFT.signupThreshold && rng.chance(0.6)) {
-        this.addToTeam(project, m);
-        took += 1;
-      }
-    }
-    this.log(
-      took
-        ? msg('log.repitch.took', { project: project.name, count: took })
-        : msg('log.repitch.none', { project: project.name }),
-      took ? 'good' : 'warn',
-    );
-  }
-
-  bountyCost(projectId: string): number {
-    const project = this.project(projectId);
-    if (!project) return BOUNTY.minCost;
-    return Math.max(BOUNTY.minCost, Math.round(remainingWork(project) * BOUNTY.costPerWorkUnit));
-  }
-
-  /** The only reliable way to get boring work done. */
-  postBounty(projectId: string): boolean {
-    const project = this.project(projectId);
-    if (!project || project.bounties.includes(project.stage)) return false;
-    const cost = this.bountyCost(projectId);
-    if (!this.chargeHours('bounty')) return false;
-    if (!store.getState().spend(cost, 'bounties')) {
-      this.log(msg('log.bounty.cantAfford'), 'bad');
-      return false;
-    }
-    project.spent += cost;
-    project.bounties.push(project.stage);
-    for (const m of this.members) {
-      m.interest = Math.min(1.4, m.interest + DRIFT.bountyInterest);
-      m.clearCooldowns();
-    }
-    this.log(
-      msg('log.bounty.posted', { project: project.name, stage: stageLabel(project.category, project.stage) }),
-      'good',
-    );
-    return true;
   }
 
   /**
@@ -3901,30 +3775,6 @@ export class Simulation {
       return false;
     }
     this.log(msg('log.parts.ordered', { project: project.name, days: project.leadDays }), 'info');
-    return true;
-  }
-
-  expediteCostFor(projectId: string): number {
-    const project = this.project(projectId);
-    return project ? expediteCost(project, this.totalHours) : 0;
-  }
-
-  expediteParts(projectId: string): boolean {
-    const project = this.project(projectId);
-    if (!project || !project.partsOrdered || project.expedited) return false;
-    const remaining = project.partsArriveAt - this.totalHours;
-    if (remaining <= 0) return false;
-    const cost = expediteCost(project, this.totalHours);
-    if (!this.chargeHours('expedite')) return false;
-    if (!store.getState().spend(cost, 'parts')) {
-      this.log(msg('log.parts.expediteCantAfford'), 'bad');
-      return false;
-    }
-    project.spent += cost;
-    // Once, and it halves what is left: four days become two, five become three.
-    project.partsArriveAt = this.totalHours + remaining * SOURCING.expediteFactor;
-    project.expedited = true;
-    this.log(msg('log.parts.expedited', { project: project.name }), 'good');
     return true;
   }
 
@@ -3980,94 +3830,6 @@ export class Simulation {
     if (part) part.status = 'pending';
   }
 
-  /**
-   * What filling this machine from where it is would cost — **after the shelf** (§5): stock
-   * bought ahead is drawn on first, and only what the shelf cannot cover is bought.
-   */
-  refillCost(machineId?: string): number {
-    const machine = machineId ? this.machines.find((m) => m.id === machineId) : this.printer;
-    if (!machine || machine.consumableMax <= 0) return 0;
-    const short = machine.consumableMax - machine.consumable;
-    const bought = Math.max(0, short - store.getState().filamentStock);
-    return Math.ceil(bought / FILAMENT.spoolGrams) * FILAMENT.spoolCost;
-  }
-
-  /** What filling every printer to the top would cost right now, the shelf shared between them. */
-  refillAllCost(): number {
-    let stock = store.getState().filamentStock;
-    let cost = 0;
-    for (const m of this.machines) {
-      if (m.consumableMax <= 0) continue;
-      const short = m.consumableMax - m.consumable;
-      const take = Math.min(short, stock);
-      stock -= take;
-      cost += Math.ceil((short - take) / FILAMENT.spoolGrams) * FILAMENT.spoolCost;
-    }
-    return cost;
-  }
-
-  /** Top a machine up: the shelf first, the shop for the rest. False if it cannot be paid for. */
-  private refillFromStockAndShop(machine: Machine): boolean {
-    const short = machine.consumableMax - machine.consumable;
-    if (short <= 0) return false;
-    const cost = this.refillCost(machine.id);
-    if (cost > 0 && !store.getState().spend(cost, 'filament')) return false;
-    const stock = store.getState().filamentStock;
-    store.getState().setFilamentStock(stock - Math.min(short, stock));
-    machine.refill(machine.consumableMax);
-    return true;
-  }
-
-  /** How much the shelves hold, in grams. No shelf, no stock. */
-  shelfCapacity(): number {
-    const shelves = store.getState().amenities.includes('filament-shelf') ? 1 : 0;
-    return shelves * FILAMENT.shelfSpools * FILAMENT.spoolGrams;
-  }
-
-  /**
-   * Buy spools for the shelf (§5): bought ahead, they sit on the rack where you can see them
-   * and every refill takes from them first. As many as asked, up to what the shelf holds.
-   */
-  buySpools(count: number): boolean {
-    const room = Math.floor((this.shelfCapacity() - store.getState().filamentStock) / FILAMENT.spoolGrams);
-    const n = Math.max(0, Math.min(count, room));
-    if (!n) return false;
-    if (!this.chargeHours('filament')) return false;
-    const cost = n * FILAMENT.spoolCost;
-    if (!store.getState().spend(cost, 'filament')) {
-      this.log(msg('build.log.filamentAllCantAfford', { cost }), 'bad');
-      return false;
-    }
-    store.getState().setFilamentStock(store.getState().filamentStock + n * FILAMENT.spoolGrams);
-    this.log(msg('build.log.spoolsStocked', { count: n, cost }), 'good');
-    this.publish();
-    return true;
-  }
-
-  /**
-   * Fill every printer at once — one trip for filament, one line in the log. With four
-   * printers on the wall, a button per printer was four trips and four half-hours.
-   */
-  buyAllFilament(): boolean {
-    const dry = this.machines.filter((m) => m.consumableMax > 0 && m.consumable < m.consumableMax);
-    if (!dry.length) return false;
-    const cost = this.refillAllCost();
-    if (!this.chargeHours('filament')) return false;
-    if (cost > 0 && !store.getState().spend(cost, 'filament')) {
-      this.log(msg('build.log.filamentAllCantAfford', { cost }), 'bad');
-      return false;
-    }
-    let stock = store.getState().filamentStock;
-    for (const machine of dry) {
-      const short = machine.consumableMax - machine.consumable;
-      stock -= Math.min(short, stock);
-      machine.refill(machine.consumableMax);
-    }
-    store.getState().setFilamentStock(stock);
-    this.log(msg('build.log.filamentAll', { count: dry.length, cost }), 'good');
-    return true;
-  }
-
   // -------------------------------------------------------------------------
   // Print orders (§5)
   // -------------------------------------------------------------------------
@@ -4117,7 +3879,32 @@ export class Simulation {
     this.projects.push(project);
     store.getState().setPrintOffers(state.printOffers.filter((o) => o.id !== offerId));
     this.log(msg('build.log.orderAccepted', { item: def.name, pay: def.payout, day: project.order.dueDay }), 'good');
+    this.staffOrders();
     return true;
+  }
+
+  /**
+   * **A print order gets a pair of hands on its own** (§5). Whoever is free goes to it — the
+   * first choice somebody in the building, then whoever is strongest in the Mechanical wing
+   * (printing is its work) or keenest on what the client wants, and if nobody like that is
+   * free, anybody who is. A series print with the STL supplied needs nobody and is left to
+   * the printer. It runs every hour, so somebody who drifts off is replaced.
+   */
+  private staffOrders() {
+    for (const project of this.projects) {
+      if (!project.order || project.shipped || project.team.length >= project.teamSize) continue;
+      const handsLeft = STAGE_ORDER.some((k) => project.required[k] > (project.progress[k] ?? 0));
+      if (!handsLeft) continue;
+      const free = this.members.filter(
+        (m) => !m.team && !m.training && (this.awayUntil.get(m.id) ?? 0) < this.day && !m.isCoolingOff(project.id),
+      );
+      if (!free.length) continue;
+      const score = (m: MemberEntity) =>
+        (m.present ? 10 : 0) + (m.data.skills.mechanical ?? 0) + m.passionMatch(project.tags) * 3;
+      const pick = [...free].sort((a, b) => score(b) - score(a))[0];
+      this.addToTeam(project, pick);
+      this.log(msg('build.log.orderStaffed', { member: pick.name, item: project.name }), 'info');
+    }
   }
 
   /** Turn an offer down. It simply goes. */
@@ -4150,23 +3937,6 @@ export class Simulation {
     }
   }
 
-  /**
-   * Fill a printer up rather than adding one fixed spool: the larger models hold a stack of
-   * them, and topping a four-kilo machine up 1000g at a time is busywork, not a decision.
-   */
-  buyFilament(machineId?: string): boolean {
-    const machine = machineId ? this.machines.find((m) => m.id === machineId) : this.printer;
-    if (!machine || machine.consumableMax <= 0) return false;
-    if (machine.consumable >= machine.consumableMax) return false;
-    if (!this.chargeHours('filament')) return false;
-    if (!this.refillFromStockAndShop(machine)) {
-      this.log(msg('log.filament.cantAfford', { machine: machine.label }), 'bad');
-      return false;
-    }
-    this.log(msg('log.filament.loaded', { machine: machine.label }), 'good');
-    return true;
-  }
-
   // -------------------------------------------------------------------------
 
   /**
@@ -4183,7 +3953,7 @@ export class Simulation {
         for (const project of this.projects) snap.affinity[project.id] = m.passionMatch(project.tags);
         snap.seat = this.seatFor(m);
         snap.spot = spots.get(m.id) ?? null;
-        snap.treated = this.treatedToday.has(m.id);
+        snap.treated = [...(this.treatedToday.get(m.id) ?? [])];
         // The comfort they are at, once they have got there — the room puts a pad or a
         // bottle in their hands and a game on the console's screen.
         const spell = this.leisure.get(m.id);

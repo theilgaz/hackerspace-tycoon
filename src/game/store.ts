@@ -6,7 +6,6 @@ import type {
   Identity,
   LogEntry,
   MachineType,
-  Post,
   RuntimeSnapshot,
   ShippedRecord,
   FailedRecord,
@@ -15,15 +14,20 @@ import type {
 import type { Ceremony } from '@/systems/RivalSystem';
 import type { Placement, StationPlacement } from '@/machines/layout';
 import type { Bill, Ledger, LedgerKind } from '@/utils/economy';
-import { START_CASH } from '@/utils/constants';
+import { START_CASH, setFounders } from '@/utils/constants';
 import { ECONOMY } from '@/utils/economy';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
-import { uid } from '@/utils/format';
+import { setCurrency, uid } from '@/utils/format';
 import { sameText, setLocale as setI18nLocale, type Locale, type Text } from '@/i18n';
 import { freshMarket, type Market } from '@/utils/market';
-import type { Licences } from '@/utils/design';
 
 const MAX_LOG = 140;
+
+/** What an identity changes outside the store: the money's symbol and the founders' names. */
+function applyIdentity(identity: Identity | null | undefined) {
+  setCurrency(identity?.currency);
+  setFounders(identity?.founders);
+}
 
 /**
  * Management data lives here; sim-time data lives in the Simulation and arrives via
@@ -63,21 +67,12 @@ export interface GameState {
   shipped: ShippedRecord[];
   /** Builds that never shipped: missed print orders and shelved projects. */
   failed: FailedRecord[];
-  /** Cumulative hype from everything shipped; drives era progression and Phase 2. */
+  /** Cumulative hype from everything shipped; drives era progression. */
   reputation: number;
   /** Applicant ids who would consider joining; hiring is a decision, not automatic. */
   applicants: string[];
-  /** Upvotes from every post that landed, all time. The award year reads its share. */
-  upvotes: number;
   /** Applicants you turned down. They do not ask again. */
   passed: string[];
-  /**
-   * Attention right now (§6). Unlike reputation this goes **down** on its own, which is what
-   * makes it a clock rather than a score.
-   */
-  hype: number;
-  /** Everything you have put in front of Reddit, newest last. */
-  posts: Post[];
   /** Machine types the space owns; gates what can be attempted. */
   ownedMachines: MachineType[];
   /** Comforts bought from the Shop (§7b). Ids from `AMENITIES`, in the order bought. */
@@ -110,8 +105,6 @@ export interface GameState {
   backlog: BacklogEntry[];
   /** Print orders on offer in the Machines panel (§5). */
   printOffers: PrintOffer[];
-  /** Filament on the shelf, in grams — bought ahead, drawn on before buying more (§5). */
-  filamentStock: number;
   /** Traits the player has been told about this run — the first sighting is a notification. */
   traitsSeen: TraitKey[];
   /**
@@ -120,17 +113,21 @@ export interface GameState {
    * same numbers are on the build's page in Projects.
    */
   shipReport: { id: string; resume: boolean } | null;
+  /**
+   * The dilemma card on the table (§7c): which one, whom it is about, and whether the clock
+   * was running when it arrived — it goes back to that when the card is answered.
+   */
+  dilemma: { id: string; day: number; target: string | null; resume: boolean } | null;
+  /** Dilemmas dealt this run, newest last — a card is not dealt again while it is recent. */
+  dilemmasSeen: string[];
   /** The order applicants were dealt onto the reputation ladder this run. */
   ladder: string[];
-  /** Seat licences the space owns, by option (§4c). Bought once, kept for good. */
-  licences: Licences;
   /**
    * Where every space stood when the last month closed, by id — what the Ranking panel's
    * arrows measure against. Taken on the bill day, and on the first day of a run.
    */
   rankPrev: Record<string, number>;
   setRankPrev: (ranks: Record<string, number>) => void;
-  grantLicences: (grants: { key: string; seats: number }[]) => void;
   /** What each genre is worth right now (§4d). Moves daily; multiplies payouts. */
   market: Market;
   setMarket: (market: Market) => void;
@@ -169,6 +166,8 @@ export interface GameState {
   markTraitSeen: (trait: TraitKey) => boolean;
   /** Open the ship report for a build, pausing the clock; null closes it and gives the clock back. */
   setShipReport: (id: string | null) => void;
+  /** Put a dilemma on the table (pausing the clock), or take it off (giving the clock back). */
+  setDilemma: (card: { id: string; day: number; target: string | null } | null) => void;
   /** Change a shipped record after the fact — a campaign run on it. */
   updateShipped: (id: string, patch: Partial<ShippedRecord>) => void;
   /** The toast has gone: into the log with it. */
@@ -176,7 +175,6 @@ export interface GameState {
 
   setBacklog: (backlog: BacklogEntry[]) => void;
   setPrintOffers: (offers: PrintOffer[]) => void;
-  setFilamentStock: (grams: number) => void;
   addOffer: (entry: BacklogEntry) => void;
   removeOffer: (id: string) => void;
   openApplicant: (id: string) => void;
@@ -196,9 +194,6 @@ export interface GameState {
   recordShipped: (hype: number, record: ShippedRecord) => void;
   recordFailed: (record: FailedRecord) => void;
   recordReputation: (amount: number) => void;
-  /** Bank a post's reaction: the post itself, the hype it moved, the reputation it cost. */
-  recordPost: (post: Post, reputationDelta: number) => void;
-  setHype: (hype: number) => void;
 }
 
 export const emptyRuntime = (): RuntimeSnapshot => ({
@@ -250,25 +245,16 @@ export const store = createStore<GameState>((set, get) => ({
   buyConfirm: null,
   backlog: [],
   printOffers: [],
-  filamentStock: 0,
   traitsSeen: [],
   shipReport: null,
+  dilemma: null,
+  dilemmasSeen: [],
   market: freshMarket(),
-  licences: {},
   rankPrev: {},
   setRankPrev: (rankPrev) => set({ rankPrev }),
-  grantLicences: (grants) =>
-    set((s) => {
-      const licences = { ...s.licences };
-      for (const g of grants) licences[g.key] = Math.max(licences[g.key] ?? 0, g.seats);
-      return { licences };
-    }),
   ladder: [],
   applicants: [],
   passed: [],
-  upvotes: 0,
-  hype: 0,
-  posts: [],
   runtime: emptyRuntime(),
   log: [],
   notices: [],
@@ -278,7 +264,8 @@ export const store = createStore<GameState>((set, get) => ({
     set({ locale });
   },
 
-  begin: (identity, difficulty) =>
+  begin: (identity, difficulty) => {
+    applyIdentity(identity);
     set({
       identity,
       difficulty,
@@ -287,13 +274,15 @@ export const store = createStore<GameState>((set, get) => ({
       monthOpen: DIFFICULTY_MAP[difficulty].startCash,
       // A new run gets a new market, not whatever was rolled when the page loaded.
       market: freshMarket(),
-      licences: {},
       rankPrev: {},
       traitsSeen: [],
+      dilemma: null,
+      dilemmasSeen: [],
       started: true,
       paused: false,
       speed: 1,
-    }),
+    });
+  },
   setCeremony: (ceremony) =>
     set((s) => ({
       ceremony,
@@ -312,19 +301,20 @@ export const store = createStore<GameState>((set, get) => ({
     const {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, failed, reputation, ownedMachines, applicants,
-      passed, upvotes, backlog, log, notices, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements, market, ladder, ledger, monthOpen, licences, printOffers, filamentStock, rankPrev, traitsSeen,
+      passed, backlog, log, notices, overdraftSince, amenities, amenityPlacements,
+      stationPlacements, market, ladder, ledger, monthOpen, printOffers, rankPrev, traitsSeen, dilemma, dilemmasSeen,
     } = get();
     // `runtime` is left out on purpose: the sim rebuilds it on the first publish.
     return {
       identity, difficulty, started, ceremony, ceremonies, bill, bills, missedBills, gameOver,
       day, simTime, cash, era, shippedCount, shipped, failed, reputation, ownedMachines, applicants,
-      passed, upvotes, backlog, log, notices, hype, posts, overdraftSince, amenities, amenityPlacements,
-      stationPlacements, market, ladder, ledger, monthOpen, licences, printOffers, filamentStock, rankPrev, traitsSeen,
+      passed, backlog, log, notices, overdraftSince, amenities, amenityPlacements,
+      stationPlacements, market, ladder, ledger, monthOpen, printOffers, rankPrev, traitsSeen, dilemma, dilemmasSeen,
     };
   },
 
-  hydrate: (data) =>
+  hydrate: (data) => {
+    applyIdentity((data as Partial<GameState>).identity);
     set({
       ...(data as Partial<GameState>),
       paused: true,
@@ -335,7 +325,8 @@ export const store = createStore<GameState>((set, get) => ({
       buildPaused: false,
       placingBuy: null,
       buyConfirm: null,
-    }),
+    });
+  },
 
   setSpeed: (speed) => set({ speed, paused: false }),
   togglePause: () => set((s) => ({ paused: !s.paused })),
@@ -358,6 +349,12 @@ export const store = createStore<GameState>((set, get) => ({
     const { day, simTime, notices } = get();
     set({ notices: [...notices, { id: uid('note'), day, time: simTime, text, kind, ...(icon ? { icon } : {}) }] });
   },
+  setDilemma: (card) =>
+    set((s) =>
+      card
+        ? { dilemma: { ...card, resume: s.dilemma?.resume ?? !s.paused }, dilemmasSeen: [...s.dilemmasSeen, card.id], paused: true }
+        : { dilemma: null, paused: s.dilemma?.resume && !s.bill && !s.ceremony && !s.shipReport ? false : s.paused },
+    ),
   setShipReport: (id) =>
     set((s) =>
       id
@@ -394,7 +391,6 @@ export const store = createStore<GameState>((set, get) => ({
 
   setBacklog: (backlog) => set({ backlog }),
   setPrintOffers: (printOffers) => set({ printOffers }),
-  setFilamentStock: (filamentStock) => set({ filamentStock: Math.max(0, Math.round(filamentStock)) }),
   setMarket: (market) => set({ market }),
   addOffer: (entry) => set((s) => ({ backlog: [entry, ...s.backlog] })),
   removeOffer: (id) => set((s) => ({ backlog: s.backlog.filter((e) => e.id !== id) })),
@@ -462,17 +458,6 @@ export const store = createStore<GameState>((set, get) => ({
   setPlacingBuy: (item) => set({ placingBuy: item, buyConfirm: null, moving: item ? null : get().moving }),
   setBuyConfirm: (confirm) => set({ buyConfirm: confirm }),
 
-  recordPost: (post, reputationDelta) =>
-    set((s) => ({
-      posts: [...s.posts, post].slice(-40),
-      // Kept as a running total because the post list is trimmed to the last forty.
-      upvotes: s.upvotes + (post.burned ? 0 : Math.max(0, post.upvotes)),
-      hype: Math.max(0, s.hype + post.hype),
-      // A burned post takes reputation with it, and reputation gates the era — so a claim
-      // the work cannot back up genuinely sets the run back rather than merely not helping.
-      reputation: Math.max(0, s.reputation + reputationDelta),
-    })),
-  setHype: (hype) => set({ hype }),
   // Reputation unlocks the next lease; it no longer signs it. See `Simulation.signLease`.
   recordReputation: (amount) => set((s) => ({ reputation: s.reputation + amount })),
 

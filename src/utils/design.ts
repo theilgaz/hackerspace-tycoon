@@ -1,5 +1,4 @@
 import type {
-  Wish,
   SkillKey,
   DesignAxisId,
   DesignChoice,
@@ -42,15 +41,6 @@ export interface DesignOption {
   appeal?: number;
   /** Multiplies the work on the stages this axis touches. */
   work?: number;
-  /** One-off cost at the pitch: a licence, a tool, a subscription. */
-  cost?: number;
-  /** One-off cost per seat — licences are bought per person. */
-  perSeat?: number;
-  /**
-   * The one-off `cost` is infrastructure the space keeps — a CI pipeline, once built, is
-   * there for the next project too — so it is paid the first time only.
-   */
-  keeps?: boolean;
   /** Multiplies the bill of materials. */
   bom?: number;
   /** Extra days on the order. */
@@ -64,12 +54,10 @@ export interface DesignOption {
   /** Skip the simulation stage entirely. */
   skipSim?: boolean;
   /**
-   * The level the crew needs in the project's wing for this to cost nothing extra (design
-   * §5.4). Absent, the stars say it: none for one, Junior for three, Senior for five.
+   * The level somebody on the crew needs in the project's wing before this is on the table
+   * (§4c). Absent, the stars say it: none for one, Junior for three, Senior for five.
    */
   need?: number;
-  /** A second role this option leans on — a brushless drive wants somebody who solders. */
-  needAlso?: { wing: ProjectCategory; level: number };
 }
 
 export interface DesignAxis {
@@ -111,10 +99,9 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
       {
         label: 'Full IDE',
         stars: 5,
-        blurb: 'Refactoring that works and a debugger that finds things. A licence per seat.',
+        blurb: 'Refactoring that works and a debugger that finds things.',
         quality: 0.06,
         work: 0.86,
-        perSeat: 450,
         testRisk: 0.85,
       },
     ],
@@ -146,8 +133,6 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
         quality: 0.03,
         work: 1.25,
         // The library is the space's: the next client gets the same components for free.
-        cost: 600,
-        keeps: true,
       },
     ],
   },
@@ -177,8 +162,6 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
         blurb: 'Tests on every push and a pipeline that says no. Slower to build, hard to break.',
         quality: 0.07,
         work: 1.25,
-        cost: 500,
-        keeps: true,
         testRisk: 0.6,
       },
     ],
@@ -247,8 +230,6 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
         testRisk: 0.72,
         appeal: 1.08,
         // The OTA server is set up once and every device after it reports home to the same one.
-        cost: 450,
-        keeps: true,
       },
     ],
   },
@@ -309,10 +290,9 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
       {
         label: 'Fusion Pro',
         stars: 5,
-        blurb: 'Assemblies, CAM and simulation in one place. A seat each, every month.',
+        blurb: 'Assemblies, CAM and simulation in one place.',
         quality: 0.06,
         work: 0.85,
-        perSeat: 520,
         print: 0.9,
       },
     ],
@@ -373,13 +353,10 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
       {
         label: 'Full simulation',
         stars: 5,
-        blurb: 'Stress, thermal and motion on a solver the space owns. The test rarely surprises anyone.',
+        blurb: 'Stress, thermal and motion on a proper solver. The test rarely surprises anyone.',
         work: 1.6,
         quality: 0.05,
         testRisk: 0.55,
-        // A solver licence and a workstation that can run it: bought once, used by every build.
-        cost: 600,
-        keeps: true,
       },
     ],
   },
@@ -408,7 +385,6 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
         blurb: 'A translated build book and a Saturday workshop. The neighbourhood remembers.',
         work: 1.6,
         appeal: 1.35,
-        cost: 400,
         quality: 0.03,
       },
     ],
@@ -454,9 +430,7 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
       {
         label: 'Cloud',
         stars: 3,
-        blurb: 'Hosted and scaled. The first one sets up an account the space keeps.',
-        cost: 500,
-        keeps: true,
+        blurb: 'Hosted and scaled. The brief as written.',
       },
       {
         label: 'Hybrid',
@@ -481,12 +455,10 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
       {
         label: 'iOS',
         stars: 3,
-        blurb: 'The phones that pay. A developer account the space keeps.',
+        blurb: 'The phones that pay.',
         work: 1.35,
         appeal: 1.3,
         need: 3,
-        cost: 400,
-        keeps: true,
       },
       { label: 'Desktop', stars: 3, blurb: 'Windows, macOS, Linux — offices still live here.', work: 1.25, appeal: 1.15, need: 2 },
     ],
@@ -544,11 +516,10 @@ export const AXES: Record<DesignAxisId, DesignAxis> = {
       {
         label: 'Brushless + servo',
         stars: 5,
-        blurb: 'Smooth, precise and controlled — and somebody on the crew has to solder the driver.',
+        blurb: 'Smooth, precise and controlled.',
         work: 1.2,
         appeal: 1.22,
         quality: 0.03,
-        needAlso: { wing: 'electronics', level: 2 },
       },
     ],
   },
@@ -580,14 +551,40 @@ export function optionLevel(option: DesignOption): number {
 }
 
 /**
- * How many levels the crew is short of an option (design §5.4) — the price of reaching,
- * not a lock. The crew's levels unknown (a harness), nobody is short.
+ * **Is this option out of the crew's reach?** (§4c) An option needs somebody on the crew at
+ * its level in the project's wing; short of that it is locked, and the card says which
+ * level would open it. It was a price for a while — pick it anyway and pay in work and test
+ * risk — which was one more sum to hold in your head for a choice the crew already made.
+ * The crew's levels unknown (a harness), nothing is locked.
  */
-export function shortBy(option: DesignOption, wing: ProjectCategory, levels?: Partial<Record<ProjectCategory, number>>): number {
-  if (!levels) return 0;
-  const main = Math.max(0, optionLevel(option) - (levels[wing] ?? 0));
-  const also = option.needAlso ? Math.max(0, option.needAlso.level - (levels[option.needAlso.wing] ?? 0)) : 0;
-  return main + also;
+export function isLocked(option: DesignOption, wing: ProjectCategory, levels?: Partial<Record<ProjectCategory, number>>): boolean {
+  if (!levels) return false;
+  return (levels[wing] ?? 0) < optionLevel(option);
+}
+
+/**
+ * The design, with every choice the crew cannot back taken down to the best it can (§4c):
+ * a single choice steps down a star at a time, a platform the crew cannot build is switched
+ * off. One star needs nobody, so every axis always has an answer.
+ */
+export function clampDesign(
+  category: ProjectCategory,
+  design: DesignChoice,
+  levels?: Partial<Record<ProjectCategory, number>>,
+): DesignChoice {
+  const out: DesignChoice = { ...design };
+  for (const axis of CATEGORY_AXES[category]) {
+    const options = AXES[axis].options;
+    if (isMulti(axis)) {
+      const bits = Math.round(out[axis] ?? 0);
+      out[axis] = options.reduce((acc, option, i) => ((bits & (1 << i)) && !isLocked(option, category, levels) ? acc | (1 << i) : acc), 0);
+      continue;
+    }
+    let index = Math.max(0, Math.min(2, Math.round(out[axis] ?? 1)));
+    while (index > 0 && isLocked(options[index], category, levels)) index -= 1;
+    out[axis] = index;
+  }
+  return out;
 }
 
 /**
@@ -605,12 +602,6 @@ export const TECH_LABELS: Record<ProjectCategory, [string, string, string]> = {
   comms: ['WiFi / BLE', 'LoRa', 'SDR'],
   mechanical: ['PLA prints', 'PETG / carbon', 'CNC aluminium'],
 };
-
-/** The best a build can be, given the best in its wing on the crew (design §4.2). */
-export function ceilingFor(level: number | undefined): number {
-  if (level === undefined) return 1;
-  return Math.min(1, DESIGN.ceilingBase + DESIGN.ceilingPerLevel * level);
-}
 
 /** Crew sizes the wizard offers. Ten is the large table, full. */
 export const SEAT_OPTIONS = [1, 2, 4, 6, 8, 10];
@@ -672,7 +663,7 @@ export interface PlanSummary {
   parts: Part[];
   bomCost: number;
   leadDays: number;
-  /** Licences and tools, paid at the pitch on top of the parts. */
+  /** The design budget, paid at the pitch on top of the parts. */
   tooling: number;
   /** Quality from the design choices alone. */
   designQuality: number;
@@ -686,56 +677,11 @@ export interface PlanSummary {
   missing: MachineType[];
   /** 0-5, for the stars on the review screen. */
   stars: number;
-  /** Seat licences this plan still has to buy — the ones the space owns are not charged. */
-  newLicences: { key: string; seats: number; cost: number }[];
   /** The technology tier the crew brings (0-2), from its best level in the wing. */
   tech: 0 | 1 | 2;
-  /** The best quality this crew can reach (design §4.2). */
-  ceiling: number;
-  /** Levels the crew is short across every choice — what the plan is paying for reaching. */
-  short: number;
 }
 
-/**
- * **A licence is the space's, not the project's** (§4c). A per-seat option — a Full IDE,
- * Fusion Pro — is bought once per seat and kept, so the next build only pays for chairs
- * nobody has a licence for yet. It used to be charged afresh on every project, which made
- * the five-star tool a tax on shipping rather than an investment in it.
- */
-export type Licences = Record<string, number>;
-
-export function licenceKey(axis: DesignAxisId, index: number): string {
-  return `${axis}:${index}`;
-}
-
-/**
- * What an option's kept purchases cost for a crew this size, given what the space already
- * owns: seat licences per chair, and infrastructure (`keeps`) once. Everything else about
- * the option is the project's own and is charged every time.
- */
-export function licenceCost(
-  axis: DesignAxisId,
-  index: number,
-  seats: number,
-  licences: Licences = {},
-): { cost: number; missing: number; owned: number } {
-  const option = AXES[axis].options[index];
-  if (option.keeps && option.cost) {
-    const owned = licences[licenceKey(axis, index)] ?? 0;
-    return owned ? { cost: 0, missing: 0, owned } : { cost: option.cost, missing: 1, owned: 0 };
-  }
-  if (!option.perSeat) return { cost: 0, missing: 0, owned: 0 };
-  const owned = licences[licenceKey(axis, index)] ?? 0;
-  const missing = Math.max(0, Math.max(1, seats) - owned);
-  return { cost: missing * option.perSeat, missing, owned };
-}
-
-export function planProject(
-  def: ProjectDef,
-  plan: ProjectPlan,
-  owned: MachineType[] = [],
-  licences: Licences = {},
-): PlanSummary {
+export function planProject(def: ProjectDef, plan: ProjectPlan, owned: MachineType[] = []): PlanSummary {
   const axes = CATEGORY_AXES[def.category];
   const work = {} as Record<StageKey, number>;
   // The size of the build sets its scale (§4): the catalogue gives the proportions.
@@ -753,16 +699,14 @@ export function planProject(
   let skipSim = false;
   let stars = 0;
   const needs = new Set<MachineType>();
-  const newLicences: PlanSummary['newLicences'] = [];
 
   // Every option chosen, the multi-select axis contributing one per platform switched on.
-  const chosen: { axis: DesignAxisId; index: number; option: DesignOption }[] = axes.flatMap((axis) =>
+  const chosen: { axis: DesignAxisId; option: DesignOption }[] = axes.flatMap((axis) =>
     isMulti(axis)
-      ? picked(axis, plan.design).map((index) => ({ axis, index, option: AXES[axis].options[index] }))
-      : [{ axis, index: Math.max(0, Math.min(2, Math.round(plan.design[axis] ?? 1))), option: optionOf(axis, plan.design) }],
+      ? picked(axis, plan.design).map((index) => ({ axis, option: AXES[axis].options[index] }))
+      : [{ axis, option: optionOf(axis, plan.design) }],
   );
-  let short = 0;
-  for (const { axis, index, option } of chosen) {
+  for (const { axis, option } of chosen) {
     stars += isMulti(axis) ? 0 : option.stars;
     designQuality += option.quality ?? 0;
     appeal *= option.appeal ?? 1;
@@ -770,21 +714,7 @@ export function planProject(
     bom *= option.bom ?? 1;
     print *= option.print ?? 1;
     lead += option.lead ?? 0;
-    // Reaching past the crew is allowed, and priced (design §5.4): slower and riskier.
-    const gap = shortBy(option, def.category, plan.levels);
-    short += gap;
-    const stretch = Math.pow(DESIGN.shortWork, gap);
-    testRisk *= Math.pow(DESIGN.shortRisk, gap);
-    for (const stage of AXES[axis].stages) work[stage] = work[stage] * stretch;
-    const seat = licenceCost(axis, index, plan.seats, licences);
-    if (seat.missing) {
-      newLicences.push({
-        key: licenceKey(axis, index),
-        seats: option.keeps ? 1 : Math.max(1, plan.seats),
-        cost: seat.cost,
-      });
-    }
-    tooling += optionCost(def, option) + (option.keeps ? 0 : (option.cost ?? 0)) + seat.cost;
+    tooling += optionCost(def, option);
     bom *= DESIGN.starBom[option.stars];
     if (option.skipSim) skipSim = true;
     for (const machine of option.requires ?? []) needs.add(machine);
@@ -810,10 +740,9 @@ export function planProject(
   // to nothing, it would read as a stage the build skips.
   for (const key of STAGE_ORDER) work[key] = work[key] > 0 ? Math.max(1, Math.round(work[key])) : 0;
 
-  // A print order has nothing to design: no budget, no licences, and nothing to simulate.
+  // A print order has nothing to design: no budget, and nothing to simulate.
   if (def.order) {
     tooling = 0;
-    newLicences.length = 0;
     skipSim = true;
   }
   const team = teamFit(plan.seats, def.teamSize);
@@ -835,10 +764,7 @@ export function planProject(
     skipSim,
     missing: [...needs].filter((machine) => !owned.includes(machine)),
     stars: stars / Math.max(1, axes.filter((axis) => !isMulti(axis)).length),
-    newLicences,
     tech: tier,
-    ceiling: ceilingFor(level),
-    short,
   };
 }
 
@@ -866,29 +792,9 @@ export function optionCost(def: ProjectDef, option: DesignOption): number {
   return Math.round(DESIGN.starBudget[option.stars] * (DESIGN.budgetBase + DESIGN.budgetShare * def.payout));
 }
 
-/** The skill level an option asks of somebody on the crew. */
-export function optionNeeds(option: DesignOption): number {
-  return DESIGN.starSkill[option.stars];
-}
-
 /** The best level anybody on the crew has in a skill; 0 for an empty crew. */
 export function crewBest(crew: { skills: Record<SkillKey, number> }[], skill: SkillKey): number {
   return Math.max(0, ...crew.map((m) => m.skills[skill] ?? 0));
-}
-
-/**
- * Can this crew use this option? One star is always on the table. **The level asked is in
- * the project's wing** (design §5): a five-star enclosure on a drone needs a Senior Makineci,
- * the same enclosure on a radio needs a Senior Haberleşmeci.
- */
-export function optionAvailable(
-  axis: DesignAxisId,
-  index: number,
-  crew: { skills: Record<SkillKey, number> }[],
-  wing: ProjectCategory,
-): boolean {
-  const option = AXES[axis].options[index];
-  return crewBest(crew, wing) >= optionNeeds(option);
 }
 
 /**
@@ -900,10 +806,10 @@ export function defaultPlan(
   maxSeats = 10,
   crew?: { skills: Record<SkillKey, number> }[],
 ): ProjectPlan {
-  // The brief as written. No option is locked any more (§5.4): a crew short of it pays for
-  // reaching, so the default stays the default and the crew only sets the levels.
-  const design = defaultDesign(def.category);
-  return { design, seats: Math.max(1, Math.min(def.teamSize, maxSeats)), levels: crew ? crewLevels(crew) : undefined };
+  // The brief as written, stepped down wherever the crew cannot back it.
+  const levels = crew ? crewLevels(crew) : undefined;
+  const design = clampDesign(def.category, defaultDesign(def.category), levels);
+  return { design, seats: Math.max(1, Math.min(def.teamSize, maxSeats)), levels };
 }
 
 /** The crew's best level in each wing — what a plan reads its technology and prices from. */
@@ -951,47 +857,6 @@ export function retryDays(summary: PlanSummary, seats: number): number {
   return Math.max(1, Math.round((iterate + reprint + 1) * 2) / 2);
 }
 
-/**
- * What the client asked for (design §5.4): one or two wishes per brief, the same every
- * time for the same brief. Own projects and print orders ask nothing.
- */
-export function wishesFor(def: ProjectDef): Wish[] {
-  if (def.custom || def.order) return [];
-  let h = 2166136261;
-  for (let i = 0; i < def.id.length; i += 1) h = Math.imul(h ^ def.id.charCodeAt(i), 16777619);
-  h >>>= 0;
-  const days = { small: 2, medium: 6, large: 9 }[def.tier];
-  const scopeAxis = CATEGORY_AXES[def.category].find((axis) => axis !== 'approach' && !isMulti(axis));
-  const pool: Wish[] = [
-    { kind: 'stars', min: def.tier === 'large' ? 4 : 3 },
-    { kind: 'days', within: days },
-  ];
-  if (def.category === 'software') pool.push({ kind: 'platform', bit: h % 3 === 0 ? 1 : 0 });
-  if (scopeAxis) pool.push({ kind: 'scope', axis: scopeAxis, min: 2 });
-  const first = pool[h % pool.length];
-  const second = pool[(h >>> 4) % pool.length];
-  return (h >>> 8) % 3 === 0 || first === second ? [first] : [first, second];
-}
-
-/** Was a wish met at release? */
-export function wishMet(wish: Wish, got: { quality: number; design: DesignChoice; days: number }): boolean {
-  switch (wish.kind) {
-    case 'stars':
-      return qualityStars(got.quality) >= wish.min;
-    case 'platform':
-      return (Math.round(got.design.platforms ?? 0) & (1 << wish.bit)) !== 0;
-    case 'scope':
-      return Math.round(got.design[wish.axis] ?? 1) >= wish.min;
-    case 'days':
-      return got.days <= wish.within;
-  }
-}
-
-/** Would this plan meet the wish, as far as a plan can say (quality and days are forecasts)? */
-export function wishPlanned(wish: Wish, plan: ProjectPlan, quality: number, days: number): boolean {
-  return wishMet(wish, { quality, design: plan.design, days });
-}
-
 export type Preset = 'fast' | 'best' | 'profit';
 
 /**
@@ -1001,7 +866,7 @@ export type Preset = 'fast' | 'best' | 'profit';
  * that wins on the preset's measure is kept. The crew's levels are in, so a plan that
  * reaches too far loses on its own numbers.
  */
-export function presetDesign(def: ProjectDef, preset: Preset, plan: ProjectPlan, owned: MachineType[] = [], licences: Licences = {}): DesignChoice {
+export function presetDesign(def: ProjectDef, preset: Preset, plan: ProjectPlan, owned: MachineType[] = []): DesignChoice {
   const axes = CATEGORY_AXES[def.category];
   let designs: DesignChoice[] = [{}];
   for (const axis of axes) {
@@ -1009,16 +874,21 @@ export function presetDesign(def: ProjectDef, preset: Preset, plan: ProjectPlan,
     designs = designs.flatMap((d) => values.map((v) => ({ ...d, [axis]: v })));
   }
   const score = (design: DesignChoice): number => {
-    const summary = planProject(def, { ...plan, design }, owned, licences);
+    const summary = planProject(def, { ...plan, design }, owned);
     if (summary.missing.length) return -Infinity;
-    const quality = Math.min(summary.ceiling, 0.45 + summary.designQuality);
+    const quality = 0.45 + summary.designQuality;
     const days = forecastDays(summary, plan.seats);
     const pay = def.payout * summary.appeal * qualityPay(quality) - summary.tooling;
     if (preset === 'fast') return -days * 1000 + quality;
     if (preset === 'best') return quality * 1000 + summary.appeal;
     return pay / days;
   };
-  return designs.reduce((best, d) => (score(d) > score(best) ? d : best), designs[0]);
+  // Only what the crew can back: a preset never picks a locked card.
+  const open = designs.filter((d) => {
+    const clamped = clampDesign(def.category, d, plan.levels);
+    return axes.every((axis) => Math.round(clamped[axis] ?? 0) === Math.round(d[axis] ?? 0));
+  });
+  return open.reduce((best, d) => (score(d) > score(best) ? d : best), open[0] ?? defaultDesign(def.category));
 }
 
 /** What a plan promises at the pitch: the review screen's numbers, and the ship report's yardstick. */
@@ -1031,7 +901,6 @@ export interface BuildForecast {
   /** Chance the first test fails, and what that adds. */
   fail: number;
   retry: number;
-  wishes: { wish: Wish; ok: boolean }[];
   payout: number;
   hype: number;
 }
@@ -1050,25 +919,21 @@ export function forecastBuild(
   plan: ProjectPlan,
   summary: PlanSummary,
   crew: number[],
-  market: { demand: number; built: number; hypeMultiplier?: number },
+  market: { demand: number; built: number },
 ): BuildForecast {
   const craft = crew.length ? crew.reduce((sum, level) => sum + level, 0) / crew.length / 5 : 0.5;
   const team = teamFit(Math.max(1, crew.length || plan.seats), def.teamSize);
-  const quality = Math.max(0.05, Math.min(summary.ceiling, craft + summary.designQuality + team.quality));
+  const quality = Math.max(0.05, Math.min(1, craft + summary.designQuality + team.quality));
   const clean = forecastDays(summary, plan.seats);
   const fail = testFailChance(quality, summary.testRisk);
   const retry = retryDays(summary, plan.seats);
   // Each failure is likelier to be the last: the attempt bonus makes a second one rarer.
   const second = fail * testFailChance(quality, summary.testRisk, 1);
   const days = Math.round((clean + (fail + second) * retry) * 2) / 2;
-  const wishes = wishesFor(def).map((wish) => ({ wish, ok: wishPlanned(wish, plan, quality, days) }));
-  const met = wishes.filter((w) => w.ok).length;
   const novelty = Math.max(REPEAT.floor, REPEAT.falloff ** market.built);
-  const payout = Math.round(def.payout * novelty * market.demand * summary.appeal * qualityPay(quality) * (1 + DESIGN.wishPay * met));
-  const hype = Math.round(
-    def.hype * (market.hypeMultiplier ?? 1) * novelty * Math.sqrt(summary.appeal) * qualityHype(quality) * (1 + DESIGN.wishHype * met),
-  );
-  return { quality, days, clean, fail, retry, wishes, payout, hype };
+  const payout = Math.round(def.payout * novelty * market.demand * summary.appeal * qualityPay(quality));
+  const hype = Math.round(def.hype * novelty * Math.sqrt(summary.appeal) * qualityHype(quality));
+  return { quality, days, clean, fail, retry, payout, hype };
 }
 
 /**

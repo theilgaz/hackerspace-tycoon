@@ -37,10 +37,6 @@ export class Machine {
 
   queue: Job[] = [];
   current: Job | null = null;
-  /** 0-1; drifts down with use and pushes failure odds up. */
-  calibration = 0.92;
-  consumable: number;
-  readonly consumableMax: number;
   /** Set while a member stands at the machine — lowers failure odds. */
   operatorSkill = 0;
   /** Kit the space owns that changes the odds, e.g. a filament dry box. */
@@ -55,13 +51,14 @@ export class Machine {
   /** The machine's own contribution to failure odds, separate from the space's kit. */
   reliability = 1;
 
-  constructor(def: StationDef, consumableMax = 0, opts: { speed?: number; reliability?: number } = {}) {
+  /** Grams of filament used since the last statement; the sim bills it and zeroes it (§7a). */
+  filamentUsed = 0;
+
+  constructor(def: StationDef, opts: { speed?: number; reliability?: number } = {}) {
     this.def = def;
     this.id = def.id;
     this.type = def.type;
     this.label = def.label;
-    this.consumableMax = consumableMax;
-    this.consumable = consumableMax;
     this.speed = opts.speed ?? 1;
     this.reliability = opts.reliability ?? 1;
   }
@@ -98,17 +95,15 @@ export class Machine {
 
   /**
    * Chance this job fails at some point over its full remaining duration.
-   * §13.3 — weights between machine calibration, operator skill and material.
+   * §13.3 — weights between the machine, operator skill and the job's length.
    */
   jobFailureChance(job: Job): number {
-    const calibrationTerm = 1 + (1 - this.calibration) * (MACHINE.calibrationPenalty - 1);
     const operatorTerm = Math.pow(MACHINE.operatorSkillFactor, Math.max(0, this.operatorSkill - 1));
     // Longer jobs are riskier in absolute terms, which is the whole point of the 11-hour print.
     const lengthTerm = 0.75 + job.hoursRequired / 16;
     return Math.min(
       0.9,
       MACHINE.baseJobFailure *
-        calibrationTerm *
         operatorTerm *
         lengthTerm *
         this.failureModifier *
@@ -117,18 +112,9 @@ export class Machine {
     );
   }
 
-  /** True when the machine physically cannot start work: nothing left to make it from. */
-  get starved(): boolean {
-    return this.consumableMax > 0 && this.consumable <= 0;
-  }
-
   /** Advance by `dt` sim-hours. Returns a result when the current job resolves. */
   tick(dt: number): JobResult | null {
     if (!this.current) {
-      // An empty spool means the machine waits, not that it burns through the queue
-      // failing every job instantly. Without this, going broke produces hundreds of
-      // failures in a few days instead of one idle printer.
-      if (this.starved) return null;
       const next = this.queue.shift();
       if (!next) return null;
       this.current = next;
@@ -139,19 +125,13 @@ export class Machine {
     // would take on the machine the space started with.
     const step = Math.min(dt * this.speed, job.hoursRequired - job.progress);
 
-    // Consumable draw is proportional to progress; running dry kills the job.
-    if (this.consumableMax > 0) {
-      const draw = (step / job.hoursRequired) * job.material;
-      if (this.consumable < draw) {
-        this.consumable = 0;
-        return this.fail(job, 'fail.noFilament');
-      }
-      this.consumable -= draw;
-      job.materialDrawn += draw;
-    }
+    // Filament is drawn as the job goes, and never runs out: it is bought as it is used and
+    // lands on the monthly statement, like the power (§5). A failed print wastes what it drew.
+    const draw = (step / job.hoursRequired) * job.material;
+    job.materialDrawn += draw;
+    this.filamentUsed += draw;
 
     job.progress += step;
-    this.calibration = Math.max(0, this.calibration - MACHINE.calibrationDrift * step);
 
     // Continuous hazard: convert whole-job failure odds into a per-slice roll.
     const total = this.jobFailureChance(job);
@@ -174,20 +154,10 @@ export class Machine {
   }
 
   private failureReason(): FailureReason {
-    // Keys, not sentences: the log renders them in whatever language is on screen. The lists
-    // keep their length and order, so the RNG stream — and every harness — is unchanged.
-    if (this.calibration < MACHINE.calibrationWarning) {
-      return rng.pick<FailureReason>(['fail.adhesion', 'fail.firstLayer', 'fail.nozzle']);
-    }
-    return rng.pick<FailureReason>(['fail.spaghetti', 'fail.layerShift', 'fail.thermal', 'fail.gantry']);
-  }
-
-  calibrate(dt: number) {
-    this.calibration = Math.min(1, this.calibration + MACHINE.calibrationRestore * dt);
-  }
-
-  refill(grams: number) {
-    this.consumable = Math.min(this.consumableMax, this.consumable + grams);
+    // Keys, not sentences: the log renders them in whatever language is on screen.
+    return rng.pick<FailureReason>([
+      'fail.spaghetti', 'fail.layerShift', 'fail.thermal', 'fail.gantry', 'fail.adhesion', 'fail.firstLayer', 'fail.nozzle',
+    ]);
   }
 
   private jobSnapshot(job: Job): JobSnapshot {
@@ -208,9 +178,6 @@ export class Machine {
       label: this.label,
       tile: this.def.tile,
       running: this.running,
-      calibration: this.calibration,
-      consumable: this.consumable,
-      consumableMax: this.consumableMax,
       current: this.current ? this.jobSnapshot(this.current) : null,
       queue: this.queue.map((j) => this.jobSnapshot(j)),
       risk: this.current ? this.jobFailureChance(this.current) : 0,

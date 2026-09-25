@@ -9,6 +9,7 @@
  * any of them fails.
  */
 import { Simulation } from '@/systems/Simulation';
+import { answerDilemma } from './dilemma';
 import { store, emptyRuntime } from '@/game/store';
 import { rng } from '@/utils/rng';
 import { freshMarket } from '@/utils/market';
@@ -69,6 +70,7 @@ const step = (hours: number) => {
     }
     sim.tick(0.125, 1);
     if (store.getState().bill) store.getState().setBill(null);
+    answerDilemma(sim);
   }
 };
 let keepAway = true;
@@ -143,6 +145,7 @@ const stepBig = (hours: number) => {
     }
     sim.tick(0.125, 1);
     if (store.getState().bill) store.getState().setBill(null);
+    answerDilemma(sim);
   }
 };
 // Into tomorrow's working day with everybody but the two rostered in.

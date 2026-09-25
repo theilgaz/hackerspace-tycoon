@@ -209,6 +209,18 @@ export const furnitureSeats = (def: FurnitureDef): number => def.seats ?? SEATS[
  * as its model; the kit the garage came with, and anything saved before variants, is the
  * plain one of its kind — the first entry of that type.
  */
+/**
+ * What a piece can be upgraded to (§4d): the same kind of seat, bigger. The garage's own kit
+ * cannot be sold, but it can be traded in for its bench — the room grows without a second
+ * desk where the first one stood.
+ */
+export const UPGRADES: Record<string, string[]> = {
+  'software-station': ['long-bench'],
+  'solder-bench': ['maker-bench'],
+  'assembly-table': ['assembly-bench'],
+  'table-small': ['table-large', 'meeting-corner'],
+};
+
 export function furnitureOf(station: { type: MachineType; model?: string }): FurnitureDef | undefined {
   return (station.model ? FURNITURE_MAP[station.model] : undefined) ?? furnitureFor(station.type);
 }

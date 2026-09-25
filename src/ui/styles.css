@@ -122,30 +122,12 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 .bar.bad > i { background: var(--bad); }
 .bar.good > i { background: var(--good); }
 
-/* --- top bar ------------------------------------------------------------ */
-
-#topbar {
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 12px;
-}
-#topbar .clock { font-family: var(--font); font-size: 15px; letter-spacing: 0.04em; }
-#topbar .day { color: var(--muted-foreground); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
-#topbar .sep { width: 1px; height: 22px; background: var(--line); }
-#topbar .stat { display: flex; flex-direction: column; gap: 1px; }
-#topbar .stat b { font-family: var(--font); font-weight: 500; font-size: 13px; white-space: nowrap; }
-#topbar .stat span { font-size: 10px; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.07em; white-space: nowrap; }
-.speeds { display: flex; gap: 4px; }
-.speeds button.active { background: #1d4e49; border-color: #2b6d66; color: #b8f0e7; }
+/* --- top bar: see "the menu bar" at the end of the file ----------------- */
 
 /* --- project ------------------------------------------------------------ */
 
-/* clears the clock panel above it — the clock, your day and the calendar */
-#left { top: 118px; left: 12px; width: 330px; max-height: calc(100vh - 300px); display: flex; flex-direction: column; }
+/* just under the menu bar, and clear of the log in the corner below it */
+#left { top: 46px; left: 12px; width: 330px; max-height: calc(100vh - 150px); display: flex; flex-direction: column; }
 #left .body { overflow-y: auto; overflow-x: hidden; }
 .pipeline { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
 .stage {
@@ -219,9 +201,6 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 
 /* --- log ---------------------------------------------------------------- */
 
-/* The log sits at the top of the right column — the corner your eye returns to. */
-#log { flex: none; max-height: 30vh; display: flex; flex-direction: column; }
-#log .body { overflow-y: auto; padding-top: 8px; }
 .entry { display: flex; gap: 8px; font-size: 11.5px; padding: 2.5px 0; line-height: 1.4; }
 .entry time { font-family: var(--font); color: #5d6878; font-size: 10.5px; flex: none; padding-top: 1px; }
 .entry.good span { color: #9fdc83; }
@@ -271,46 +250,12 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 #overlay .stats b { display: block; font-family: var(--font); font-size: 17px; font-weight: 500; }
 #overlay .stats span { font-size: 9.5px; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.07em; }
 
-/* right-hand column holds members + printer stacked */
-#right {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 300px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: calc(100vh - 92px); /* clear of the build menu */
-}
-#right .panel { position: relative; top: auto; right: auto; width: 100%; min-height: 0; }
-
-/* Two panels share one column, so either can be folded to give the other the room. The
-   log starts folded: two lines is enough to notice something happened, and the roster is
-   what you actually read. */
-#right h2[data-action] { cursor: pointer; user-select: none; display: flex; align-items: center; }
-#right h2[data-action]:hover { color: var(--foreground); }
-#right h2 .fold {
-  margin-left: auto;
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid currentColor;
-  opacity: 0.6;
-  transition: transform 120ms ease;
-}
-#right .panel.folded h2 .fold { transform: rotate(-90deg); }
-#log { flex: 0 1 auto; }
-#log.folded .body { max-height: 58px; overflow: hidden; }
-#log:not(.folded) { flex: 1 1 auto; max-height: none; }
-
 /*
  * Your day, as one line under the clock. Three pixels is the whole panel it replaced.
  * It takes a row of its own — the clock panel is a flex *row*, so a bar dropped into it
  * with `flex: none` and no width simply rendered at zero pixels and was invisible.
  */
 .daybar { height: 3px; margin-top: 7px; border-radius: 2px; flex: 0 0 100%; }
-
 
 /* --- tabs ---------------------------------------------------------------- */
 
@@ -361,7 +306,7 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
   border: 1px solid var(--line);
   white-space: nowrap;
 }
-.chip.hot, .chip.src-trending { background: #33241a; color: #f3a05f; border-color: #55341f; }
+.chip.hot { background: #33241a; color: #f3a05f; border-color: #55341f; }
 .chip.cash, .chip.src-sponsor { background: #1f2f22; color: #8fd88f; border-color: #2f4a33; }
 .chip.src-member { background: #22283a; color: #9db4e8; border-color: #333c55; }
 
@@ -399,7 +344,7 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 .offer-meta .hot { color: #f3a05f; }
 .offer-meta .bad { color: var(--bad); }
 .offer.src-sponsor { border-color: #2f4a33; }
-.offer.src-trending { border-color: #55341f; }
+
 .offer.src-member { border-color: #333c55; }
 .stats-row {
   display: flex;
@@ -413,9 +358,6 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 .locked-note { font-size: 10.5px; color: var(--warn); }
 
 /* --- you ----------------------------------------------------------------- */
-
-
-
 
 /* --- machines ------------------------------------------------------------ */
 
@@ -505,7 +447,6 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 }
 
 /* --- genres -------------------------------------------------------------- */
-
 
 .cat-group {
   margin-bottom: 14px;
@@ -600,39 +541,6 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
   font-size: 12.5px;
 }
 
-#bottombar {
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 6px;
-  padding: 6px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  backdrop-filter: blur(14px);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
-}
-.bar-item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-width: 74px;
-  padding: 8px 12px 7px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 9px;
-}
-.bar-item:hover:not(:disabled) { background: #232b36; border-color: var(--line); }
-.bar-item.active { background: #1d4e49; border-color: #2b6d66; }
-.bar-icon { font-size: 18px; line-height: 1; }
-.bar-label { font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted-foreground); white-space: nowrap; }
-.bar-item.active .bar-label { color: #b8f0e7; }
-.bar-item .pip { position: absolute; top: 4px; right: 8px; }
-
 /* --- the Jobs wizard ----------------------------------------------------- */
 
 .modal-backdrop {
@@ -707,8 +615,6 @@ button.tiny { padding: 2px 6px; font-size: 11px; line-height: 1.3; }
 .step.now { color: var(--text); font-weight: 600; }
 .step.now i { background: var(--accent); color: #0e1a19; }
 .step-sep { color: #3b444f; font-size: 11px; }
-
-
 
 button.primary { padding: 9px 12px; font-size: 12.5px; }
 
@@ -970,17 +876,6 @@ button.primary { padding: 9px 12px; font-size: 12.5px; }
 .breakdown { gap: 0 20px; }
 .breakdown-row { border-bottom-color: var(--border); padding: 3.5px 0; font-size: 11.5px; }
 .breakdown-row .mono { color: var(--subtle-foreground); }
-
-.bar-item { min-width: 78px; gap: 4px; border-radius: var(--radius); }
-.bar-item .bar-icon { width: 19px; height: 19px; color: var(--muted-foreground); }
-.bar-item.active .bar-icon { color: var(--primary); }
-.bar-item .bar-label { font-size: 10px; font-weight: 600; }
-.bar-item.active { background: color-mix(in srgb, var(--primary) 13%, transparent); border-color: color-mix(in srgb, var(--primary) 30%, transparent); }
-.bar-item .pip { background: var(--primary); color: var(--primary-foreground); font-weight: 600; }
-#bottombar { background: var(--popover); border-color: var(--border); border-radius: var(--radius-lg); }
-/* A machine wanting calibration or filament says so from the bar, before you open it. */
-.bar-item--alert .bar-icon { color: var(--warn); }
-.bar-item--alert .pip { background: var(--warn); color: #241c05; }
 
 /* badges carry inline icons */
 .ui-badge .ui-icon { width: 11px; height: 11px; opacity: 0.8; }
@@ -1251,6 +1146,9 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 }
 .start-player__input:focus { border-color: var(--ring); }
 .start-player__input::placeholder { color: var(--subtle-foreground); }
+.start-founders { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.start-currency { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.start-section.start-currency > .ui-label { margin-bottom: 0; }
 /* One rhythm for every block, rather than a margin invented per call site. */
 .start-section { margin-top: 20px; }
 .start-section > .ui-label { display: block; margin-bottom: 8px; }
@@ -1502,30 +1400,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .rank-table tbody tr.me td.num.lead { color: var(--primary); }
 .award-key { color: var(--warning); }
 
-/* --- clock in its own corner -------------------------------------------- */
-
-#clockpanel {
-  top: 12px;
-  left: 12px;
-  /* The same width as the bench under it: one column, not two boxes that nearly line up. */
-  width: 330px;
-  box-sizing: border-box;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  row-gap: 0; /* the day bar wraps onto its own line; its margin is the whole spacing */
-  padding: 8px 12px;
-}
-#clockpanel .clock { font-family: var(--font); font-size: 16px; letter-spacing: 0.04em; }
-#clockpanel .day {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted-foreground);
-}
-#clockpanel .speeds { margin-left: auto; }
-
 /* money is a state, not just a number */
 .cash--good { color: var(--success); }
 .cash--warn { color: var(--warning); }
@@ -1547,15 +1421,14 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   text-transform: uppercase;
   color: var(--subtle-foreground);
 }
-.machine-table td.mrow-now, .machine-table td.mrow-meter { padding: 0 7px; }
-.machine-table tr.needs-hand > td:first-child { box-shadow: inset 2px 0 0 var(--warning); }
+.machine-table td.mrow-now { padding: 0 7px; }
+
 .machine-table .space-cell .ui-badge { margin-left: 6px; }
 .mrow-now { min-width: 190px; }
 .mrow-job { display: grid; grid-template-columns: minmax(0, 1fr) 70px auto; align-items: center; gap: 8px; }
 .mrow-job__name { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mrow-job .mono, .mrow-meter .mono { font-size: 10px; color: var(--subtle-foreground); }
-.mrow-meter { width: 130px; white-space: nowrap; }
-.mrow-meter .bar { display: inline-block; width: 60px; vertical-align: middle; margin-right: 6px; }
+.mrow-job .mono { font-size: 10px; color: var(--subtle-foreground); }
+
 .mrow-actions { white-space: nowrap; text-align: right; }
 .mrow-actions .ui-btn { padding: 0 7px; }
 .mrow-actions .ui-icon { width: 13px; height: 13px; margin: 0; }
@@ -2105,7 +1978,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 /* The one line in You that is also a way back: it names what you are on, and clicking it
    opens that build on the bench. */
 
-
 /* --- standing jobs (§3b) --------------------------------------------------
    Three rows that say what each job is for. A role you have to discover by cycling a
    button is a role nobody ever uses. */
@@ -2121,17 +1993,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 }
 .job-row--held { border-color: color-mix(in srgb, var(--primary) 35%, transparent); }
 .job-row .ui-row__main { flex: 1; min-width: 0; }
-.job-pick {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin: -1px 0 4px;
-  padding: 9px 10px 10px;
-  border: 1px solid var(--border);
-  border-top: 0;
-  border-radius: 0 0 9px 9px;
-  background: color-mix(in srgb, var(--muted) 40%, transparent);
-}
 
 /* --- standing jobs (§3b) --------------------------------------------------
    Three rows that say what each job is for, with the holder picked from a list. A role
@@ -2148,61 +2009,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 }
 .job-row--held { border-color: color-mix(in srgb, var(--primary) 35%, transparent); }
 .job-row .ui-row__main { flex: 1; min-width: 0; }
-.job-pick {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin: -5px 0 4px;
-  padding: 11px 10px 10px;
-  border: 1px solid var(--border);
-  border-top: 0;
-  border-radius: 0 0 9px 9px;
-  background: color-mix(in srgb, var(--muted) 40%, transparent);
-}
 
-/* --- keyholders (§3b) -----------------------------------------------------
-   Three slots on one row rather than three full-width rows: it is a small decision made
-   rarely, and it was taking a third of the panel to say so. */
-/* Four jobs: two rows of two rather than four squeezed onto one. */
-.keyholders { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.keyslot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 9px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--card);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  min-width: 0;
-}
-.keyslot:hover { border-color: var(--muted-foreground); }
-.keyslot--held { border-color: color-mix(in srgb, var(--primary) 35%, transparent); }
-.keyslot--open { border-color: var(--primary); }
-.keyslot .icon-chip { width: 26px; height: 26px; flex: none; }
-.keyslot .icon-chip .ui-icon { width: 14px; height: 14px; }
-.keyslot__text { display: flex; flex-direction: column; min-width: 0; }
-.keyslot__role {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--subtle-foreground);
-}
-.keyslot__who {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--foreground);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.keyslot--held .keyslot__who { color: var(--primary); }
 /* The one the game would pick, if you want the obvious answer. */
 .ui-toggle.suggested { border-style: solid; border-color: color-mix(in srgb, var(--warning) 55%, transparent); }
 
@@ -2240,8 +2047,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .candidate__actions .ui-btn--ghost { margin-left: auto; }
 .candidate__why { font-size: 10.5px; color: var(--warning); }
 
-/* Candidates waiting: the People button says so in the accent, like a machine's alert. */
-.bar-item--news .bar-icon { color: var(--primary); }
 
 /* Nine numeric columns once the awards reached seven: tighter cells keep the standings inside
    the modal instead of scrolling sideways. */
@@ -2264,15 +2069,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 /* The wizard is still a fixed box (§4c), just a larger one: three option cards a row with
    their effects spelled out do not fit in 680 without every card wrapping to five lines. */
 .modal--wizard { width: min(780px, calc(100vw - 48px)); height: min(700px, calc(100vh - 80px)); }
-
-/* The bar's call to action reads as a button, not as one more tab. */
-.bar-item--cta {
-  background: color-mix(in srgb, var(--primary) 16%, transparent);
-  border-color: color-mix(in srgb, var(--primary) 38%, transparent);
-}
-.bar-item--cta .bar-icon { color: var(--primary); stroke-width: 2.25; }
-.bar-item--cta .bar-label { color: var(--primary); }
-.bar-item--cta:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 24%, transparent); }
 
 /* Stars: a filled line icon, a half one, and the empty ones drawn too. */
 .stars { display: inline-flex; gap: 1px; align-items: center; }
@@ -2316,8 +2112,13 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .fit-cell b { font-weight: 600; }
 .fit-cell:hover:not(:disabled) { border-color: var(--muted-foreground); }
 .fit-cell:disabled { opacity: 0.35; cursor: not-allowed; }
-.fit-cell--good { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
-.fit-cell--bad { background: color-mix(in srgb, var(--destructive) 12%, transparent); color: var(--destructive); }
+.fit-cell { position: relative; }
+/* What a size does to the plan is a thin line under its number, not a coloured tile. */
+.fit-cell--good::after, .fit-cell--bad::after {
+  content: ''; position: absolute; left: 30%; right: 30%; bottom: 5px; height: 2px; border-radius: 1px;
+}
+.fit-cell--good::after { background: var(--success); }
+.fit-cell--bad::after { background: var(--destructive); opacity: 0.7; }
 .fit-cell[aria-pressed='true'] {
   border-color: var(--foreground);
   color: var(--foreground);
@@ -2348,22 +2149,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .crew-pick__name .ui-icon { width: 12px; height: 12px; color: var(--muted-foreground); }
 .crew-pick[aria-pressed='true'] .crew-pick__name .ui-icon { color: var(--primary); }
 .crew-pick__meta { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted-foreground); }
-.crew-pick__meta .mono { margin-left: auto; }
-.crew-pick__axes { display: inline-flex; gap: 2px; }
-.axis-dot {
-  font-style: normal;
-  font-size: 9px;
-  width: 14px;
-  height: 14px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 3px;
-  background: var(--muted);
-  color: var(--subtle-foreground);
-}
-.axis-dot--3 { background: color-mix(in srgb, var(--primary) 18%, transparent); color: var(--primary); }
-.axis-dot--5 { background: color-mix(in srgb, var(--gold) 22%, transparent); color: var(--gold); }
-
 /* Review step: the four numbers the plan comes down to. */
 .review-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
 .review-stat {
@@ -2436,74 +2221,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 *::-webkit-scrollbar-thumb:hover { background-color: var(--subtle-foreground); }
 *::-webkit-scrollbar-corner { background: transparent; }
 
-/* --- the top bar, as four groups rather than eight boxes ------------------ */
-#topbar { gap: 0; padding: 7px 8px; }
-/* **Between the clock and the log, never over either.** Centred on the window, the bar slid
-   under the clock panel on anything narrower than about 1500px and sat on top of the speed
-   buttons, so 3× could not be pressed on a laptop. It is centred in the band the two side
-   columns leave (12 + 330 + 12 on the left, 12 + 300 + 12 on the right). */
-#topbar {
-  left: 354px;
-  right: 324px;
-  transform: none;
-  width: fit-content;
-  max-width: calc(100vw - 678px);
-  margin: 0 auto;
-}
-#topbar .tb-group {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 2px 16px;
-  border-left: 1px solid var(--border);
-  min-width: 0;
-}
-#topbar .tb-group:first-child { border-left: none; padding-left: 6px; }
-#topbar .tb-identity { gap: 10px; }
-/* The badge and the name are one button: they open your own page on the standings. */
-#topbar .tb-me {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: -4px -6px;
-  padding: 4px 6px;
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-#topbar .tb-me:hover { background: var(--muted); }
-#topbar .tb-icon { display: grid; place-items: center; color: var(--subtle-foreground); }
-#topbar .tb-icon .ui-icon { width: 16px; height: 16px; }
-#topbar .tb-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-#topbar .tb-name { font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--foreground); }
-#topbar .tb-value { font-family: var(--font); font-size: 14px; font-weight: 500; white-space: nowrap; color: var(--foreground); }
-#topbar .tb-value small { font-size: 10.5px; color: var(--subtle-foreground); margin-left: 1px; }
-#topbar .tb-sub { font-size: 10.5px; color: var(--muted-foreground); white-space: nowrap; }
-#topbar .tb-sub em { font-style: normal; font-family: var(--font); }
-#topbar .tb-meter { display: block; width: 88px; height: 4px; border-radius: 3px; background: var(--muted); overflow: hidden; }
-#topbar .tb-meter > i { display: block; height: 100%; background: var(--warning); border-radius: 3px; }
-#topbar .season { margin-left: 8px; }
-#topbar .lang-toggle { margin-left: 6px; }
-/* Narrower windows: the same four groups, tighter. The band between the side columns is
-   under 800px below about 1480px wide, so the gaps close, the meters shorten, and the
-   season keeps its day count while its bar goes; at laptop widths the small second lines
-   go too — the figures stay, and each group's tooltip still says what they are. */
-@media (max-width: 1480px) {
-  #topbar .tb-group { padding: 2px 10px; gap: 7px; }
-  #topbar .tb-meter { width: 52px; }
-  #topbar .season-bar, #topbar .season-label { display: none; }
-  #topbar .season { margin-left: 4px; }
-}
-@media (max-width: 1360px) {
-  #topbar .tb-sub { display: none; }
-  #topbar .tb-group { padding: 2px 8px; }
-  #topbar .tb-icon { display: none; }
-}
-
 /* A design option the crew cannot back yet says why, in place (§4c). */
 .design-option--locked { opacity: 0.55; }
 .design-option--locked:disabled { opacity: 0.55; }
@@ -2515,7 +2232,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   color: var(--warning);
 }
 .design-lock .ui-icon { width: 11px; height: 11px; }
-
 
 /* What the space already has reads the same on every shelf: a green edge and a tick, never
    the item's own colour — which painted every owned card a different border. */
@@ -2535,66 +2251,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 }
 .build-owned .ui-icon { width: 11px; height: 11px; stroke-width: 2.5; }
 
-/* --- the socials: what on the left, where on the right (§6) --------------- */
-.social { display: grid; grid-template-columns: 260px 1fr; gap: 18px; min-height: 0; }
-.social-left, .social-right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.social-subjects { display: flex; flex-direction: column; gap: 2px; }
-.social-subject {
-  display: grid;
-  grid-template-columns: 1fr 52px 34px;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted-foreground);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-.social-subject:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
-.social-subject.on { background: var(--card-hover); border-color: var(--border-strong); color: var(--foreground); }
-.social-subject:disabled { opacity: 0.45; cursor: default; }
-.social-subject__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.social-subject__meter, .social-room__fit { display: block; height: 4px; border-radius: 3px; background: var(--muted); overflow: hidden; }
-.social-subject__meter > i, .social-room__fit > i { display: block; height: 100%; background: var(--primary); }
-.social-subject__val { font-family: var(--font); font-size: 10.5px; text-align: right; color: var(--subtle-foreground); }
-.social-subject__val .ui-icon { width: 12px; height: 12px; color: var(--success); }
-.social-claims button { font-size: 11px; }
-.social-rooms { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.social-room {
-  display: grid;
-  grid-template-columns: 22px 1fr 64px 76px auto;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-}
-.social-room:first-child { border-top: none; }
-.social-room__icon { color: var(--subtle-foreground); display: grid; place-items: center; }
-.social-room__icon .ui-icon { width: 15px; height: 15px; }
-.social-room__name { display: flex; align-items: center; gap: 7px; color: var(--foreground); min-width: 0; }
-.social-best {
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--primary);
-}
-.social-room__votes { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; font-family: var(--font); font-size: 12px; color: var(--success); }
-.social-room__votes .ui-icon { width: 12px; height: 12px; }
-.social-room.bad .social-room__votes { color: var(--destructive); font-family: var(--sans); font-size: 11px; }
-.social-room.bad .social-room__name { color: var(--muted-foreground); }
-.social-feed { display: flex; flex-direction: column; gap: 4px; }
-.social-post { display: grid; grid-template-columns: 58px 1fr; gap: 0 8px; font-size: 11px; }
-.social-post__votes { grid-row: span 2; display: inline-flex; align-items: center; gap: 2px; font-family: var(--font); color: var(--success); }
-.social-post__votes .ui-icon { width: 11px; height: 11px; }
-.social-post.bad .social-post__votes { color: var(--destructive); }
-.social-post__what { color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.social-post__where { color: var(--subtle-foreground); font-size: 10px; }
 .moving-note { max-width: 240px; font-size: 11px; color: var(--warning); }
 
 /* Where a space finished, one chip per awards night. */
@@ -2613,13 +2269,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .finish-chip small { font-size: 10px; color: var(--subtle-foreground); white-space: nowrap; }
 .finish-chip--gold { border-color: color-mix(in srgb, var(--gold) 50%, var(--border)); }
 .finish-chip--gold b { color: var(--gold); }
-
-.social-claims { display: flex; width: 100%; }
-.social-claims button { flex: 1; justify-content: center; white-space: nowrap; }
-.social-room { grid-template-columns: 22px minmax(0, 1fr) 64px 76px auto; }
-.social-room__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.social-best { flex: none; white-space: nowrap; }
-.social-room { grid-template-columns: 22px minmax(0, 1fr) 46px 70px auto; }
 
 /* --- the bench: who is on a course ----------------------------------------- */
 .bench-training {
@@ -2746,7 +2395,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
  * the left, what the picked item is in the middle, a wall of pictures on the right: the
  * Sims' Buy mode, because the thing being decided about is the room and it stays in view.
  */
-#bottombar.hidden { display: none; }
 #moving.above-build { bottom: 238px; }
 #buildpanel {
   position: absolute;
@@ -2921,8 +2569,8 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
  */
 #toasts {
   position: absolute;
-  /* Right of the bench, level with its top: the top bar owns the clock's row. */
-  top: 118px;
+  /* Right of the bench, level with its top, under the menu bar. */
+  top: 46px;
   left: 352px;
   display: flex;
   flex-direction: column;
@@ -3082,11 +2730,6 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .ui-input:focus { outline: none; border-color: var(--primary); }
 .own-row { margin-bottom: 10px; cursor: default; border-style: dashed; }
 
-/* The filament shelf row in the Machines panel (§5). */
-.shelf-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 12px; }
-.shelf-row .bar { width: 120px; }
-.shelf-row .ui-icon { width: 14px; height: 14px; }
-
 /* A panel head keeps its title on one line when buttons share the row. */
 .modal-head > b { white-space: nowrap; }
 
@@ -3099,9 +2742,9 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .forecast__item b { font-size: 14px; }
 .forecast__item .ui-desc { font-size: 11px; }
 .design-wishes, .design-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
-.design-wishes .ui-label { margin-right: 4px; }
+
 .design-presets { margin-bottom: 14px; }
-.design-reach { font-size: 11px; line-height: 1.35; color: var(--warning); }
+
 .design-fixed {
   display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px;
   border: 1px dashed var(--border-strong); border-radius: var(--radius); color: var(--muted-foreground); font-size: 12px;
@@ -3114,13 +2757,11 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .design-tech .wing { display: inline-flex; }
 .design-tech .ui-icon { width: 16px; height: 16px; }
 .ui-grid--4 { grid-template-columns: repeat(4, 1fr); }
-.brief-wishes { margin-top: 2px; }
 
 /*
  * The calendar under the clock (§11): today, the year to its awards night as a strip with
  * what is coming on it, and the next thing by name. A press opens the list.
  */
-#clockpanel { z-index: 6; }
 .cal {
   flex: 0 0 100%;
   display: flex;
@@ -3230,31 +2871,504 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .report-crew { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 12px 0 0; font-size: 11.5px; }
 .report-crew .mono { color: var(--muted-foreground); font-size: 10.5px; }
 .report-foot { display: flex; justify-content: space-between; align-items: center; }
-.report-done { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 12px; }
-.report-done svg { width: 14px; height: 14px; flex: none; }
-.report-done.up { color: var(--success); }
-.report-done.down { color: var(--destructive); }
-.campaign-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.campaign-card { position: relative; align-items: stretch; gap: 5px; min-height: 104px; }
-.campaign-card__head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
-.campaign-card__head svg { width: 15px; height: 15px; flex: none; color: var(--primary); }
-.campaign-card .ui-desc { margin: 0; font-size: 11px; }
-.campaign-card__foot { display: flex; justify-content: space-between; margin-top: auto; font-size: 11.5px; }
-.campaign-gain.up { color: var(--success); }
-.campaign-gain.down { color: var(--destructive); }
-.campaign-gain.risk { color: var(--warning); }
-.campaign-card__back { font-size: 10.5px; color: var(--muted-foreground); text-align: right; }
-.campaign-card__back.up { color: var(--success); }
-.report-sales { margin-left: 8px; font-size: 11px; color: var(--muted-foreground); }
-.campaign-card__tag {
-  position: absolute;
-  top: 9px;
-  right: 10px;
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--warning);
-}
-.campaign-card[aria-pressed='true'] { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
 
 .forecast__sub { display: block; margin-top: 2px; font-family: var(--font); font-size: 10px; color: var(--muted-foreground); }
+
+/* =========================================================================
+   The menu bar, the timeline and the log (§11)
+   One strip along the top like a desktop's menu bar, the calendar in the corner under it,
+   and the log as a terminal in the bottom-left: the room gets the rest of the screen.
+   ========================================================================= */
+
+#menubar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 8px;
+  background: color-mix(in srgb, var(--background) 76%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  border-bottom: 1px solid var(--border);
+  z-index: 8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+#menubar .mb-spacer { flex: 1 1 auto; min-width: 8px; }
+#topbar, #bottombar, #stats, #clockpanel, #mb-extras {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 100%;
+  min-width: 0;
+}
+.mb-sep { flex: none; width: 1px; height: 16px; margin: 0 6px; background: var(--border); }
+#topbar .mb-sep { margin-left: 8px; }
+
+/* Who you are: the badge, the name and the lease, one button to your own standings page. */
+.tb-me {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 7px 0 3px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.tb-me:hover { background: var(--muted); }
+.tb-me .icon-chip { width: 20px; height: 20px; border-radius: 5px; }
+.tb-me .icon-chip .ui-icon { width: 12px; height: 12px; }
+.tb-name { font-size: 12.5px; font-weight: 600; color: var(--foreground); }
+.tb-sub { font-size: 11px; color: var(--subtle-foreground); }
+
+/* A menu item: icon and word on one line, a count in a pill after it. */
+.mb-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  font: 500 12px var(--sans);
+  cursor: pointer;
+}
+.mb-item:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.mb-item.active { background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--foreground); }
+.mb-item.active .ui-icon { color: var(--primary); }
+.mb-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.mb-item .ui-icon { width: 14px; height: 14px; flex: none; }
+.mb-item .pip {
+  position: static;
+  min-width: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--muted);
+  color: var(--foreground);
+  font: 600 9.5px/15px var(--font);
+  text-align: center;
+}
+.mb-item--cta { color: var(--primary); }
+.mb-item--cta .pip, .mb-item--news .pip { background: var(--primary); color: var(--primary-foreground); }
+.mb-item--news .ui-icon { color: var(--primary); }
+.mb-item--alert .ui-icon { color: var(--warning); }
+.mb-item--alert .pip { background: var(--warning); color: #241c05; }
+.mb-icon { padding: 0 7px; gap: 4px; font-size: 10.5px; }
+
+/* The figures: money, the name, hands in use. */
+.mb-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  color: var(--subtle-foreground);
+}
+.mb-stat .ui-icon { width: 13px; height: 13px; }
+.mb-stat b { font: 500 12.5px var(--font); color: var(--foreground); }
+.mb-stat b.cash--good { color: var(--success); }
+.mb-stat b.cash--bad { color: var(--destructive); }
+.mb-meter { display: block; width: 40px; height: 3px; border-radius: 2px; background: var(--muted); overflow: hidden; }
+.mb-meter > i { display: block; height: 100%; background: var(--warning); }
+
+/* The clock, the day, the speeds; your day is the thin line under them. */
+#clockpanel { gap: 8px; padding: 0 6px; }
+#clockpanel .clock { font: 600 13px var(--font); letter-spacing: 0.04em; color: var(--foreground); }
+#clockpanel .day { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-foreground); }
+#clockpanel .speeds { display: flex; gap: 1px; }
+.mb-speed {
+  height: 22px;
+  min-width: 26px;
+  padding: 0 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted-foreground);
+  font: 500 11px var(--font);
+  cursor: pointer;
+}
+.mb-speed:hover { background: var(--muted); color: var(--foreground); }
+.mb-speed.active { background: color-mix(in srgb, var(--primary) 18%, transparent); color: var(--primary); }
+#clockpanel .daybar { position: absolute; left: 6px; right: 6px; bottom: 2px; height: 2px; margin: 0; }
+
+/* Narrow windows keep every item and drop the words: the icons and tooltips carry them. */
+@media (max-width: 1360px) {
+  .mb-item:not(.mb-item--cta) .mb-label { display: none; }
+  .tb-sub, #clockpanel .day { display: none; }
+}
+
+/* The timeline: the calendar, alone in the top-right corner. */
+#timeline { top: 44px; right: 12px; width: 280px; padding: 2px; z-index: 6; }
+#timeline .cal { margin: 0; width: 100%; box-sizing: border-box; min-width: 0; }
+#timeline .cal-row { min-width: 0; overflow: hidden; }
+#timeline .cal-next { min-width: 0; }
+#timeline .agenda { left: -2px; width: calc(100% + 4px); }
+
+/* The log: a terminal in the corner — the last two lines, dark at the bottom and fading
+   out upwards, and a press to open the history. */
+#log {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: min(620px, 50vw);
+  box-sizing: border-box;
+  padding: 34px 90px 10px 16px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.6) 45%, transparent 100%);
+  /* Fades out to the right as well as upwards, so it has no edge anywhere. */
+  -webkit-mask-image: linear-gradient(to right, #000 70%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 70%, transparent 100%);
+  cursor: pointer;
+  z-index: 4;
+}
+#log.hidden { display: none; }
+#log .body { padding: 0; max-height: 38vh; overflow-y: auto; }
+#log.folded .body { overflow: hidden; }
+#log.folded .entry:not(:nth-last-child(-n + 2)) { display: none; }
+#log:not(.folded) { padding-top: 90px; }
+#log .entry { font-family: var(--font); font-size: 11px; padding: 1.5px 0; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9); }
+#log .entry span { color: #d7dde6; }
+#log .entry time { color: #6b7686; min-width: 66px; }
+#log .entry.good span { color: #9fdc83; }
+#log .entry.bad span { color: #f09380; }
+#log .entry.warn span { color: #f3c85f; }
+
+/* =========================================================================
+   The wizard, calmed (§4c): quiet text where there were pills, sections where there
+   were cards inside cards.
+   ========================================================================= */
+.ui-clamp-1 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+.demand-text { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted-foreground); }
+.demand-text .ui-icon { width: 12px; height: 12px; }
+.demand-text--hot .ui-icon { color: var(--success); }
+.demand-text--warm .ui-icon { color: var(--primary); }
+.demand-text--cold .ui-icon { color: var(--warning); }
+
+.wing-card { min-height: 0; }
+.wing-card__role { color: var(--muted-foreground); }
+.wing-card__facts { align-items: center; gap: 12px; margin-top: auto; font-size: 11px; color: var(--muted-foreground); }
+.wing-card__facts > span { display: inline-flex; align-items: center; gap: 4px; }
+.wing-card__facts .ui-icon { width: 12px; height: 12px; }
+
+.brief-row { padding: 11px 12px; }
+.brief-row__head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.brief-row__head .wing .ui-icon { width: 14px; height: 14px; }
+.brief-row__facts { margin-left: auto; flex: none; font: 500 11px var(--font); color: var(--muted-foreground); }
+.brief-row .ui-desc { margin: 3px 0 0; }
+.brief-row__needs { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11px; color: var(--warning); }
+.brief-row__needs .ui-icon { width: 12px; height: 12px; }
+
+.np-section { margin-top: 16px; }
+.np-section > .ui-label { display: block; margin-bottom: 8px; }
+.np-section .fit-meter { margin-top: 0; }
+.fit-verdict { margin: 7px 0 0; font-size: 11.5px; }
+
+.fx-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; font-size: 11px; line-height: 1.6; color: var(--muted-foreground); }
+.fx { white-space: nowrap; }
+.fx--good { color: var(--success); }
+.fx--bad { color: color-mix(in srgb, var(--destructive) 85%, var(--foreground)); }
+.fx--price { color: var(--foreground); font-family: var(--font); margin-right: 8px; }
+.fx-sep { font-style: normal; margin: 0 5px; color: var(--subtle-foreground); }
+
+.review-list { margin-top: 14px; }
+.review-list .breakdown-row { padding: 6px 0; font-size: 12px; }
+.review-value { display: inline-flex; align-items: center; gap: 4px; color: var(--foreground); font-size: 11.5px; text-align: right; }
+.review-value .star .ui-icon { width: 11px; height: 11px; }
+
+/* =========================================================================
+   The start screen as a game's menu (§3c): the title large on the left, a short list
+   under it, and the room swaying slowly behind, darkened on the menu's side.
+   ========================================================================= */
+.start-menu {
+  background: linear-gradient(90deg,
+    rgba(11, 13, 17, 0.96) 0%,
+    rgba(11, 13, 17, 0.86) 32%,
+    rgba(11, 13, 17, 0.25) 62%,
+    rgba(11, 13, 17, 0.04) 100%);
+  backdrop-filter: blur(2px);
+}
+.start-menu::before { display: none; }
+.start-side {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  width: min(440px, 100%);
+  margin: auto 0 auto max(24px, 8vw);
+}
+.start-title { display: flex; flex-direction: column; gap: 10px; }
+.start-title__mark { color: var(--primary); }
+.start-title__mark .ui-icon { width: 22px; height: 22px; }
+.start-title h1 {
+  margin: 0;
+  font-size: 46px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  color: var(--foreground);
+}
+.start-title .start-version { align-self: flex-start; margin: 0; }
+
+.start-list { display: flex; flex-direction: column; gap: 2px; margin-left: -14px; }
+.start-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 11px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.start-item:hover:not(.start-item--static) { background: rgba(255, 255, 255, 0.04); border-color: var(--border); }
+.start-item:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.start-item__label { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; color: var(--foreground); }
+.start-item__label .ui-icon { width: 16px; height: 16px; color: var(--muted-foreground); }
+.start-item__sub { display: inline-flex; align-items: center; gap: 6px; margin-left: 24px; font-size: 12px; color: var(--muted-foreground); }
+.start-item__badge .ui-icon { width: 13px; height: 13px; }
+.start-item--primary .start-item__label, .start-item--primary .start-item__label .ui-icon { color: var(--primary); }
+.start-item--static { flex-direction: row; align-items: center; justify-content: space-between; cursor: default; }
+.start-item--static .lang-pick { margin: 0; }
+.start-link {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--subtle-foreground);
+  cursor: pointer;
+}
+.start-link:hover { color: var(--destructive); text-decoration: underline; }
+.start-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -12px 0 -14px -4px;
+  padding: 4px;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.start-back:hover { color: var(--foreground); }
+.start-back .ui-icon { width: 14px; height: 14px; }
+.start-side .start-card { width: 100%; box-sizing: border-box; margin: 0; }
+.start-side .start-confirm { margin: 0; }
+.start-item--static .lang-pick { width: auto; }
+.start-item--static .lang-pick > svg { display: none; }
+/* The game's own chrome waits behind the start screen until the doors open. */
+#ui.pre-start > :not(#start):not(#tour-ring):not(#tour-card) { display: none; }
+body:has(#ui.pre-start) #labels { display: none; }
+
+/* =========================================================================
+   The open card on the bench, calmed: the pipeline is the bar, the crew is a line of
+   names, asking somebody and the parts list are each one press away.
+   ========================================================================= */
+.pipe--bar { display: flex; gap: 3px; margin: 7px 0 6px; }
+.pipe--bar .pipe-seg { height: 4px; }
+.project--open .proj-line { align-items: center; }
+.project--open .proj-line .proj-rating { margin-left: auto; }
+.project--open .proj-line .proj-rating .ui-icon { width: 11px; height: 11px; }
+
+.crew-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 0; margin: 2px 0 10px; font-size: 12px; }
+.crew-line__label {
+  margin-right: 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--subtle-foreground);
+}
+.bench-cands { display: flex; flex-wrap: wrap; gap: 4px; margin: -4px 0 10px; }
+.bench-cands .person.ask { width: auto; }
+
+.project--open .verbs > * { flex: 0 1 auto; }
+.project--open .verbs { gap: 4px; }
+
+.parts-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.parts-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--subtle-foreground);
+  cursor: pointer;
+}
+.parts-toggle .ui-icon { width: 12px; height: 12px; }
+.parts-toggle .mono { letter-spacing: 0; color: var(--muted-foreground); }
+.parts-toggle:hover { color: var(--foreground); }
+.parts-state { font-size: 11px; color: var(--muted-foreground); }
+.parts-line + .part { margin-top: 6px; }
+
+/* The crew as a row of faces (§11): an initial in the wing's colour, the state on the face. */
+.crew-line { align-items: center; }
+.avatars { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.avatar {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tone, var(--muted-foreground)) 22%, var(--card));
+  border: 1.5px solid transparent;
+  color: var(--tone, var(--foreground));
+  font: 600 10.5px var(--sans);
+  cursor: pointer;
+}
+.avatar .ui-icon { width: 11px; height: 11px; }
+/* Working: a ring in their colour. In but not at it: no ring. Not in today: faded. */
+.avatar--busy { border-color: var(--tone); }
+.avatar--off { opacity: 0.38; background: var(--muted); color: var(--muted-foreground); }
+.avatar:hover, .avatar.on { box-shadow: 0 0 0 2px color-mix(in srgb, var(--foreground) 35%, transparent); }
+.avatar--you { --tone: var(--gold); border-color: var(--gold); cursor: default; }
+.avatar--you:hover { box-shadow: none; }
+.avatar--add {
+  width: auto;
+  min-width: 22px;
+  padding: 0 5px;
+  grid-auto-flow: column;
+  gap: 2px;
+  border-radius: 11px;
+  background: none;
+  border: 1.5px dashed var(--border-strong);
+  color: var(--muted-foreground);
+}
+.avatar--add i { font-style: normal; font-size: 10px; }
+.avatar--add:hover, .avatar--add.on { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 55%, transparent); box-shadow: none; }
+
+.person-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: -4px 0 10px;
+  padding: 7px 8px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.person-card .avatar { cursor: default; flex: none; }
+.person-card__text { display: flex; flex-direction: column; min-width: 0; flex: 1; font-size: 11px; color: var(--muted-foreground); }
+.person-card__text b { font-size: 12px; color: var(--foreground); font-weight: 600; }
+.person-card__text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person-card .ui-btn { flex: none; }
+
+/* Off this build, the dashed star puts you on it. */
+.avatar--join { --tone: var(--gold); background: none; border: 1.5px dashed color-mix(in srgb, var(--gold) 55%, transparent); color: color-mix(in srgb, var(--gold) 70%, transparent); }
+.avatar--join:disabled { opacity: 0.3; cursor: not-allowed; box-shadow: none; }
+.avatar--you { cursor: pointer; }
+.avatar--you:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 45%, transparent); }
+.proj-line__link {
+  padding: 0;
+  margin-left: 6px;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--primary);
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+
+/* A dilemma card (§7c): the situation, and the answers side by side with their costs. */
+.modal.dilemma { width: min(560px, calc(100vw - 48px)); }
+.dilemma-body { padding: 22px 24px 20px; display: flex; flex-direction: column; gap: 8px; }
+.dilemma-body h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; color: var(--foreground); }
+.dilemma-body p { margin: 0 0 8px; font-size: 13px; line-height: 1.55; color: var(--muted-foreground); }
+.dilemma-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.dilemma-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.dilemma-option:hover { border-color: color-mix(in srgb, var(--primary) 55%, transparent); background: var(--card-hover); }
+.dilemma-option b { font-size: 13.5px; color: var(--foreground); }
+.dilemma-option .fx-line { font-size: 11.5px; }
+
+/* The move strip holds the verbs for the piece in hand — turn, sell or upgrade, done — so it
+   is wide enough for them on one row, and the words wrap as a block rather than a column. */
+#moving { max-width: min(860px, calc(100vw - 32px)); flex-wrap: wrap; row-gap: 8px; bottom: 24px; }
+#moving.above-build { bottom: 238px; }
+#moving .ui-row__main { flex: 1 1 240px; }
+#moving .moving-note { flex: 0 1 200px; }
+#moving .ui-btn { flex: none; white-space: nowrap; }
+
+/* The left column: the calendar over the bench, one width, stacked (§11). */
+#leftcol {
+  position: absolute;
+  top: 44px;
+  left: 12px;
+  width: 330px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - 150px);
+  pointer-events: none;
+}
+#leftcol > * { pointer-events: auto; }
+#leftcol #timeline, #leftcol #left { position: relative; top: auto; left: auto; right: auto; width: 100%; box-sizing: border-box; }
+#leftcol #timeline { z-index: 6; flex: none; }
+#leftcol #left { min-height: 0; max-height: none; flex: 0 1 auto; }
+#topbar { margin-right: 2px; }
+
+/* The next lease: the calendar's size, centred at the top of the room (§8). */
+#leasecard {
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 330px;
+  box-sizing: border-box;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  z-index: 6;
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+}
+#leasecard.on { display: flex; }
+#leasecard .icon-chip { width: 28px; height: 28px; flex: none; }
+.lease-text { display: flex; flex-direction: column; min-width: 0; flex: 1; font-size: 11px; color: var(--muted-foreground); }
+.lease-text b { font-size: 12.5px; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#leasecard .ui-btn { flex: none; }
+/* The toasts sit right of the bench; with the lease card up they start under it. */
+#ui.has-lease #toasts { top: 102px; }
+
+/* A promotion on the report: the button, or how the running one is getting on. */
+.report-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.promo-running { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--success); }
+.promo-running .ui-icon { width: 13px; height: 13px; }

@@ -12,9 +12,10 @@
  * Tune `catalog.ts` against this table rather than by guessing.
  */
 import { Simulation } from '@/systems/Simulation';
+import { answerDilemma } from './dilemma';
 import { store, emptyRuntime } from '@/game/store';
 import { rng } from '@/utils/rng';
-import { APPLICANTS, FILAMENT, STAGE_ORDER } from '@/utils/constants';
+import { APPLICANTS, STAGE_ORDER } from '@/utils/constants';
 import { defaultPlan, planProject } from '@/utils/design';
 import { CATALOG } from '@/utils/catalog';
 import { STAGE_STATION } from '@/machines/layout';
@@ -48,7 +49,7 @@ function runProject(def: ProjectDef, seed: number): number | null {
     missedBills: 0,
     gameOver: null,
     backlog: [],
-    applicants: [], upvotes: 0,
+    applicants: [], dilemma: null, dilemmasSeen: [],
     ownedMachines: [...ALL_MACHINES],
     runtime: emptyRuntime(),
     // Rolled after the reseed, or every process starts from a different market (§13).
@@ -70,6 +71,7 @@ function runProject(def: ProjectDef, seed: number): number | null {
   while (sim.day < 2 || sim.time < 9) {
     sim.tick(DT, SPEED);
     if (store.getState().bill) store.getState().setBill(null);
+    answerDilemma(sim);
   }
   if (!sim.pitch(def.id)) return null;
 
@@ -80,6 +82,7 @@ function runProject(def: ProjectDef, seed: number): number | null {
     sim.tick(DT, SPEED);
     // Best-case measurement: the books are not what is under test here.
     if (store.getState().bill) store.getState().setBill(null);
+    answerDilemma(sim);
     // Counted as the day of the build it ships on: out the door the same evening is one day.
     if (!sim.projects.length) return sim.day - startDay + 1;
 
@@ -101,9 +104,6 @@ function runProject(def: ProjectDef, seed: number): number | null {
       ) {
         sim.workOn(project.id);
       }
-    }
-    for (const machine of sim.machines) {
-      if (machine.consumableMax > 0 && machine.consumable < FILAMENT.lowWarning) sim.buyFilament();
     }
   }
   return null;

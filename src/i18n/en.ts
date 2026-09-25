@@ -1,6 +1,7 @@
 import { log } from './en/log';
 import { ui } from './en/ui';
 import { build } from './en/build';
+import { dilemma } from './en/dilemma';
 
 /**
  * English is the source of truth; every other language is typed against it, area by area,
@@ -10,6 +11,6 @@ import { build } from './en/build';
  * - `en/ui.ts`  — panel chrome: headings, buttons, labels, tooltips.
  * - `en/build.ts` — + New Project, Build and the kickoff (§4c, §4d).
  */
-export const en = { ...log, ...ui, ...build };
+export const en = { ...log, ...ui, ...build, ...dilemma };
 
 export type Messages = typeof en;

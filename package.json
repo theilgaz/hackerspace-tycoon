@@ -1,7 +1,7 @@
 {
   "name": "hackerspace-tycoon",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Build a hackerspace, herd volunteers, ship physical projects (Three.js + TypeScript + Vite + Zustand)",
   "type": "module",
   "scripts": {
@@ -14,7 +14,6 @@
     "project-times": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/project-times.js",
     "click-check": "node tools/click-check.mjs",
     "era-pace": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/era-pace.js",
-    "hype-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/hype-check.js",
     "kickoff-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/kickoff-check.js",
     "layout-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/layout-check.js",
     "itch": "tsc --noEmit && vite build --base=./ --sourcemap=false --outDir=dist-itch --emptyOutDir && mkdir -p release && rm -f release/hackerspace-tycoon-web-v$npm_package_version.zip && cd dist-itch && zip -qr ../release/hackerspace-tycoon-web-v$npm_package_version.zip . && cd .. && ls -la release/hackerspace-tycoon-web-v$npm_package_version.zip"

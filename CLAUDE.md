@@ -36,13 +36,40 @@ HTML/CSS overlay panels (projects, members, machines, Reddit, funding).
 3. **Pitch a project** — tag it; members whose passions match sign themselves up.
 4. **Push it through the pipeline** — Concept → CAD → Simulation → Fabrication → Assembly → Test →
    Iterate → Release (§4). Fabrication is not a progress bar; it is jobs queued on real machines (§5).
-5. **Post publicly** — WIP updates to subreddits convert work into hype (§6).
-6. **Convert attention into money** — crowdfunding, sponsors, dues, workshops, grants (§7).
-7. **Pay rent, buy better machines, move to a bigger space** — or get evicted (§8, §9).
+5. **Convert reputation into money** — dues, sponsors, print orders (§7).
+6. **Pay rent, buy better machines, move to a bigger space** — or get evicted (§8, §9).
 
 **The core failure mode is drift.** Members chase novelty. The motorcycle sits at 80% because the
-interesting part is done. Crowdfunding deadlines and Reddit's attention span are the forces that
-push back against drift — they are the game's clock, not decoration.
+interesting part is done. Sponsor and print-order deadlines, the shelf (§13) and the awards
+night are the forces that push back against drift.
+
+## 1a. The simplification pass (save v22) — read this before the sections below
+
+A playtest verdict: too many small systems, each asking the player to remember a chore or
+hold one more sum in their head. They were **removed, not hidden**, and the sections further
+down that still describe them in detail are history, kept for the lessons in them:
+
+| Gone | What it was | What is left in its place |
+|---|---|---|
+| **Socials** (§6) | Reddit/Instagram/X posts, a claim, `hype` that decayed 5% a day and fed recruitment, public dues and sponsor odds; the Social Media Manager; trending offers; upvotes on the space screen | Nothing. Reputation alone drives dues, sponsors and who applies. `HypeSystem.ts`, `subreddits.ts` and `hype-check` are deleted |
+| **Advertising** (ship report) | Four campaigns bought from the report, paying back in sales | The report is a report: promised against shipped. `campaigns.ts` is deleted; `REPORT` moved to constants |
+| **Standing jobs** (`Role`) | Host, Printer Keeper, Quartermaster, Social Media Manager | Nothing to assign. Their chores are gone with the systems they served |
+| **Bounties and expediting** | Pay to make a stage 30% faster / pull volunteers; halve a parts delivery once | Asking somebody onto the crew, and your own hands. Parts arrive when they arrive |
+| **Printer upkeep** | Bed calibration drifting with use, levelling, filling spools, the Filament Shelf | Printers never run dry and never drift. **Filament is billed on the monthly statement** by what the prints drew (`FILAMENT.spoolCost` a kilo), like the power. `MACHINE.baseJobFailure` went 0.14 → 0.17 to carry the average drift |
+| **Seat licences and kept infrastructure** | Per-seat options bought once and kept; CI / RTOS / solver built once | Every option has **one price**, its star-scaled design budget (`optionCost`), paid per build |
+| **Client wishes** | One or two asks per brief, each met paying +15% / +10% hype | Nothing — a brief is its price, the market, the design and the quality |
+| **Reaching above the crew** | An option above the crew's level cost extra work and test risk, and the crew's level capped quality | **A locked card** (`isLocked`, `clampDesign`): below the level it asks for, an option is shut and says which level opens it. No quality ceiling |
+
+**Measured** (`era-pace`, 8 seeds, 220 days, against the same commit before the pass). Losing
+attention and the Host took about a quarter off recruitment, so the crew ended at 12 instead
+of 16; `recruitEvery` went 35 → 24 to put the pace back (crew 15-16). After that: ships up a
+fifth (more, smaller builds), player reputation about **29,000 against 35,000**, the player
+**first in 2 of 8 seeds (was 7 of 8)** and at worst sixth, and **Era 2 on day 61 in every seed
+(was day 31)** — the autoplayer reaches day 30 with no cash, and the day-31 statement no longer
+carries the public dues that attention used to borrow. The lock is not the cause: with it
+switched off the numbers are the same. Levers if the lead matters: the rival multiplier (§3c
+has the sweep), public dues (`ECONOMY.reputationPerMember` 90 → 70 was tried: +2%, not enough
+on its own), or the Era 2 move cost.
 
 ## 3. The Influence Model (§1 consequence)
 
@@ -65,12 +92,7 @@ now and then stays on into the evening, up to midnight (5% a day, 45% for a **Ni
 the trait finally does something), and once in a while somebody opens up at six. Only people
 with a build to get on with; the owner is in from six anyway. Nobody is still in at midnight.
 
-**A bounty therefore buys effort, not hours**: the crew on a bountied stage works it 30% harder
-(`BOUNTY.rateBonus`), on top of pulling volunteers and easing an ask. It used to buy overtime
-to eight, which broke the one rule about the crew's day. Measured: `sim-check`'s aggressive
-player (a bounty on every stage) went from 39 to 66 ships in 150 days, level with the careful
-one — it buys that with money rather than out-shipping it — and `era-pace` held (normal first
-8/8, hard 6/8, easy 8/8).
+Bounties are gone (§1a); nothing buys the crew a longer or a harder day.
 
 You are the exception. The owner is there at any hour, weekends included; the daily budget, not
 the clock, is what limits you.
@@ -130,7 +152,6 @@ the next thing to look at if the lead over the field matters.
 | Verb | Effect | Cost |
 |---|---|---|
 | **Pitch a project** | Tagged write-up; members with matching passion self-assign. A pitch with no skill match sits dead in the backlog. | Time + reputation |
-| **Post a bounty** | Cash / pizza / "you keep the print" on one stage or task. The only reliable way to get boring work (docs, sanding, wiring) done. | Money or goodwill |
 | **Buy a tool** | A machine is a magnet: it pulls matching-passion members *and* applicants. | Money |
 | **Run an event** | Drone race night, soldering workshop, open house. Mood up, recruitment, dues, attendee→member conversion. | Money + member hours |
 | **Set policy** | Tool certification, clean-up rota, members-only hours, quiet hours. Every rule trades vibe for efficiency. | Mood |
@@ -172,6 +193,15 @@ build menu, and three of its five steps are decisions:
 
   **Genre → Brief → Crew → Design → Review**
 
+**The wizard is quiet** (the calming pass): a brief is a row with its name, one line of what
+it is and `small · ₺400` on the right — the crew it was scoped for, reputation, machine
+time and parts are on hover and on the review; a design option's effects are one line of
+coloured text after its price, not five pills; crew size is six neutral cells with a thin
+good/bad line under each and a one-line verdict; the review is four figures and a short list
+(crew, design, table, parts, budget), with hand work, machine time and test risk on the
+days' hover. Every figure that went is still one hover away — the rule was *fewer things
+competing for the eye*, not less information.
+
 **The crew comes before the design**, because the crew decides what the design may be. Every
 axis leans on a skill (Tool, UI and Architecture on software; Circuit on electronics; Design
 tool, Enclosure and Validation on CAD; Material on machining; Documentation on docs), and an
@@ -180,26 +210,8 @@ option needs somebody on the crew good enough to use it: ★ needs nobody, ★�
 — train someone" — rather than simply greying out. Changing the crew drops any choice it can
 no longer back to the best it can, and the sim checks the same thing at the pitch.
 
-**Seat licences belong to the space, not to the project** (`Licences`, `licenceCost`). A
-per-seat option — Full IDE, Fusion Pro — is bought once per seat and kept, so the next build
-pays only for chairs nobody holds a licence for; the card says `licensed ×N` and the log
-records each purchase. Licences used to be charged afresh on every project, which made the
-five-star tool a tax on shipping rather than an investment. **Infrastructure is kept the same
-way** (`DesignOption.keeps`), in every genre that has any:
-
-| Kept | Genres | Once |
-|---|---|---|
-| Services + CI | software | ₺500 |
-| Design system (a component library) | software | ₺600 |
-| RTOS + OTA (the update server) | electronics, IoT, radio, retro, robotics, civic | ₺450 |
-| Full simulation (a solver licence) | robotics, mechanical | ₺600 |
-
-Every later build finds them "already in place". The rule for what is kept: **is it still
-there after the project ships?** A component library, a CI pipeline, an update server and a
-solver are; a workshop kit's Saturday workshop, a custom PCB run and an aluminium frame are
-that build's own, and stay per project. RTOS + OTA and Full simulation had no one-off cost
-before; giving them a kept one makes the first five-star build dearer and every one after
-it cheaper, which is what an investment is.
+**Licences and kept infrastructure are gone** (§1a): an option has one price, its design
+budget, paid per build.
 
 **A design the space cannot pay for is not offered.** The design budget is paid at the pitch
 and refused past the overdraft, and the wizard used to find that out only afterwards — a Start
@@ -234,19 +246,17 @@ run's training into the next).
   multi-select axis) and **distribution** (On-prem / Cloud / Hybrid); electronics picks
   **power**, comms **range**, mechanical **drive** (`CATEGORY_AXES`). **Technology is not
   a choice**: it is derived from the crew's best level in the wing (`techTier`,
-  `TECH_LABELS`), so training is how the stack gets better. **A reach has a price instead
-  of a lock**: an option above the crew's level (`shortBy`) is still pickable, but each
-  missing level costs `DESIGN.shortWork` work and `shortRisk` test risk, and the crew's
-  level caps quality (`ceilingFor`, stored on the project and applied in
-  `refreshQuality`). Only a missing machine or the overdraft locks a card. Above the
-  cards: a **forecast strip** (days, stars with ceiling, pay, hype — `npForecast`), the
-  **client's wishes** (`wishesFor`: one or two of stars / days / a platform / a scope,
-  each met one paying `DESIGN.wishPay` more at ship), and three **presets** — Fastest,
-  Best, Most profitable (`presetDesign`) — which only fill the cards in.
+  `TECH_LABELS`), so training is how the stack gets better. **An option above the crew's
+  level is locked** (`isLocked`; the level is `DesignOption.need` or `DESIGN.starSkill`),
+  and its card says which level would open it; `clampDesign` steps a choice down to what
+  the crew can back, in the wizard and again at the pitch. A missing machine or the
+  overdraft locks a card too. Above the cards: a **forecast strip** (days, stars, pay,
+  hype — `npForecast`) and three **presets** — Fastest, Best, Most profitable
+  (`presetDesign`, never a locked card) — which only fill the cards in.
 - **Crew** — the size, from **1 / 2 / 4 / 6 / 8 / 10**, and who is asked. Size is capped by
   the biggest table the space owns: five and ten need the Large Project Table.
 - **Review** — the plan worked out: forecast quality in stars, market demand, likely pay
-  and reputation, hand work, machine time, parts, licences, test risk, and which table it
+  and reputation, hand work, machine time, parts, design budget, test risk, and which table it
   will kick off at. The Start button states the cost and what it leaves you with.
 
 **Three stars is the brief as written.** Every three-star option is ×1 on everything, so a
@@ -391,23 +401,22 @@ on a full crew and was seen to fail with the old sizing.
 garage does not have; the path finder walks everybody to the stand tile and the renderer
 puts them in their chair (`seatPosition`), facing the table.
 
-### The ship report and advertising (`renderShipReport`, `src/utils/campaigns.ts`)
+### The ship report (`renderShipReport`, `REPORT` in constants.ts)
 
 **A build used to leave as a log line**, so whether it had been a good one was something to
 work out from the Projects table. It now ships with a report: quality, pay, reputation and
 days, each with **what the review promised under it** — green past it, red short, plain when
-it did what it said — the client's wishes ticked or not, who made it, and a verdict: *beat
+it did what it said — who made it, and a verdict: *beat
 the plan*, *as planned*, *short of the plan*.
 
 - **The yardstick is the review's own forecast** (`forecastBuild` in design.ts), stored on the
   build at the pitch (`ProjectData.forecast`). The wizard and the pitch call the same function
   — it used to live inside the wizard, and a second copy for the report would have judged
   builds against a number nobody saw.
-- **Only a wish the plan promised counts against it**, and **days count only when clearly
-  late** — past 1.5× the forecast plus two days (`REPORT.lateFactor`). Measured first
-  (`era-pace`, 2 seeds, 150 days): with every wish and every day over judged, 90%+ of builds
-  were "short", because the autoplayer ignores wishes and the forecast then left out failed
-  tests (see *the forecast counts a failed test*, below).
+- **Days count only when clearly late** — past 1.5× the forecast plus two days
+  (`REPORT.lateFactor`). Measured first (`era-pace`, 2 seeds, 150 days): with every day over
+  judged, 90%+ of builds were "short", because the forecast then left out failed tests (see
+  *the forecast counts a failed test*, below).
 - **"Beat the plan" needs a margin** (`REPORT.aboveQuality` 0.1): traits and the owner joining
   in lift a bigger build past its forecast as a matter of course, and at +0.03 three in four
   "beat" it. At 0.1 it is still about three in five for the autoplayer's full crews.
@@ -416,31 +425,15 @@ the plan*, *as planned*, *short of the plan*.
   half small builds a day; a modal for each would be the whole game. It stops the clock and
   gives it back on close, like a bill.
 
-**Advertising is on the report**, once per build, within three days of release, for an hour
-of your day and a fixed price. **A campaign multiplies the build's own hype**, so its worth is
-decided by the build — a fresh good build is worth shouting about, a fourth Space Website is
-not — and that is the decision: not *which* campaign, but *is this one worth it*. Flyers
-(₺1,200, ×0.25), sponsored posts (₺4,500, ×0.6), a YouTube review (₺9,000) and a launch
-night (₺20,000, ×1.5). The gain lands on reputation, on attention and on the build's record,
-so it can win Best Project. Costs book as `marketing`.
-
-- **Attention sells** (`CAMPAIGN.salesPerRep`, ₺25 a point, paid over seven days as
-  `adSales`). This is what makes advertising an investment: a campaign on a good new build
-  pays for itself and the next build's budget — flyers break even from about 190 hype, the
-  review at quality 0.8 from about 200 — and one on a weak or repeated build does not. The
-  card says what comes back, green when it covers the price.
-- **The review tears a weak build apart.** It is `6 × (quality − 0.5)`, from ×2.4 down to
-  **−2** — the space can lose twice what the build earned — and the reviewer reads the build
-  ±0.1 either way (`reviewNoise`), so the card shows a spread and the middle is a gamble.
-
-Measured with `CAMPAIGN=… npm run era-pace 4` (the A/B switch, like `NO_SHOP`), with the
-sales in: flyers on everything ends level on reputation with fewer ships; the review on
-everything ends 7th-15th of 18, because most builds are not good enough for it; the biggest
-campaign on everything ends 14th in most seeds. `CAMPAIGN=smart` — only a campaign that
-cannot lose, costing under ₺25 a point net of its sales, keeping ₺40,000 in the bank — runs
-one to three a run and finishes first in 4/4, up to 9% ahead. **The reckless player loses
-badly and the careful one gains** — the §13 shape. The autoplayer rarely clears the cash
-floor, so how often a human finds a campaign worth it is the open question.
+**Advertising was on the report** and went in the simplification pass (§1a). **Promoting
+came back as one button** (`PROMO`, `Simulation.promote`): within three days of release,
+for ₺5 a point, a build's own reputation again — dripped in over seven days, onto the
+build's record too, so it counts for Best Project. One choice, not four campaigns; the
+gain follows the build, so a loud new one is worth it and a fourth copy mostly is not.
+Measured (`era-pace`, 8 seeds, the autoplayer promoting whatever it can afford twice over,
+`PROMO=0` for the A/B): first in 5 of 8 against 0, reputation about +12%. At ₺10 a point
+and three quarters of the gain it cost the autoplayer a quarter of its ships — money that
+would have grown the space — and it finished *lower*; the price is the lever.
 
 **The forecast counts a failed test** (`testFailChance`, `retryDays` in design.ts). Measured
 over 1,600 builds in `era-pace`: a medium build that passed its first test shipped on the
@@ -478,10 +471,9 @@ You are on the grid, you are always in the building, and you can work. That matt
 §13 established that **attendance is the binding constraint** — and you are the one person
 whose attendance is guaranteed.
 
-**The Project Manager went, and so did the Technician that briefly replaced it.** Levelling
-beds and filling them are one job — the printers — so the Printer Keeper does both, and the
-fourth slot is the **Host**, who brings people to the door without choosing who comes in.
-Every role has to take a chore off the player without taking a decision.
+**The Project Manager went, and so did every other standing job** (§1a). A role has to take a
+chore off the player without taking a decision; the simplification pass removed the chores
+themselves instead.
 
 **The owner never stands about.** With nothing chosen you put yourself on the oldest build
 that has already kicked off — or, failing that, one with nobody on it — and when it ships you
@@ -508,8 +500,8 @@ The counterweight is the hour budget, and **it is the only number you have**:
   drained energy, which shrank tomorrow's hours. Two bars to answer one question, and the
   burnout threshold had been tuned so low that it almost never fired. It is gone. The bar
   under the clock *is* the day, and the hours are in its tooltip for anyone sizing up a job.
-- **Every management verb spends the same pool**: a bounty 1h, ordering parts 1h, expediting 1h,
-  re-pitching 1h, going out for filament 0.5h. Pitching is free — waiting on your own hours to
+- **Every management verb spends the same pool**: ordering parts by hand 1h, taking somebody
+  on 1h. Pitching is free — waiting on your own hours to
   *start* something was pure friction, and the money it commits is the real cost.
 - So each hour spent doing the CAD yourself is an hour not spent recruiting the person who
   would have done it faster. That trade is the daily decision the game is built around.
@@ -636,6 +628,19 @@ left the first awards night going about two in five to the player (17-18 of 40):
 Projects and Space of the Year were decided by early volume, which a multiplier on the field
 barely touches — see below.
 
+**The field keeps pace with the player** (`RIVAL_BAND` in RivalSystem.ts). A playtest at
+day 60: the player on 1,813 with 8 ships, the pack around 2,000 — and Konya on 5,904, three
+times the table, because every rival had been tuned against the autoplayer, which ships a
+hundred builds in sixty days where a person ships ten. Now a rival's pace is multiplied by
+`(you + 1500) / (them + 1500)`, held between ×0.35 and ×1.25: far ahead of you it slows,
+behind you it quickens, and each keeps its own shape. Konya was trimmed too (0.95 → 0.75
+builds a day, 75 → 60 a build). Measured, with `LAZY=1 npm run era-pace` — one build at a
+time and no promotions, the nearest the harness gets to a person — at day 120 the leader
+went from 2-3× the player to 1.2-1.5×, the player around the middle of the table; with the
+full autoplayer, first in 2 of 8 and never more than about 10% behind the leader. On day 55
+Konya stands at about 3,000 against a pack of 2,500. The rubber band is why a table stays a
+race at any pace — it is also why the lead is now hard to keep, which is the point.
+
 **The first night is a race, and you can lose all of it.** "Win an award and you earned it"
 is the setting's promise, and a night where two of five were decided before it started kept
 none of it. Two rivals were given the jobs their blurbs already described, rather than
@@ -688,6 +693,21 @@ selected so typing replaces it. The title and the button update as you type, wit
 re-render that would replace the input under the caret. **The version is on the start
 screen** beside the wordmark (`src/version.ts`, injected from package.json by Vite), so a
 player reporting a bug can say which build they were on.
+
+**The start screen is a game's menu** (`startMenu`, `SceneManager.showcase`): the title
+large on the left, then *Carry on* (with the saved run in one line), *Start a new
+hackerspace* and the language; the new-run form opens in the same column with a Back. The
+backdrop is see-through on the right, where the room sways slowly — ±20° either side of the
+iso shot, never a full turn, because the room has two walls and the far side is the backs
+of the benches — and the game's own chrome is hidden (`#ui.pre-start`) until the doors
+open. It was a card of four stat boxes over a grid, and a new run a second card under it.
+
+**The start screen also names the two founders and picks the currency** (`Identity.founders`,
+`Identity.currency`, save v22). Blank founder boxes are Safa and Abdullah, and the currency
+defaults to TRY; EUR, USD and GBP are offered. **The currency is a symbol, not a rate** —
+`money()` swaps ₺ for €, $ or £ and every tuned number stays as it is. The founders' names
+are written into `ROSTER` itself (`setFounders`, called on every begin and every load),
+because every name lookup goes through the roster by id; harnesses never call it.
 
 **A setting has to state its terms.** The three difficulty cards used to be stacked boxes of
 different heights carrying flavour text only, so the one thing the choice actually changes for
@@ -1175,8 +1195,10 @@ the stand tiles), and a table that still cannot be played says "one end is block
 **Send somebody on a break** (§7b, `Simulation.treat`): click any comfort people use in the
 room and pick who — a drink or the sofa takes one, the console one or two, and **table tennis
 takes exactly two** (the picker has a Send button when more than one can go). They drop what
-they are doing and come back `LEISURE.treatMood` happier and `treatEnergy` less tired. Once a
-person a day. Left alone, the tired still find a sofa or a drink on their own, and may beat
+they are doing and come back `LEISURE.treatMood` happier and `treatEnergy` less tired. **Once
+a person a comfort a day** — it was once a person a day, so a Club-Mate at ten used up the
+table tennis at four, and the picker said "had a break today" to a question about a
+different thing. Left alone, the tired still find a sofa or a drink on their own, and may beat
 you to the fridge. A comfort pushed against a wall with no room at one end says so.
 
 **Durations are read in days, never hours** (design §2): `span()` for machine time (the
@@ -1238,27 +1260,13 @@ than vanishing from it, disabled and saying *needs FDM Printer — buy one first
 that silently shrinks looks broken; "go and buy one" is a perfectly good thing for a job board
 to say.
 
-### Standing jobs (`Role`)
+### Standing jobs — removed (§1a)
 
-Three jobs a member can hold on top of their build work, one holder each:
-
-| | What they watch |
-|---|---|
-| **Host** | Shows visitors round: on a day they are in, the recruitment clock runs `ROLES.hostDraw` faster. Who joins stays your call |
-| **Printer Keeper** | Fills the printers before they run dry, and levels a drifting bed between prints (`ROLES.levelBelow`) |
-| **Quartermaster** | Gets bills of materials on order so assembly is never waiting |
-| **Social Media Manager** | Keeps the feeds ticking over so attention never quite dies |
-
-Each one gets a row in the People panel that says **what it does**, with the holder picked
-from a list of everybody. The first version was one button that cycled through the roles,
-which meant "Quartermaster" had to be decoded by trial — a role you have to discover by
-cycling is a role nobody uses.
-
-**A role acts at its holder's next availability, not as a background rule.** Somebody who is
-away, or walking across the room, is not watching the filament — which is the whole point:
-the chore gets done because a person who is in the building does it. It is also the answer to
-the question the game asks from Era 2 onward, which is what fifteen people are *for* if you
-are still the one buying spools.
+There were four (Host, Printer Keeper, Quartermaster, Social Media Manager). Each took a chore
+off the player, and the chores went with the systems that made them: printers no longer need
+feeding or levelling, attention no longer decays, and the parts go on order at the pitch.
+The lesson worth keeping: **a role is only worth a slot if the chore it takes would still
+exist without it** — otherwise remove the chore.
 
 ### Rating people against a genre
 
@@ -1305,7 +1313,6 @@ catalog pick and a timed opportunity is the decision:
 | **Catalog** | Anything the era and the machines allow. Always available, no bonus. |
 | **Member proposal** | Somebody suggests a thing they are already excited about and signs up the moment you pitch it. Solves the attendance problem for free. |
 | **Sponsor** | Cash up front, a deadline on the offer, and you are building *their* thing. |
-| **Trending** | Reddit is briefly obsessed; ship inside the window for a hype multiplier. Phase 2 will consume this. |
 
 Offers expire, and a sponsor's or a trend's end date is on the calendar (§11). ~~Concurrent
 project slots come from the era~~ — there is no cap on projects any more (§3b, §13).
@@ -1325,9 +1332,9 @@ Job { id, projectId, partName, machineType, hoursRequired, material, materialCos
 - **Failure:** rolled continuously, not at the end. A print that fails at hour 19 of 22 loses the
   material and all the time. Failure chance drops with machine tier, operator skill, calibration
   state, and material quality.
-- **Consumables:** filament/resin/stock material deplete. Running out mid-job fails the job.
-- **Maintenance:** machines drift out of calibration with use; an uncalibrated printer's failure
-  chance climbs. Nobody volunteers to calibrate (that's a bounty).
+- **Consumables:** a job draws filament as it runs, and a failed one wastes what it drew — but
+  a printer never runs dry. The month's grams are billed on the statement (§1a).
+- ~~**Maintenance:** calibration drift and levelling~~ — removed in the simplification pass.
 
 Machine types: FDM printer · resin printer · laser cutter · CNC router · mill/lathe · soldering
 bench · welding bay · electronics bench · assembly table.
@@ -1336,6 +1343,13 @@ bench · welding bay · electronics bench · assembly table.
 
 **Seven in ten orders come with the STL** (`ORDERS.seriesShare`) — straight to the printer,
 nobody at a desk. The rest need their files drawn and pay `ORDERS.cadPremium` (2.5×) for it.
+
+**An accepted order staffs itself, and is never shelved** (`Simulation.staffOrders`): an
+order that needs its files drawn gets the first free pair of hands — somebody in the
+building first, then the strongest in the Mechanical wing or the keenest on the brief, and
+failing that anybody free — checked every hour, so a drifter is replaced. A series print
+with the STL supplied needs nobody and runs on the printer alone. The shelf skips orders
+altogether: an order has a due date, and missing it is its failure.
 
 **Paid jobs that come in because the space has printers**, on a board in the Machines panel:
 a few on offer at a time, three days to say yes, a due date counted from the day you accept,
@@ -1354,9 +1368,6 @@ rather than at a kickoff with nothing in it — the first version sat at "Kickof
 its date passed. They are `ProjectDef`s with an `order`, in `CATALOG_MAP` but never in the
 wizard's `CATALOG`.
 
-**Filament for every printer is one button** (`buyAllFilament`): one trip, one half-hour of
-your day, one log line, however many printers are on the wall.
-
 **A part goes to the printer that would finish it first** (`machineFor`): what the machine
 has on plus this part, over its speed, the more reliable of two that tie. It was the
 shortest queue, which sent a two-day print to an idle A1 while an idle H2S stood beside it.
@@ -1369,11 +1380,8 @@ moment it starts**, so the order goes from accepted to the printer to delivered 
 on it. It takes no chair (`teamSize` 0), nobody volunteers for it and the owner never picks
 it up on his own. Marked *STL supplied* on the orders board.
 
-**The Filament Shelf** (an amenity on the Printers shelf of Build): sixteen spools bought
-ahead (`store.filamentStock`, save v18). Every refill — one printer, *Fill all*, the Printer
-Keeper — takes from the shelf first and buys only the rest, and the rack in the room shows
-a spool per kilo in stock. **Level all** is a maintenance round: every drifting bed levelled
-for one hour of your day.
+**Filament is not a chore any more** (§1a): no refills, no shelf of spools, no levelling.
+The Filament Shelf amenity went with it; a save that owned one drops it (v22).
 
 **On the bed, the print** (`printedThing`): a box, a vase, a lamp shade, a hex organiser, a
 gear — chosen by the job, in a filament colour, growing a layer at a time up to the nozzle.
@@ -1403,8 +1411,7 @@ silver, and the H2S in space grey, a clear size up from the X1C rather than a sl
 one: nearly the whole tile, and a head over everything else on the wall.
 
 **The Machines panel is a table, one row per printer**: what it is printing (with the fail
-risk on the bar's colour), calibration, filament, and three icon buttons — fill, level, sell
-— with the price in the tooltip. It was a 700-pixel card per printer with three labelled
+risk on the bar's colour) and a sell button with the price in the tooltip. It was a 700-pixel card per printer with three labelled
 boxes, two of them usually empty. A queue hangs under its printer only when there is one.
 
 The shop lists **every** model including the ones the era does not allow yet, greyed with the
@@ -1413,12 +1420,8 @@ wanting.
 
 **What makes it a decision is the floor, not the spec sheet.** Two cheap machines print two
 things at once and one dear machine prints one thing quickly, and the back wall holds four
-printers in total. A part goes to whichever printer has the shortest queue and never to a
-starved one while a fed one is free — without that, a second printer just stands there.
-
-**Filament fills the machine rather than adding a spool.** Topping a four-kilo printer up a
-kilo at a time is busywork, not a decision, so the button says what filling it costs from
-where it is.
+printers in total. A part goes to the printer that would finish it first — without that, a
+second printer just stands there.
 
 **Printers and tools get separate walls**, and this was a real bug before it was a rule: they
 shared one pool of slots, so a player who bought four printers filled the floor and the CNC
@@ -1426,70 +1429,21 @@ they had spent three weeks building had nowhere to go — it logged a warning an
 Three slots each. Building the same tool twice no longer takes a second slot either; the space
 already owns the capability.
 
-## 6. Reddit & Hype — BUILT (`src/utils/subreddits.ts`, `src/systems/HypeSystem.ts`)
+## 6. Reddit & Hype — REMOVED (§1a)
 
-Eight outlets are the publisher, each with `audience`, `tasteTags` and `skepticism`. Six are
-subreddits; two are the space's own feeds and behave differently enough to be worth the
-entries — **Instagram** asks nothing except that the thing photograph well, and **X** is
-quick, generalist and merciless. Posting
-costs you an hour and asks three questions at once — **which build, which room, what you are
-claiming** — on one screen, because the interesting part is how they interact.
+Built in Phase 2 and taken out in the simplification pass: eight outlets, a claim with a
+merit bar, `hype` decaying 5% a day and feeding recruitment, public dues and sponsor odds, a
+Social Media Manager, trending offers. What it taught, kept for the next system like it:
 
-**The claim is the verb.** Three of them: *Work in progress* (safe, modest), *It works*, and
-*Nobody has built this*. Each multiplies the room's reaction **and sets a merit bar**, where
-merit is mostly build quality plus how far down the pipeline you are. Claim more than the work
-backs and the overreach is punished by the room's skepticism, so the same boast is cheap in
-r/homeassistant and a reputation event in r/programming.
-
-**The punishment has to outweigh the reward, or the answer is always "claim the most".** It
-did not, at first: a hype-man who picked the biggest claim every single time was punished 0.8
-times in 181 posts and finished with *more* reputation than a careful player. Tripling
-`HYPE.backfire` to 7 is what turned it into a decision. The shape it produces, for a
-quality-0.7 electronics build in r/electronics:
-
-| Stage | Work in progress | It works | Nobody has built this |
-|---|---|---|---|
-| concept | **113** | 37 | −97 burned |
-| cad | **208** | 168 | −178 burned |
-| fabrication | 302 | **432** | 5 |
-| assembly | 321 | **459** | 161 |
-| release | 378 | 540 | **741** |
-
-That is the whole design in one table: the claim you can afford tracks how finished the thing
-is, and a boast is something you earn by finishing rather than something you spend to skip it.
-
-**Attention is a shelf life, not a stock.** Hype decays 5% a day — about a fortnight to half —
-whether you touch it or not, and everything it feeds sags with it: word of mouth (the
-recruitment clock, §5), how many of the public pay to be here, and how often a sponsor calls.
-A project parked at eighty per cent therefore costs you something continuously, which nothing
-else in the game does. **That is the anti-drift clock, and it is the reason the layer exists.**
-
-Three details that keep the verb honest:
-
-- **Novelty decays per room, not globally**, so the counter-play to a stale build is to take it
-  somewhere new rather than to stop posting.
-- **The generalist room needs a taste floor.** r/somethingimade is "everything is welcome" and
-  was scoring a flat zero for anything outside its four tags, which is the opposite of its
-  character. It now grants 0.45 to anything: always somewhere to post, never a big win.
-- **The panel previews the reaction before you commit.** Each claim card shows the upvotes it
-  would actually get, and turns destructive when the room would turn on you. A claim you cannot
-  evaluate before making it is a dice roll, not a decision.
-
-**The Social Media Manager keeps the floor under attention.** Hype decays 5% a day, so a
-space that only posts when the player remembers to spends most of its time at nothing. A
-keyholder puts out **one safe post a day** — always the modest claim, never a bold one,
-because claiming more than the work backs is a judgement call and that stays the player's.
-They pick the best *unused* outlet rather than the biggest one, since novelty decays per
-outlet per build and posting the same thing to the same feed daily is the one mistake the
-job should never make. Measured over twenty days: fifteen posts across five outlets and hype
-settling near 1,150, against the ~4,000 a careful player reaches by choosing their moments.
-A floor, not a replacement.
-
-**Does it pay for the hour?** `npm run hype-check` answers §13's rule directly, against an
-identical player who never posts. Over six seeds at 180 days: reputation +19%, crew +13%, cash
-+42%, and about three fewer projects shipped — the hours are real. A reckless poster earns
-slightly more cash and a visibly worse name. Still unbuilt from this section: **crowdfunding**
-(`Campaign` in §12) and the Era-3 front-page goal.
+- **The punishment has to outweigh the reward, or the answer is always "claim the most".**
+  With `backfire` at 3 a hype-man who always boasted was punished 0.8 times in 181 posts and
+  beat the careful player; 7 made it a decision. Race a reckless archetype against a careful
+  one whenever a mechanic offers a risky option.
+- **A decaying stock is a chore unless the player can see it pay.** Attention was the
+  anti-drift clock on paper; in play it was a number to top up. The clock that is left is
+  the one with dates on it — offers, print orders, the shelf and the awards night.
+- **Taking it out cost the crew a quarter of its recruitment pace**, because attention fed the
+  recruitment clock. When a system is removed, find everything it fed and measure each.
 
 ## 7. Economy & Funding
 
@@ -1500,7 +1454,7 @@ Income is patchwork by design; there is no salary and no reliable single source.
 | Member dues | Small, steady, scales with member count and mood |
 | Workshops / events | Active income; costs member hours |
 | Crowdfunding | Big, lumpy, and **creates a delivery obligation** — fail it and reputation burns |
-| Sponsors | Filament/materials or cash for visible branding; needs hype |
+| Sponsors | Cash up front for a build with a bill of materials, and a deadline on the offer |
 | Grants | Application with a lead time; needs documentation quality |
 
 Fixed costs: **rent** (monthly, by era), utilities (scales with machine runtime), consumables,
@@ -1518,7 +1472,7 @@ That needs every lira to say where it went, so **`spend(amount, kind)` and `earn
 kind)` name a `LedgerKind`** and the store keeps the month's running totals (`ledger`,
 `monthOpen`). Income is crew dues, community dues, work shipped, sponsors and anything sold;
 costs are rent, power, comforts' upkeep, parts, design budgets, filament, kit and furniture,
-joining fees, training, bounties and moving. A refund books against its own kind, so a
+joining fees, training and moving. A refund books against its own kind, so a
 purchase that bounced cancels out rather than showing twice. Anything that moved cash
 without a kind — the dev console, a save from before the ledger — is listed as **Other**
 rather than left as a hole in the sum; when Other shows up in a normal run, a call site has
@@ -1657,7 +1611,7 @@ work rate in `MemberEntity.workRate` — it was the one stat the doc described a
   no matching punishment is not a choice — the upkeep is the punishment for the rest.
 
 **What it is worth, measured** (`NO_SHOP=1 npm run era-pace` plays the identical run without
-buying a thing — the A/B switch, like `hype-check`'s archetypes). Eight seeds, an autoplayer
+buying a thing — the A/B switch). Eight seeds, an autoplayer
 that buys every comfort the lease allows as soon as it is comfortably affordable:
 
 | | normal | hard |
@@ -1838,6 +1792,35 @@ Two more, from getting the props on screen at all:
   version folded them into `BLOCKED`, which `applyEraLayout` wipes and refills from the
   stations — so the aquarium would have quietly stopped being solid the moment you moved.
 
+## 7c. Dilemmas — BUILT (`src/utils/dilemmas.ts`, `i18n/*/dilemma.ts`)
+
+**Every fifteen to twenty days a card lands at ten in the morning, and every answer costs
+something** (`DILEMMA.every`, `atHour`). Ten cards: the fire inspector, a client who wants it
+sooner, somebody running on empty, a fried printer board, the neighbours, a rival poaching
+your best person, a journalist at the door, a filament price rise, a grant due tomorrow, a
+hackathon. Each has two answers; neither is free — money now against a longer, riskier cost
+(power ×2 for twenty days and a chance of a fine), a crunch against the crew's mood, a
+person's days against the chance they walk.
+
+- **The card says what each answer does before it is chosen**, in the same quiet coloured
+  text as the design options — a choice you cannot price is a coin toss. Money is a share of
+  the lease's rent (`effectCash`), so a card weighs about the same in the garage as in the
+  warehouse; reputation a share of what the space has (`effectRep`).
+- **It stops the clock and gives it back** like the ship report (`store.dilemma.resume`),
+  and never lands over a bill, a ceremony or a report. A card is not dealt again while it is
+  among the last four (`DILEMMA.memory`), and one that needs something the space lacks — a
+  printer, a build in progress, a crew of three — waits for another.
+- **What a card leaves behind lives in the sim**: multipliers with an end day
+  (`Simulation.mod` — work pace, printers stopped, power, filament) and people sent home
+  (`awayUntil`, read by `planDay`). Its money books as `events` on the statement. Save v23.
+- `dilemma [id]` in the dev console deals one now. Harnesses answer through
+  `tools/dilemma.ts`: at random off the seeded RNG, or `DILEMMA=a|b` for the A/B.
+
+**Measured** (`era-pace`, 8 seeds, answered at random): the player's reputation about 4%
+lower (≈28,000 against 29,100), first in 0 of 8 seeds (was 2 of 8), second in four and at
+worst sixth; no run evicted. It is meant as pressure, and it is — if the lead matters more
+than the texture, the rival multiplier is still the lever (§1a).
+
 ## 8. Eras (progression)
 
 | Era | Space | Unlocks | Milestone goal |
@@ -1952,6 +1935,46 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   Paid to see what the work was worth; a stack of cards with wrapping badges cannot be compared
   between two rows that are nowhere near each other. Filter chips narrow one list rather than
   tabs swapping between several, and All is the default.
+- **The chrome is a menu bar, a corner and a terminal** (`#menubar`, `#timeline`, `#log`).
+  The screen was four boxes — the clock top-left, the totals top-centre, the log in a
+  right-hand column and the build menu floating along the bottom — and the room was what
+  was left between them. Now: **one 34px strip along the top**, like a desktop's menu bar —
+  badge and name, then + Project, Projects, Ranking, Machines, People and Build as compact
+  items with a count pill; on the right cash, reputation, hands in use, the clock with its
+  speeds and your day as a 2px line under it, then language and tour. Below 1360px the items
+  keep their icons and drop their words. **The calendar is alone in the top-right corner.**
+  **The log is a terminal in the bottom-left**: newest at the bottom, the last two lines
+  showing, dark at the bottom and fading out upwards and to the right; a press opens the
+  history, and it steps aside in Build mode, where the shelves own the bottom of the
+  screen. The bench keeps the left column under the menu bar. Two things it got wrong first:
+  a leftover `<div id="bottombar">` from the old markup took the new `height: 100%` and
+  covered the whole screen (every click in the room went dead — `click-check` caught it),
+  and the old per-element `top/left/transform` rules had to be deleted rather than
+  overridden, or the bar's items floated back to where they used to be.
+- **One letter a panel**: N a new project, B Build, M Machines, R Ranking, P People — a
+  press opens, a second closes, and each item's tooltip says its letter. They stand down
+  while a card, bill, ceremony or report is on the table, while the console is open, and
+  while something is in hand in Build, where R turns it.
+- **The next lease is a card** (`#leasecard`): the calendar's size, centred at the top of
+  the room, with the rent it brings and the Move button; the toasts start under it while it
+  is up. It was a button squeezed into the menu bar. **Your day fills left to right** as it
+  goes — a bar that emptied from the right read as time running backwards.
+- **The menu bar, left to right**: the clock and speeds, then money, reputation and hands in
+  use, then Build, + Project, Projects, Ranking, Machines and People; at the right end the
+  space's badge and name (the way to its standings page), then language and tour. The
+  calendar is back over the bench in the left column (`#leftcol`), the two one width.
+- **Trading a piece in** (`UPGRADES`, `Simulation.upgradePiece`): a Software Station can
+  become a Long Hacker Bench, a Maker Station a Long Maker Bench, an Assembly Table an
+  Assembly Bench, a small Project Table a large one or a Meeting Corner — from the move strip,
+  for the new price less half the old one. The garage's kit, which cannot be sold, trades in
+  the same way; the new piece goes on the old spot when it fits there.
+- **The open card on the bench has no button row.** You are one of the crew's faces: the
+  gold star steps you off the build (Stop), a dashed star puts you on (Work). Crew are
+  initials in their wing's colour — a ring while they work, faded when they are not in — and
+  a press opens a small card with what they are doing and *Remove*. The empty chairs are one
+  "+" that opens the candidates. **Re-pitch went**: it asked everybody free and let chance
+  decide, for an hour, when the "+" lets you ask the person you want and they say yes (§4b).
+  Skip simulation is a link beside the stage name while the build is in it.
 - **The bench is where you act; Projects is where you survey.** Once the Projects panel took
   over the overview job, "On the bench" was still drawing everything for every build at once
   — and each card carried *three* renderings of the same progress (a bar, a stage counter and
@@ -1963,7 +1986,7 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   62% opacity; one that is waiting on you does not. The stage counter (`cad 21/24`) is detail
   and lives on the open card only — a folded row answers "does this need me", not "how far
   through the stage is it".
-- **The calendar sits under the clock** (`UI.calendar`, `calendarEvents`). Today's date,
+- **The calendar sat under the clock** (`UI.calendar`, `calendarEvents`; now in `#timeline`). Today's date,
   the year up to its awards night as a strip — past shaded, a marker for today, a dot per
   dated thing — and the next thing by name; a press opens the agenda. Awards night, the
   monthly bill, a print order's due date, a client's "within N days", parts arriving, an
@@ -2015,12 +2038,6 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
 - **Escape closes one layer, not the lot.** A bill sits over a ceremony sits over a panel
   sits over a picker inside it, and each press unwinds exactly one — closing the whole stack
   on a single keypress loses the two screens you had not read yet.
-- **Keyholders, not a list of roles.** The three standing jobs are three slots on one row
-  rather than three full-width rows: it is a small decision made rarely and it was taking a
-  third of the panel to say so. The picker **ranks candidates** by what the job actually
-  leans on — docs and breadth for the manager, machining for the printer keeper, docs for the
-  quartermaster, with Mentor, Night Owl and Documenter counting for and Ghost counting
-  heavily against. Somebody who signs up and stops turning up is nobody's keyholder.
 - **A verb belongs next to the thing it is about.** "You" carried two buttons under the
   energy bar: Stop, which the bench card already offered on the build you were on, and
   Calibrate, which had no other home — but the calibration meter it is about lives on the
@@ -2043,7 +2060,7 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   `flex: none` and no width rendered at zero pixels and simply was not there. It takes a
   wrapped row of its own.
 - **The build menu is the spine of the UI.** + New Project, Projects, Ranking, Machines,
-  People, Build, Socials. A panel belongs here rather than in a permanent sidebar whenever you
+  People, Build. A panel belongs here rather than in a permanent sidebar whenever you
   only touch it a few times a day. The clock sits alone in the top-left because it is the one
   thing glanced at constantly and it changes every frame.
 - **The top bar is four groups, not eight boxes**: who you are (badge, name, lease), money,
@@ -2061,7 +2078,7 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   sends that person on the course for the next one (tooltip: cost and hours); a cell that
   cannot be pressed says why. It replaced a Train button that unfolded six chips under the row
   — two clicks and a second copy of numbers the row already showed. The contract column went
-  with part-time, and the four keyholder slots sit on one line.
+  with part-time.
 - **Whoever is on a course shows on the bench**, under the builds, with a bar like a project's —
   and over their head in the room once they are sat at the station, in the `--learning` violet rather than the work teal or the
   kickoff gold, so a trainee's bar is never read as a share of somebody's build.
@@ -2083,11 +2100,6 @@ Movement: grid pathfinding (BFS is sufficient at these sizes; A* only if profili
   jumped the list under the cursor. `renderModal` builds the shell once per panel and only
   rewrites the header, body and footer inside it; the body keeps its scroll until the view
   inside it (a tab, a wizard step) actually changes.
-- **The Socials panel is two panes**: what you are posting about on the left, with each
-  subject's readiness as a thin bar, and where on the right — the claim as one full-width
-  switch, then every room as a row sorted by the upvotes it would give, the best one marked
-  and its Post button primary, the rooms that would turn on you in red. The grid of eight
-  cards it replaced had to be compared by eye.
 - **A space's own screen shows where it finished as a strip of chips**, one per awards night
   — place and year, gold for a win. It said "night 1 · 2026" once; with one night a year the
   year already is the night. The line chart it replaced spent the panel's width
@@ -2320,6 +2332,14 @@ is visible rather than rediscovered:
 
 ## 14. Development Priority
 
+**Phase 1.20 (v0.4.0) — the simplification pass, a calmer screen, decisions — BUILT.** See §1a
+for everything removed and what it measured. The start screen is a game's menu, picks the
+currency (TRY, EUR, USD, GBP — a symbol, never a rate) and names the two founders (§3c). A
+menu bar along the top with letter shortcuts, the log as a terminal, a quieter wizard and
+bench card (§11, §4c); dilemma cards every 15-20 days (§7c); promoting a shipped build
+(§4c); starter kit traded in for benches; print orders that staff themselves (§5); and a
+field that keeps pace with the player (§3c).
+
 **Phase 1.19 (v0.2.0) — a report for every build, a room that keeps its shape — BUILT.**
 Bigger builds ship with a report against the pitch's own forecast (`forecastBuild`, one
 function for the wizard and the sim), and can be advertised from it — campaigns multiply
@@ -2493,19 +2513,11 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     elapsed days per stage. Use it whenever a stage feels the wrong length.
   - `npm run project-times` — best-case length of every catalog entry against its declared
     tier. Run it after any change to `catalog.ts`; `TOO LONG` is a failure, not an opinion.
-  - `npm run hype-check [seeds] [easy|normal|hard]` — prints the claim/room reaction table,
-    then plays three players against each other: one who never posts, one who claims only what
-    the work backs, and one who always claims the most. Run it after touching `HYPE`,
-    `subreddits.ts` or `HypeSystem.ts`. **The careful player must beat both others**; when the
-    reckless one wins, the claim is not a decision.
   - `npm run era-pace [seeds]` — what day each era arrives for a committed player, plus the
     first awards night and the final standings against the rival spaces. Plays 220 days by
     default (`DAYS=n` to change it), which reaches two awards nights. Run it after changing
     throughput, team sizes, the catalog, traits, or anything in `rivals.ts`. There is one
     setting now (§3c); the level argument is kept only so old commands still run.
-  - `CAMPAIGN=flyers|social|review|launch|best|smart npm run era-pace [seeds]` — the same run
-    advertising builds as they ship (§4c's ship report): one campaign on everything, the
-    biggest on everything, or only the ones worth it. Run it after touching `campaigns.ts`.
   - `NO_SHOP=1 npm run era-pace [seeds] [level]` — the same run with the Shop never opened.
     Run both after touching `amenities.ts` or `COMFORT`: a comfort is only worth its upkeep
     if the pair disagree, and §7b records what the gap currently is.
@@ -2536,8 +2548,10 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     anything in `src/ui/`.
   - Harness sources live in `tools/`, built via `vite.headless.config.ts` to `dist-headless/`.
 - Debugging in the browser: `window.__store.getState()` and `window.__game.sim`.
-- **The developer console** (`src/systems/DevConsole.ts`). Type `debug` anywhere in the
-  game, or press the backtick key, and a console opens along the bottom. `help` lists what
+- **The developer console** (`src/systems/DevConsole.ts`). Press **Ctrl+Shift+D** (Ctrl on a
+  Mac too — Cmd+Shift+D is the browser's) or the backtick key, and a console opens along the
+  bottom. It used to open on typing the word `debug`, which the menu's letter shortcuts now
+  trip over (the b is Build). `help` lists what
   it can do: `cash +250000`, `rep 9000`, `hype`, `era 3`, `skip 20` (the clock really runs —
   bills land and awards are held on the way), `stage`/`ship` to push a project through,
   `shop all`, `printer x1c`, `people 5`, `unlock`.
@@ -2553,9 +2567,9 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     A run you doctored has to say so. Finding out later that a measurement came from a
     cheated save is worse than not having the console at all.
 
-  One trap worth the line: the `g` that finished the magic word was being inserted into the
-  input the word had just focused, so the first command every time was `ghelp`. A shortcut
-  that opens a text field has to swallow its own last keystroke.
+  One trap worth the line, from the magic word's days: the `g` that finished it was inserted
+  into the input it had just focused, so the first command every time was `ghelp`. A
+  shortcut that opens a text field has to swallow its own last keystroke.
 - Layout:
   - `src/game/` — `Game.ts` (orchestrator), `types.ts`, `store.ts`
   - `src/entities/` — `MemberEntity.ts` (state machine: idle → walk → work → idle),

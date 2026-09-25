@@ -68,20 +68,20 @@ export function membershipFor(reputation: number, era = 1): number {
  * **opening balance + income − costs = closing balance**, to the lira, every month.
  */
 export type LedgerKind =
-  | 'work' | 'sponsor' | 'sales' | 'adSales' | 'crewDues' | 'communityDues'
+  | 'work' | 'sponsor' | 'sales' | 'crewDues' | 'communityDues'
   | 'rent' | 'power' | 'comforts'
-  | 'parts' | 'design' | 'kit' | 'filament' | 'hiring' | 'training' | 'bounties' | 'marketing' | 'lease'
+  | 'parts' | 'design' | 'kit' | 'filament' | 'hiring' | 'training' | 'marketing' | 'lease' | 'events'
   | 'other';
 
 /** Kinds that are money in. Anything else is a cost. */
-export const INCOME_KINDS: LedgerKind[] = ['work', 'sponsor', 'sales', 'adSales', 'crewDues', 'communityDues'];
+export const INCOME_KINDS: LedgerKind[] = ['work', 'sponsor', 'sales', 'crewDues', 'communityDues'];
 
 /** The order a statement lists them in: money in first, then what it cost to run the place,
  *  then what was spent on purpose. */
 export const LEDGER_ORDER: LedgerKind[] = [
-  'crewDues', 'communityDues', 'work', 'adSales', 'sponsor', 'sales',
+  'crewDues', 'communityDues', 'work', 'sponsor', 'sales',
   'rent', 'power', 'comforts', 'parts', 'design', 'filament', 'kit', 'hiring', 'training',
-  'bounties', 'marketing', 'lease', 'other',
+  'marketing', 'lease', 'events', 'other',
 ];
 
 /** Signed running totals for the month so far, by kind. */

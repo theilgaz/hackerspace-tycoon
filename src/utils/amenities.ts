@@ -99,8 +99,7 @@ export interface AmenityDef {
     | 'espresso'
     | 'nappod'
     | 'mate'
-    | 'teamaker'
-    | 'spoolshelf';
+    | 'teamaker';
   mount: 'floor' | 'wall';
   /** The prop's own colour; the room is otherwise deliberately grey. */
   tone: string;
@@ -203,21 +202,6 @@ export const AMENITIES: AmenityDef[] = [
     mount: 'floor',
     tone: '#c8322b',
     use: { kind: 'drink', spots: [front(0.6, -0.1), front(0.6, 0.2)], hours: [0.15, 0.3] },
-  },
-  {
-    // Storage, not comfort: spools bought ahead, on a rack where you can watch them go down.
-    id: 'filament-shelf',
-    name: 'Filament Shelf',
-    blurb: 'A steel rack for sixteen spools. Buy filament ahead, and every refill takes from the shelf first.',
-    icon: 'package',
-    era: 1,
-    price: 1400,
-    upkeep: 0,
-    effect: {},
-    shape: 'spoolshelf',
-    mount: 'floor',
-    tone: '#8a929e',
-    shelf: 'printers',
   },
   {
     // The one drink every hackerspace runs on, in a fridge half the size of the real one.

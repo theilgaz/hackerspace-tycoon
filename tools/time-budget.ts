@@ -2,7 +2,7 @@
 import { Simulation } from '@/systems/Simulation';
 import { store, emptyRuntime } from '@/game/store';
 import { rng } from '@/utils/rng';
-import { FILAMENT, START_CASH, VERB_HOURS } from '@/utils/constants';
+import { START_CASH, VERB_HOURS } from '@/utils/constants';
 import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 
 /** Pick a crew on the pitch screen the way a player would: best passion match first. */
@@ -78,7 +78,6 @@ while (sim.day <= DAYS) {
       sim.queueAllPending(project.id);
     }
   }
-  if (sim.printer.consumable < FILAMENT.lowWarning && spendable() >= FILAMENT.spoolCost) sim.buyFilament();
   if (!sim.player.project && sim.player.present && sim.player.hoursLeft > 0) {
     const target = sim.projects.find(
       (p) =>

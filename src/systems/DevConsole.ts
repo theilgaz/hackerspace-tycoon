@@ -1,3 +1,4 @@
+import { DILEMMAS } from '@/utils/dilemmas';
 import { store } from '@/game/store';
 import type { Simulation } from './Simulation';
 import { AMENITIES, amenityDef } from '@/utils/amenities';
@@ -109,15 +110,10 @@ const COMMANDS: Command[] = [
     },
   },
   {
-    name: 'hype',
-    args: '<n|+n>',
-    help: 'set or move attention (it still decays 5% a day)',
-    run: (_sim, [raw]) => {
-      const next = amount(store.getState().hype, raw);
-      if (next === null) return `hype is ${Math.round(store.getState().hype)}`;
-      store.getState().setHype(Math.max(0, Math.round(next)));
-      return `hype → ${Math.max(0, Math.round(next))}`;
-    },
+    name: 'dilemma',
+    args: '[id]',
+    help: `deal a dilemma card now: ${DILEMMAS.map((d) => d.id).join(', ')}`,
+    run: (sim, [id]) => (sim.forceDilemma(id) ? `dilemma → ${store.getState().dilemma?.id}` : 'no card: one is open, or that id does not exist'),
   },
   {
     name: 'skip',

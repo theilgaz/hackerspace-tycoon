@@ -1,5 +1,5 @@
 import type { RivalState, ScoreRow } from '@/game/types';
-import { AWARDS, RIVALS, RIVAL_STANDOUT, RIVAL_UPVOTES_PER_REP } from '@/utils/rivals';
+import { AWARDS, RIVALS, RIVAL_STANDOUT } from '@/utils/rivals';
 
 import { rng } from '@/utils/rng';
 
@@ -21,7 +21,6 @@ export function createRivals(): RivalState[] {
     cash: def.startCash,
     reputation: 0,
     progress: 0,
-    upvotes: 0,
     bestBuild: null,
   }));
 }
@@ -30,6 +29,24 @@ export interface RivalPressure {
   /** Difficulty and the yearly ramp, folded into one multiplier each. */
   pace: number;
   reputation: number;
+  /** The player's reputation, for the rubber band (`RIVAL_BAND`). Absent, there is none. */
+  player?: number;
+}
+
+/**
+ * **The field keeps pace with the player** (§3c). A rival far ahead of you slows, one
+ * behind speeds up: its pace is multiplied by `((you + soften) / (them + soften)) ^ pull`,
+ * held between `slowest` and `fastest`. The field was tuned against the autoplayer, which
+ * ships a hundred builds in sixty days; a person plays a tenth of that, and Konya was three
+ * times the table by the first awards night. Each space keeps its own shape — Konya is still
+ * the quickest — it just cannot vanish over the horizon, or be left on it.
+ */
+export const RIVAL_BAND = { soften: 1500, pull: 1, slowest: 0.35, fastest: 1.25 };
+
+function bandFactor(rival: number, player: number | undefined): number {
+  if (player === undefined) return 1;
+  const ratio = (player + RIVAL_BAND.soften) / (rival + RIVAL_BAND.soften);
+  return Math.min(RIVAL_BAND.fastest, Math.max(RIVAL_BAND.slowest, Math.pow(ratio, RIVAL_BAND.pull)));
 }
 
 /** Advance every rival by a day. */
@@ -46,7 +63,7 @@ export function tickRivals(rivals: RivalState[], pressure: RivalPressure = { pac
     // the roster is full. Past `RIVAL_GROWTH_KNEE` reputation a space keeps its pace but
     // stops accelerating, which leaves everything before the knee exactly as it was.
     const known = Math.min(rival.reputation, RIVAL_GROWTH_KNEE);
-    const pace = def.shipPace * (1 + known / def.paceGrowth) * pressure.pace;
+    const pace = def.shipPace * (1 + known / def.paceGrowth) * pressure.pace * bandFactor(rival.reputation, pressure.player);
     rival.progress += pace * rng.range(0.55, 1.45);
     while (rival.progress >= 1) {
       rival.progress -= 1;
@@ -58,7 +75,6 @@ export function tickRivals(rivals: RivalState[], pressure: RivalPressure = { pac
       const shape = def.standout ?? RIVAL_STANDOUT;
       const standout = rng.chance(shape.chance) ? rng.range(shape.boost[0], shape.boost[1]) : 1;
       const impact = Math.round(earned * standout * standoutNorm(shape));
-      rival.upvotes += Math.round(impact * RIVAL_UPVOTES_PER_REP * def.online * rng.range(0.5, 1.5));
       const name = rng.pick(def.builds);
       if (!rival.bestBuild || impact > rival.bestBuild.score) {
         rival.bestBuild = { name, score: impact };

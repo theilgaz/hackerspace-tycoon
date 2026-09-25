@@ -6,9 +6,9 @@ import type {
   ProjectPlan,
   StageKey,
 } from '@/game/types';
-import { STAGE_ORDER, SOURCING } from '@/utils/constants';
+import { STAGE_ORDER } from '@/utils/constants';
 import { CATALOG_MAP } from '@/utils/catalog';
-import { defaultPlan, planProject, testFailChance, wishesFor } from '@/utils/design';
+import { defaultPlan, planProject, testFailChance } from '@/utils/design';
 import { uid } from '@/utils/format';
 import { rng } from '@/utils/rng';
 
@@ -58,7 +58,6 @@ export function startProject(
     teamSize: Math.max(1, chosen.seats),
     parts: [],
     defects: [],
-    bounties: [],
     simulationSkipped: summary.skipSim,
     testAttempts: 0,
     shipped: false,
@@ -68,14 +67,11 @@ export function startProject(
     partsOrdered: summary.bomCost === 0,
     partsArriveAt: 0,
     sponsorCash: entry.sponsorCash ?? 0,
-    hypeMultiplier: entry.hypeMultiplier ?? 1,
     spent: 0,
     proposerId: entry.proposerId,
     startedOnDay: day,
     idleDays: 0,
     design: { ...chosen.design },
-    ceiling: summary.ceiling,
-    wishes: wishesFor(def),
     craft: 0.5,
     // The design's share of quality is known at the pitch; the crew's is added at the end
     // of the kickoff, from whoever actually sat down (see `Simulation.finishKickoff`).
@@ -91,8 +87,7 @@ export function startProject(
 
 /** Quality is craft plus what the design and the crew added, and never quite zero. */
 export function refreshQuality(project: ProjectData) {
-  // Never past what the best of the crew can reach (design §4.2).
-  project.quality = Math.max(0.05, Math.min(project.ceiling ?? 1, project.craft + project.bonus));
+  project.quality = Math.max(0.05, Math.min(1, project.craft + project.bonus));
 }
 
 /** Parts appear once CAD is done — you cannot print what nobody has modelled. */
@@ -178,13 +173,6 @@ export function partsPending(project: ProjectData, nowHours: number): boolean {
 export function partsEta(project: ProjectData, nowHours: number): number {
   if (!project.partsOrdered) return project.leadDays * 24;
   return Math.max(0, project.partsArriveAt - nowHours);
-}
-
-export function expediteCost(project: ProjectData, nowHours: number): number {
-  const remaining = partsEta(project, nowHours);
-  if (remaining <= 0) return 0;
-  const fraction = remaining / (project.leadDays * 24);
-  return Math.round(project.bomCost * SOURCING.expediteCostRatio * fraction);
 }
 
 // --- Test -------------------------------------------------------------------

@@ -3,7 +3,6 @@ import type {
   MemberActivity,
   MemberData,
   MemberSnapshot,
-  Role,
   SkillKey,
   Tag,
   Training,
@@ -25,8 +24,6 @@ export class MemberEntity {
 
   activity: MemberActivity = 'away';
   present = false;
-  /** A standing job they look after when they are in (§3b). */
-  role: Role | null = null;
   /** Project this member is allocated to. One at a time — that is the constraint. */
   team: string | null = null;
   interest = 0;
@@ -188,7 +185,6 @@ export class MemberEntity {
       primary: primaryWing(this.data.skills, this.data.passions),
       id: this.id,
       name: this.name,
-      role: this.role,
       present: this.present,
       activity: this.activity,
       team: this.team,

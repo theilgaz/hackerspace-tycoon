@@ -68,7 +68,9 @@ export const DIFFICULTIES: DifficultyDef[] = [
     rivalRep: 1.2,
     startCash: 50000,
     startMembers: 2,
-    recruitEvery: 35,
+    // 35 until the simplification pass: attention and a Host on the door both sped the
+    // clock up, and with both gone 24 is the same average pace (era-pace, 8 seeds).
+    recruitEvery: 24,
     yearRamp: 0.13,
   },
 ];

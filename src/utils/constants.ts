@@ -30,13 +30,15 @@ export const TIME = {
 
 export const START_CASH = 4000;
 
-/** Filament: the slice's only consumable. Phase 3 expands this into a real economy. */
+/**
+ * Filament: the only consumable. **It is never a chore** — printers do not run dry and
+ * nobody buys spools; what the month's prints drew is billed on the statement at the
+ * spool price, like the power. Refilling, a shelf of stock and a keeper to do it were all
+ * a job that asked nothing of the player but remembering.
+ */
 export const FILAMENT = {
   spoolGrams: 1000,
   spoolCost: 450,
-  lowWarning: 200,
-  /** Spools a Filament Shelf holds — stock bought ahead, drawn on before buying more. */
-  shelfSpools: 16,
 };
 
 // --- People -----------------------------------------------------------------
@@ -178,8 +180,6 @@ export const TEAM = {
    */
   acceptBase: 0.42,
   acceptFromPassion: 0.75,
-  /** A live bounty on the project makes a "no" much less likely. */
-  bountyAcceptBonus: 0.3,
   /** Hours before you can ask the same person about the same project again. */
   declineCooldownHours: 14,
   /** Interest they start with when they accept, scaled by passion match. */
@@ -212,12 +212,8 @@ export const DRIFT = {
   decayPerHour: 0.055,
   /** Below this, the member unsigns and drifts off the project. */
   abandonThreshold: 0.25,
-  /** A bounty restores this much interest on its stage. */
-  bountyInterest: 0.75,
   /** Passion match below this and they will not sign up at all — a dead pitch. */
   signupThreshold: 0.25,
-  /** Re-pitching costs nothing but only re-rolls members not already signed up. */
-  repitchBonus: 0.15,
   /** After drifting off a stage they will not touch it again for this long. Without
    * this, drift is cosmetic: they abandon and re-sign on the very next tick. */
   cooldownHours: 16,
@@ -236,34 +232,17 @@ export const REPEAT = {
   floor: 0.4,
 };
 
-export const BOUNTY = {
-  /** Cost scales with remaining work on the stage. */
-  costPerWorkUnit: 14,
-  minCost: 150,
-  /**
-   * What a live bounty does to the crew working that stage. It used to buy overtime — in
-   * past six — but the crew's day is nine to six without exception now (§3d), so a bounty
-   * buys effort instead: the stage nobody wanted, worked harder by whoever is on it. It
-   * still pulls volunteers and eases an ask (`TEAM.bountyAcceptBonus`).
-   */
-  rateBonus: 1.3,
-};
-
 // --- Machines (§5, §13.3) ---------------------------------------------------
 
 export const MACHINE = {
-  /** Base chance a job fails *at some point* over its full duration. */
-  baseJobFailure: 0.14,
-  /** Calibration 1.0 → no penalty; 0.0 → this multiplier on failure chance. */
-  calibrationPenalty: 2.6,
+  /**
+   * Base chance a job fails *at some point* over its full duration. It was 0.14 with a bed
+   * that drifted out of level and a keeper who levelled it; with calibration gone it carries
+   * the average drift itself.
+   */
+  baseJobFailure: 0.17,
   /** Each operator skill level above 1 multiplies failure chance by this. */
   operatorSkillFactor: 0.82,
-  /** Calibration lost per sim-hour of running. */
-  calibrationDrift: 0.011,
-  /** Calibration restored per sim-hour of a member calibrating. */
-  calibrationRestore: 0.35,
-  /** Below this the UI nags and failure odds bite. */
-  calibrationWarning: 0.55,
   /** A failed job wastes this fraction of the part's material. */
   wasteOnFailure: 0.85,
 };
@@ -413,15 +392,8 @@ export const PLAYER = {
  */
 export const VERB_HOURS: Record<string, number> = {
   pitch: 0,
-  post: 1,
-  repitch: 1,
-  bounty: 1,
   order: 1,
-  expedite: 1,
-  filament: 0.5,
-  maintain: 1,
   hire: 1,
-  campaign: 1,
 };
 
 // --- Eras (§8) --------------------------------------------------------------
@@ -467,53 +439,6 @@ export function eraDef(era: number): EraDef {
   return ERAS[Math.min(ERAS.length, Math.max(1, era)) - 1];
 }
 
-// --- Reddit and hype (§6) ---------------------------------------------------
-
-/**
- * Attention, as numbers. The layer exists to be the **anti-drift clock**: hype decays every
- * day whether you touch it or not, and everything it feeds — who applies, how many of the
- * public pay to be here, whether a sponsor calls — sags with it. A project left at eighty
- * per cent therefore costs you something continuously, which nothing else in the game does.
- */
-export const HYPE = {
-  /** Upvotes a perfect post could reach before the room's own numbers scale it. */
-  perPost: 900,
-  hypePerUpvote: 0.55,
-  /**
-   * How much of a post's merit comes from build quality rather than how far through the
-   * pipeline it is. Quality dominates, but a render is not a photograph.
-   */
-  meritFromQuality: 0.6,
-  /**
-   * Overreach × skepticism × this = how far the verdict falls. The teeth of the claim, and
-   * they have to outweigh the claim's own multiplier or the answer is always "claim the most"
-   * — which is exactly what the first measurement said: 181 bold posts, 0.8 of them punished.
-   */
-  backfire: 7,
-  /** A post cannot do worse than this, so one bad call is a setback and not a run-ender. */
-  worstVerdict: 0.6,
-  /** Reputation lost per downvote when the room turns. Negative by construction. */
-  reputationPerBurn: 0.12,
-  /** Each repeat of the same build in the same room is worth this much less. */
-  repeatPenalty: 0.8,
-  /** Daily decay. About a fortnight to half — attention is a shelf life, not a stock. */
-  decayPerDay: 0.05,
-  /** Below this it is rounded away rather than left as a rounding tail. */
-  floor: 1,
-  /** Hype at which its effects are at half strength; the curve never saturates hard. */
-  halfEffect: 700,
-  /** At full pressure, word of mouth moves this many times faster. */
-  recruitSpeedUp: 1.35,
-  /** At full pressure, this many extra of the public are paying to use the place. */
-  extraMembers: 30,
-  /** Reputation at which a post about the space itself can back any claim. */
-  spaceMeritAt: 4000,
-  /** A photo of the place is always worth a look, but it is never the finished thing. */
-  spaceInterest: 0.7,
-  /** At full pressure, sponsors call this many times as often. */
-  sponsorSpeedUp: 2.5,
-};
-
 // --- Backlog (§4a) ----------------------------------------------------------
 
 export const BACKLOG = {
@@ -521,13 +446,9 @@ export const BACKLOG = {
   memberProposalChance: 0.16,
   /** Chance per day of a sponsor offer with cash attached. */
   sponsorChance: 0.07,
-  /** Chance per day that a subreddit gets obsessed with something. */
-  trendingChance: 0.1,
   /** Sponsor cash as a fraction of the project's bill of materials. */
   sponsorCashRatio: [0.5, 1.1] as [number, number],
   sponsorDeadlineDays: [7, 14] as [number, number],
-  trendingDeadlineDays: [5, 12] as [number, number],
-  trendingHypeMultiplier: [1.4, 2.2] as [number, number],
   /** A proposer arrives already committed to the project. */
   proposerInterestBonus: 0.5,
   maxOffers: 5,
@@ -543,14 +464,6 @@ export const SHELVE = {
   afterIdleDays: 14,
   /** Warn on the project card once it has been idle this long. */
   warnAfterIdleDays: 7,
-};
-
-/** Waiting on parts is its own bottleneck, and it is what makes IoT builds feel different. */
-export const SOURCING = {
-  /** Expediting costs this multiple of the remaining order value... */
-  expediteCostRatio: 0.8,
-  /** ...and halves the remaining wait. Once per order: a second press was a slider, not a choice. */
-  expediteFactor: 0.5,
 };
 
 // --- Content: the roster ----------------------------------------------------
@@ -626,6 +539,22 @@ export const ROSTER: MemberData[] = [
     window: [9, 18],
   },
 ];
+
+/** The two on day one, by the names the roster was written with. */
+export const FOUNDER_NAMES: readonly string[] = ROSTER.map((m) => m.name);
+
+/**
+ * The player may rename the two founders on the start screen. Their names are written into
+ * the roster itself rather than into each entity, because every lookup of a member's name —
+ * a shipped build's crew, a proposal, the People panel — goes through the roster by id. Set
+ * on every new run and every load, so one run's names never carry into the next; a blank
+ * falls back to the roster's own.
+ */
+export function setFounders(names: readonly (string | undefined)[] | undefined) {
+  ROSTER.forEach((member, i) => {
+    member.name = names?.[i]?.trim() || FOUNDER_NAMES[i];
+  });
+}
 
 /**
  * The reputation each rung of the applicant ladder asks for, lowest first. **The rungs are
@@ -869,7 +798,7 @@ export const TRAIT_LABEL: Record<TraitKey, string> = {
 
 export const TRAIT_BLURB: Record<TraitKey, string> = {
   perfectionist: 'Better work, but will not sign off the design below 55% quality — not until it has had half as much again.',
-  scopeCreeper: 'Now and then adds a requirement to a bigger build: more work, a higher ceiling.',
+  scopeCreeper: 'Now and then adds a requirement to a bigger build: more work, a better result.',
   mentor: 'Everyone on the same build works a level up, to the Mentor\'s own.',
   ghost: 'Signs up, then turns up less and less.',
   gatekeeper: 'While in, prints fail less — and novices work slower, checked at every step.',
@@ -895,9 +824,8 @@ export const TRAITS = {
     chance: 0.45,
     /** Extra work on the stage after it, as a share of what that stage needed. */
     work: 0.25,
-    /** Quality the idea adds, and how far it lifts the crew's ceiling. */
+    /** Quality the idea adds. */
     quality: 0.05,
-    ceiling: 0.05,
   },
   mentor: {
     /** Levels added to everybody else on the build, never past the Mentor's own. */
@@ -968,18 +896,8 @@ export const DESIGN = {
   budgetBase: 100,
   budgetShare: 0.02,
   starBom: { 1: 0.9, 3: 1, 5: 1.12 } as Record<1 | 3 | 5, number>,
-  /** Skill level somebody on the crew needs for each star rating. One star needs nobody. */
+  /** Skill level somebody on the crew needs for each star rating — below it the card is locked. One star needs nobody. */
   starSkill: { 1: 0, 3: 2, 5: 4 } as Record<1 | 3 | 5, number>,
-  /**
-   * **A price, not a lock** (design §5.4): each level the crew is short of what an option
-   * asks multiplies the work and the test risk by these. The ambitious player can reach;
-   * the trained crew pays nothing.
-   */
-  shortWork: 1.3,
-  shortRisk: 1.35,
-  /** The quality ceiling a crew's best level sets: `ceilingBase + ceilingPerLevel × level`. */
-  ceilingBase: 0.35,
-  ceilingPerLevel: 0.13,
   /**
    * The technology a crew brings (design §5.4), by its best level — chosen by nobody. Tier 0
    * up to level 1, tier 1 at 2-3, tier 2 at 4-5.
@@ -987,9 +905,6 @@ export const DESIGN = {
   techQuality: [-0.06, 0, 0.06],
   techRisk: [1.15, 1, 0.85],
   techWork: [1.1, 1, 0.92],
-  /** What each client wish met at release adds to the pay and the hype. */
-  wishPay: 0.15,
-  wishHype: 0.1,
   /**
    * The kickoff is a meeting, not a stage of work: an afternoon round the table, not the
    * day and a half the old Concept stage took. That mattered less when every project could
@@ -1030,8 +945,6 @@ export const MARKET = {
   noise: 0.07,
   /** A ship multiplies its genre's demand by this. */
   shipDip: 0.92,
-  /** A trending offer lifts its genre by this much. */
-  trendBump: 0.14,
 };
 
 /**
@@ -1090,14 +1003,6 @@ export const RESALE = { share: 0.5 };
  */
 export const AWARDS_COUNTDOWN = [30, 10, 3, 1];
 
-/** Standing jobs (§3b). */
-export const ROLES = {
-  /** The Printer Keeper levels a bed that has drifted below this, between prints. */
-  levelBelow: 0.7,
-  /** How much faster word gets round on a day the Host is in. */
-  hostDraw: 1.25,
-};
-
 export const TRAIN = {
   costPerLevel: 500,
   /**
@@ -1110,4 +1015,36 @@ export const TRAIN = {
    */
   hoursPerLevel: 1.1,
   maxLevel: 5,
+};
+
+/**
+ * The ship report's verdict against the pitch's forecast. Measured in `era-pace` (2 seeds,
+ * 150 days): with +0.03 as the bar, three bigger builds in four "beat the plan", which made
+ * it a label rather than news.
+ */
+export const REPORT = {
+  aboveQuality: 0.1,
+  abovePay: 1.12,
+  belowQuality: 0.05,
+  /**
+   * Late is past `lateFactor` × the forecast plus `lateSlack` days. The forecast counts a
+   * failed test's cost (`retryDays`); measured over the first 90 days of `era-pace`, one
+   * medium or large build in twelve runs that late — a real miss, not the calendar.
+   */
+  lateFactor: 1.5,
+  lateSlack: 2,
+};
+
+/**
+ * **Promoting a build** (§4c): one press on the ship report, within `window` days of release.
+ * The reputation arrives a share a day over `days`, and adds up to `gainShare` of what the
+ * build made; it costs `costPerRep` a point of that, never under `min`. A loud new build is
+ * worth it, a fourth copy of the same one mostly is not — the gain follows the build.
+ */
+export const PROMO = {
+  window: 3,
+  days: 7,
+  gainShare: 1,
+  costPerRep: 5,
+  min: 500,
 };

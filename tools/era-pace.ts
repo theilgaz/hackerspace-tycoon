@@ -2,25 +2,20 @@
 import { Simulation } from '@/systems/Simulation';
 import { store, emptyRuntime } from '@/game/store';
 import { rng } from '@/utils/rng';
-import { FILAMENT, VERB_HOURS, WORKDAY, isWorkingDay } from '@/utils/constants';
+import { VERB_HOURS, WORKDAY, isWorkingDay } from '@/utils/constants';
 import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 import { partsPending } from '@/systems/ProjectSystem';
 import { ECONOMY } from '@/utils/economy';
 import { DIFFICULTY_MAP, type DifficultyKey } from '@/utils/difficulty';
-import { ROLE_LABEL, type Role, type ScoreRow } from '@/game/types';
+import type { ScoreRow } from '@/game/types';
 import { AWARDS } from '@/utils/rivals';
-
-const ROLES = Object.keys(ROLE_LABEL) as Role[];
-import { CLAIMS, SUBREDDITS, tasteMatch } from '@/utils/subreddits';
-import { merit } from '@/systems/HypeSystem';
 import { AMENITIES } from '@/utils/amenities';
 import { STAGE_STATION, STATIONS, GRID, DOOR, IDLE_TILES, isBlocked } from '@/machines/layout';
 import { findPath } from '@/utils/grid';
 import { furnish } from './furnish';
+import { answerDilemma } from './dilemma';
 import { freshMarket } from '@/utils/market';
 import { CALENDAR } from '@/utils/format';
-import { CAMPAIGNS, campaignGain, campaignRange, campaignSales } from '@/utils/campaigns';
-import type { CampaignId } from '@/game/types';
 
 const rows: string[] = [];
 const standings: string[] = [];
@@ -38,18 +33,15 @@ const DAYS = Number(process.env.DAYS ?? 220);
 // One setting since the start screen stopped offering three (difficulty.ts).
 const LEVEL: DifficultyKey = 'normal';
 /** `NO_SHOP=1` plays the same run without buying a single comfort — the A/B that says
- *  whether the shop is worth its money, the way `hype-check` does for posting. */
+ *  whether the shop is worth its money. */
 const SHOPS = process.env.NO_SHOP !== '1';
 /**
- * `CAMPAIGN=flyers|social|review|launch|best` advertises every build that ships with that
- * campaign (`best`: whichever would add the most) — the reckless end of the A/B for the ship
- * report's campaigns. `CAMPAIGN=smart` is the careful end: the biggest campaign that cannot
- * lose reputation, whose price net of the sales it brings back is under `SMART_PRICE` a
- * point, and that leaves `SMART_FLOOR` in the bank. Unset, the player never advertises.
+ * `LAZY=1` plays like a person rather than a machine: one build at a time, no promotions —
+ * the autoplayer ships ten times what anybody does by hand, and the field is felt by humans.
  */
-const CAMPAIGN_MODE = process.env.CAMPAIGN as CampaignId | 'best' | 'smart' | undefined;
-const SMART_PRICE = Number(process.env.SMART_PRICE ?? 25);
-const SMART_FLOOR = 40000;
+const LAZY = process.env.LAZY === '1';
+/** `PROMO=0` never promotes a shipped build. */
+const PROMOTE = process.env.PROMO !== '0' && !LAZY;
 for (let seed = 1; seed <= SEEDS; seed += 1) {
   rng.reseed(seed);
   // Every field, every seed (§13): a leftover ceremony once made three rounds of tuning
@@ -65,6 +57,8 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     failed: [],
     notices: [],
     traitsSeen: [],
+    dilemma: null,
+    dilemmasSeen: [],
     shipReport: null,
     reputation: 0,
     ceremony: null,
@@ -77,9 +71,6 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     backlog: [],
     applicants: [],
     passed: [],
-    upvotes: 0,
-    hype: 0,
-    posts: [],
     amenities: [],
     amenityPlacements: {},
     moving: null,
@@ -89,7 +80,6 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   });
   const sim = new Simulation();
   const arrived: Record<number, number> = {};
-  let lastPostDay = 0;
   let furnishedAt = -1;
   let traceDay = 0;
   let night: string | null = null;
@@ -102,8 +92,6 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   const spent = new Map<string, Record<string, number>>();
   let sampledHour = -1;
   const banked = new Set<string>();
-  const advertised = new Set<string>();
-  const ads = { runs: 0, spent: 0, gain: 0 };
   // Past the first awards night and well into the third year.
   while (sim.day <= DAYS) {
     if (sim.day !== eveDay) {
@@ -111,32 +99,6 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       eveDay = sim.day;
     }
     sim.tick(0.05, 4);
-    if (CAMPAIGN_MODE) {
-      for (const record of store.getState().shipped) {
-        if (record.order || advertised.has(record.id)) continue;
-        advertised.add(record.id);
-        let id: CampaignId | null;
-        if (CAMPAIGN_MODE === 'smart') {
-          const worth = CAMPAIGNS.filter((c) => {
-            const gain = campaignGain(c.id, record.hype, record.quality);
-            const [low] = campaignRange(c.id, record.hype, record.quality);
-            const net = c.cost - campaignSales(gain);
-            return low > 0 && net <= SMART_PRICE * gain && store.getState().cash - c.cost >= SMART_FLOOR;
-          });
-          id = worth.length
-            ? worth.reduce((a, b) => (campaignGain(b.id, record.hype, record.quality) > campaignGain(a.id, record.hype, record.quality) ? b : a)).id
-            : null;
-        } else if (CAMPAIGN_MODE === 'best') {
-          id = CAMPAIGNS.reduce((a, b) => (campaignGain(b.id, record.hype, record.quality) > campaignGain(a.id, record.hype, record.quality) ? b : a)).id;
-        } else id = CAMPAIGN_MODE;
-        if (id && sim.launchCampaign(record.id, id)) {
-          const ran = store.getState().shipped.find((r) => r.id === record.id)?.campaign;
-          ads.runs += 1;
-          ads.spent += ran?.cost ?? 0;
-          ads.gain += ran?.hype ?? 0;
-        }
-      }
-    }
     if (Math.floor(sim.totalHours) !== sampledHour) {
       sampledHour = Math.floor(sim.totalHours);
       const open = isWorkingDay(sim.day) && sim.time >= WORKDAY.start && sim.time < WORKDAY.end;
@@ -181,6 +143,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       lastDay = sim.day;
     }
     if (store.getState().bill) store.getState().setBill(null);
+    answerDilemma(sim);
     if (store.getState().gameOver) break;
     // `TRACE=1` prints the first seed day by day — §13: when a run looks wrong, trace the
     // state rather than tune the numbers.
@@ -211,6 +174,14 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     // Keep the next bill covered — the *net* of it, since dues arrive at the same moment.
     const reserve = Math.max(0, -sim.previewBill().net);
     const spendable = () => store.getState().cash - reserve;
+    // Promoting what ships (§4c): an engaged player promotes a build when it is comfortably
+    // affordable. `PROMO=0` plays the same run without — the A/B for the ship report's button.
+    if (PROMOTE) {
+      for (const record of store.getState().shipped.slice(-6)) {
+        const quote = sim.promoQuote(record.id);
+        if (quote && spendable() >= quote.cost * 2) sim.promote(record.id);
+      }
+    }
     const state = store.getState();
     if (!arrived[state.era]) arrived[state.era] = sim.day;
     // The first awards night is the one nearly every player will actually reach.
@@ -229,7 +200,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
             const v = field.map(pick).sort((x, y) => x - y);
             return `you ${pick(me)} / field ${v[0]}-${v[Math.floor(v.length / 2)]}-${v[v.length - 1]}`;
           };
-          return `\n           votes ${spread((r) => r.upvotesThisYear)}  ·  best ${spread((r) => r.bestBuild?.score ?? 0)}` +
+          return `\n           best ${spread((r) => r.bestBuild?.score ?? 0)}` +
             `  ·  rise% ${spread((r) => r.growthThisYear)}` +
             `\n           ships ${spread((r) => r.projectsThisYear)}  ·  space ${spread((r) => r.reputationThisYear)}`;
         })() +
@@ -247,14 +218,6 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       store.getState().setCeremony(null);
       store.setState({ paused: false });
     }
-    // An engaged player hands out the standing jobs as soon as there is somebody to hand
-    // them to — that is what they are for.
-    for (const role of ROLES) {
-      if (sim.members.some((m) => m.role === role)) continue;
-      const free = sim.members.find((m) => !m.role);
-      if (free) sim.setRole(free.id, role);
-    }
-
     // Signing the lease is a decision now, so an engaged player makes it: take the next one
     // as soon as the name is there and the move is comfortably affordable.
     const lease = sim.nextLease();
@@ -270,7 +233,8 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     // of materials there and then, so an unfunded pitch is cash poured into a project that
     // then sits at assembly — and the cash it burns is the cash that would have hired somebody.
     const funded = (id: string) => spendable() >= CATALOG_MAP[id].bomCost;
-    if (sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
+    const busy = LAZY && sim.projects.some((p) => !p.shipped && !p.order);
+    if (!busy && sim.player.hoursLeft >= VERB_HOURS.pitch && sim.members.filter((m) => !m.team).length >= 1) {
       const offer = state.backlog[0];
       const pick = (id: string) =>
         sim.members.filter((m) => !m.team).sort((a, b) => b.passionMatch(CATALOG_MAP[id].tags) - a.passionMatch(CATALOG_MAP[id].tags)).slice(0, CATALOG_MAP[id].teamSize).map((m) => m.id);
@@ -288,11 +252,6 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       if (p.team.length < p.teamSize) {
         const c = sim.members.filter((m) => !m.team && !m.isCoolingOff(p.id)).sort((a, b) => b.passionMatch(p.tags) - a.passionMatch(p.tags))[0];
         if (c) sim.inviteMember(p.id, c.id);
-      }
-    }
-    for (const machine of sim.machines) {
-      if (machine.consumableMax > 0 && machine.consumable < FILAMENT.lowWarning) {
-        if (spendable() >= sim.refillCost(machine.id)) sim.buyFilament(machine.id);
       }
     }
     // An engaged player buys a printer once one is clearly affordable — the best they can
@@ -322,17 +281,6 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       // affordable today — hence no wage check, which is the point of the volunteer model.
       if (spendable() >= sim.hireCost(id)) sim.hire(id);
     }
-    if (sim.day > lastPostDay && sim.player.hoursLeft >= VERB_HOURS.post + 2) {
-      const target = [...sim.projects].filter((p) => !p.shipped).sort((a, b) => merit(b) - merit(a))[0];
-      if (target) {
-        const room = [...SUBREDDITS].sort(
-          (a, b) => tasteMatch(target.tags, b) * b.audience - tasteMatch(target.tags, a) * a.audience,
-        )[0];
-        const earned = merit(target);
-        const claim = ([...CLAIMS].reverse().find((c) => c.ask <= earned) ?? CLAIMS[0]).key;
-        if (sim.post(target.id, room.id, claim)) lastPostDay = sim.day;
-      }
-    }
     // Step off a project that has nothing to do by hand — the sim keeps you on it
     // deliberately, but a player watching would move rather than idle for days.
     if (sim.player.project) {
@@ -349,7 +297,6 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
       if (t) sim.workOn(t.id);
     }
   }
-  if (CAMPAIGN_MODE) console.log(`  campaigns seed ${seed}: ${ads.runs} run · ₺${ads.spent} spent · ${ads.gain >= 0 ? '+' : ''}${ads.gain} reputation`);
   // Where does an engaged player actually sit at the first awards night?
   const board = sim.scoreboard();
   const me = board.findIndex((r) => r.isPlayer) + 1;
@@ -394,7 +341,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
     `  seed ${seed}: era2 day ${arrived[2] ?? '—'}, era3 day ${arrived[3] ?? '—'}, ` +
       `shipped ${store.getState().shippedCount}, rep ${store.getState().reputation}, ` +
       `printers ${sim.machines.filter((m) => m.type === 'fdm').map((m) => m.label).join('+') || 'none'}, ` +
-      `cash ₺${Math.round(store.getState().cash)}, filament ${Math.round(sim.printer.consumable)}g\n` +
+      `cash ₺${Math.round(store.getState().cash)}\n` +
       // What the designing and the crew sizes add up to, and what the floor ended up holding.
       `           quality ${(store.getState().shipped.reduce((n, r) => n + r.quality, 0) / Math.max(1, store.getState().shippedCount)).toFixed(2)} avg · ` +
       `hype/ship ${Math.round(store.getState().shipped.reduce((n, r) => n + r.hype, 0) / Math.max(1, store.getState().shippedCount))} · ` +

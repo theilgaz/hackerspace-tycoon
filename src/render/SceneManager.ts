@@ -32,6 +32,8 @@ export class SceneManager {
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
   private target = new THREE.Vector3(0, 0, 0);
+  /** The start screen's slow sway round the room; null in play, where the camera holds still. */
+  private sway: number | null = null;
   private dragging = false;
   private last = { x: 0, y: 0 };
   private readonly canvas: HTMLCanvasElement;
@@ -137,8 +139,25 @@ export class SceneManager {
   }
 
   private updateCamera() {
-    this.camera.position.set(this.target.x + 18, 18, this.target.z + 18);
+    // The iso shot sits at 45° round the room. Behind the start screen it sways a little
+    // either side of that — never a full turn: the room is built to be seen from one side,
+    // and the far side is two missing walls and the backs of the benches.
+    const yaw = Math.PI / 4 + (this.sway === null ? 0 : Math.sin(this.sway) * 0.34);
+    const r = 18 * Math.SQRT2;
+    this.camera.position.set(this.target.x + r * Math.sin(yaw), 18, this.target.z + r * Math.cos(yaw));
     this.camera.lookAt(this.target);
+  }
+
+  /** Sway the camera slowly while `on` (the start screen); settle back to the iso shot when not. */
+  showcase(on: boolean, dt: number) {
+    if (!on) {
+      if (this.sway === null) return;
+      this.sway = null;
+      this.updateCamera();
+      return;
+    }
+    this.sway = (this.sway ?? 0) + dt * 0.18;
+    this.updateCamera();
   }
 
   /**

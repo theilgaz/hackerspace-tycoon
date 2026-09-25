@@ -1,10 +1,11 @@
+import type { CurrencyKey } from '@/utils/format';
+import type { DilemmaMod } from '@/utils/dilemmas';
 import { uid, uidPast } from '@/utils/format';
 import type {
   MachineType,
   ProjectCategory,
   ProjectData,
   RivalState,
-  Role,
   Tag,
   Skills,
   Training,
@@ -36,7 +37,6 @@ export interface MemberSave {
   /** Gone since v11 — everybody is full-time — but still in older files. */
   employment?: string;
   shift?: string | null;
-  role: Role | null;
   team: string | null;
   interest: number;
   energy: number;
@@ -52,7 +52,6 @@ export interface PlayerSave {
   hoursLeft: number;
   energy: number;
   project: string | null;
-  calibrating: boolean;
   present: boolean;
   tile: Tile;
 }
@@ -60,8 +59,6 @@ export interface PlayerSave {
 export interface MachineSave {
   id: string;
   type: MachineType;
-  calibration: number;
-  consumable: number;
   current: Job | null;
   queue: Job[];
 }
@@ -81,7 +78,7 @@ export interface MachineSave {
  * default can stand in for it — and say so in the log when you do.
  */
 export const SAVE_KEY = 'hackerspace-tycoon-save-v1';
-export const SAVE_VERSION = 21;
+export const SAVE_VERSION = 23;
 /** Files older than this cannot be repaired by filling in defaults. */
 export const MIN_LOADABLE = 1;
 
@@ -93,9 +90,15 @@ export interface SaveFile {
   sim: {
     day: number;
     time: number;
-    yearStart: { day: number; projects: number; reputation: number; upvotes?: number };
-    rivalYearStart: [string, { projects: number; reputation: number; upvotes?: number }][];
+    yearStart: { day: number; projects: number; reputation: number };
+    rivalYearStart: [string, { projects: number; reputation: number }][];
     machineHoursThisMonth: number;
+    /** Added in v22; older files start the month at nothing. */
+    filamentThisMonth?: number;
+    /** Dilemmas (v23): when the next card is due, what the last ones left on the space, and who is home. */
+    nextDilemmaDay?: number;
+    mods?: { mod: DilemmaMod; value: number; until: number }[];
+    awayUntil?: [string, number][];
     incomeThisMonth: number;
     recruitClock: number;
     recentShip: { tags: Tag[]; name: string; day: number } | null;
@@ -106,6 +109,8 @@ export interface SaveFile {
     members: MemberSave[];
     player: PlayerSave;
     machines: MachineSave[];
+    /** Starting kit no longer in the room (v23+). Older files have none, and kept all of it. */
+    removedKit?: string[];
     installedStations: {
       id: string;
       type: MachineType;
@@ -124,6 +129,8 @@ export interface SaveFile {
     shipped: number;
     reputation: number;
     cash: number;
+    /** Older files have none, and were in lira. */
+    currency?: CurrencyKey;
     era: string;
   };
 }
@@ -139,10 +146,6 @@ function migrate(file: SaveFile): SaveFile {
   // v2 — the recruitment clock and what the space had just shipped.
   if (typeof sim.recruitClock !== 'number') sim.recruitClock = 0;
   if (sim.recentShip === undefined) sim.recentShip = null;
-
-  // v3 — Reddit.
-  if (typeof store.hype !== 'number') store.hype = 0;
-  if (!Array.isArray(store.posts)) store.posts = [];
 
   // v4 — printers carry a model; anything already on the floor is the one you started with.
   sim.installedStations = (sim.installedStations ?? []).map((station) => ({
@@ -162,13 +165,6 @@ function migrate(file: SaveFile): SaveFile {
   for (const record of (store.shipped as { spent?: number }[] | undefined) ?? []) {
     if (typeof record.spent !== 'number') record.spent = 0;
   }
-  // v5 — standing jobs. Nobody held one before, so nobody holds one now.
-  for (const member of sim.members ?? []) {
-    if ((member as { role?: unknown }).role === undefined) {
-      (member as { role: null }).role = null;
-    }
-  }
-
   // v6 — the Shop. An older run never had one, so it owns no comforts; mood settles up
   // from wherever it was saved on its own.
   if (!Array.isArray(store.amenities)) store.amenities = [];
@@ -221,20 +217,6 @@ function migrate(file: SaveFile): SaveFile {
   if (!store.ledger || typeof store.ledger !== 'object') store.ledger = {};
   if (typeof store.monthOpen !== 'number') store.monthOpen = store.cash;
 
-  // v12 — the Project Manager is gone (it chose projects for the player). Whoever held it
-  // holds nothing now; the Technician is a new slot to fill.
-  for (const member of sim.members ?? []) {
-    if ((member as { role?: unknown }).role === 'manager') (member as { role: null }).role = null;
-  }
-
-  // v13 — the Technician folded into the Printer Keeper; its slot is the Host now.
-  for (const member of sim.members ?? []) {
-    if ((member as { role?: unknown }).role === 'technician') (member as { role: null }).role = null;
-  }
-
-  // v14 — seat licences are kept. What an older run paid for was never recorded, so it
-  // owns none and buys them again once; charging nothing would be the wrong guess.
-  if (!store.licences || typeof store.licences !== 'object') store.licences = {};
 
   // v15 — print orders arrive in the Machines panel. An older run has none on offer yet.
   if (!Array.isArray(store.printOffers)) store.printOffers = [];
@@ -268,8 +250,6 @@ function migrate(file: SaveFile): SaveFile {
   const player = sim.player as { skills?: Record<string, number> } | undefined;
   if (player?.skills && 'cad' in player.skills) player.skills = rolesFrom(player.skills, {});
 
-  // v18 — filament can be kept on a shelf. An older run has none in stock.
-  if (typeof store.filamentStock !== 'number') store.filamentStock = 0;
 
   // v19 — the standings remember last month, for the Ranking arrows. An older run has no
   // month on record, so the first day after loading takes one and the arrows start there.
@@ -294,6 +274,42 @@ function migrate(file: SaveFile): SaveFile {
   // v21 — traits the player has been told about. An old run has seen none, so each one's
   // first appearance is news, which is exactly what it would have been.
   if (!Array.isArray(store.traitsSeen)) store.traitsSeen = [];
+
+  // v22 — the currency and the founders' names, chosen at the start. An old run was in lira
+  // with Safa and Abdullah, which is what an identity without them already reads as.
+  const identity = store.identity as { currency?: string } | null | undefined;
+  if (identity && !identity.currency) identity.currency = 'TRY';
+
+  // v22 — the simplification pass. Socials, standing jobs, bounties, expediting, licences,
+  // wishes and printer upkeep are gone; what an old file kept of them is dropped here, so a
+  // loaded run holds only what the game still reads. Nothing is lost that could be played.
+  delete store.hype;
+  delete store.posts;
+  delete store.upvotes;
+  delete store.filamentStock;
+  delete store.licences;
+  // The Filament Shelf went with the stock it held.
+  if (Array.isArray(store.amenities)) {
+    store.amenities = (store.amenities as string[]).filter((id) => id !== 'filament-shelf');
+  }
+  const placed = store.amenityPlacements as Record<string, unknown> | undefined;
+  if (placed) delete placed['filament-shelf'];
+  if (Array.isArray(store.backlog)) {
+    store.backlog = (store.backlog as { source?: string }[]).filter((entry) => entry.source !== 'trending');
+  }
+  // What the month spent on the verbs that went is folded into "other", so it still adds up.
+  const ledger = store.ledger as Record<string, number> | undefined;
+  if (ledger) {
+    for (const gone of ['adSales', 'marketing', 'bounties']) {
+      if (ledger[gone]) ledger.other = (ledger.other ?? 0) + ledger[gone];
+      delete ledger[gone];
+    }
+  }
+
+  // v23 — dilemma cards. An older run has had none and has none open; the sim deals the
+  // first a fortnight after the load (see `restore`).
+  if (!Array.isArray(store.dilemmasSeen)) store.dilemmasSeen = [];
+  if (store.dilemma === undefined) store.dilemma = null;
 
   file.version = SAVE_VERSION;
   return file;

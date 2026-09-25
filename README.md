@@ -6,30 +6,31 @@ An isometric management sim about running a hackerspace.
 
 You don't have employees. You have **volunteers** — people with their own passions, their own
 quirks, and nine-to-six lives. You can't put anyone on a task. You design builds and pick who
-crews them, post bounties, buy the kit and the comforts that make people want to be there, and
+crews them, buy the kit and the comforts that make people want to be there, and
 decide when to sign for a bigger space.
 
 You can also just do the work yourself. You're in the building from six in the morning to
-eleven at night, with seventeen hours in the day — and every bounty, every parts order, every
+eleven at night, with seventeen hours in the day — and every parts order, every
 hire comes out of the same hours. An hour at the CAD desk is an hour you didn't spend making the
 place better at doing CAD without you.
 
 Meanwhile the work is physical. Fabrication isn't a progress bar — it's jobs queued on printers
-that run overnight, burn through filament and fail at hour 19 of 22. Half of any build arrives in
+that run overnight and fail at hour 19 of 22. Half of any build arrives in
 a box, and assembly waits for it. Build a CNC router, and now you own a CNC.
 
 Runs in the browser, in English and Turkish. The version you are playing is on the start
-screen; the latest is **v0.3.0** ([devlog](./docs/itch/devlog/v0.3.0.md)).
+screen; the latest is **v0.4.0** ([devlog](./docs/itch/devlog/v0.4.0.md)).
 
 ## What a run looks like
 
-- **Name the place, pick a badge, open the doors.** You start in a garage with two people, Safa
-  and Abdullah, and ₺50,000. Twenty-three more are out there; your reputation brings them to the
+- **Name the place, pick a badge and a currency, open the doors.** You start in a garage with
+  two people — Safa and Abdullah unless you name them yourself — and 50,000 in the bank (₺, €,
+  $ or £). Twenty-three more are out there; your reputation brings them to the
   door, in a different order every run.
 - **+ New Project** is a five-step wizard: genre → brief → crew → design → review. The build
   arrives with its brief's name, which you can change. The crew comes before the design,
-  because the crew decides what the design can be: a five-star toolchain needs somebody who can
-  use it.
+  because the crew decides what the design can be: an option above everybody's level stays
+  locked until somebody is trained up to it.
 - **Four wings** — 💻 Software, 🔌 Electronics, 📡 Communications, ⚙️ Mechanical — and
   fifty-two briefs, from a phone stand to a 3D-printed motorcycle. Software pays the bills;
   hardware builds the name.
@@ -42,11 +43,9 @@ screen; the latest is **v0.3.0** ([devlog](./docs/itch/devlog/v0.3.0.md)).
   tennis table. Comforts raise mood, which is what gets people through the door. Screens
   are on only while somebody works at them.
 - **Every bigger build ships with a report**: quality, pay, reputation and days against what
-  the design promised, and whether the client got what they asked for. Advertise it from
-  there — a great new build pays back its campaign in sales, a weak one gets torn apart by
-  an honest YouTube reviewer.
-- **Socials** turns work into attention — and what you claim has to be backed by the work, or
-  the room turns on you. Attention fades a little every day.
+  the design promised.
+- **The printers look after themselves.** No refilling, no levelling: what they print is billed
+  at the end of the month.
 - **The calendar under the clock** shows today, the monthly bill, a client's deadline, parts
   arriving, and the awards night at the end of the year.
 - **Seventeen other hackerspaces** — fourteen real ones, three invented underdogs — are getting
@@ -79,7 +78,6 @@ That is what makes the balance testable:
 npm run sim-check      # full playthroughs under three player archetypes
 npm run era-pace       # 8 seeds by default: era pacing, awards nights, final standings
 npm run project-times  # every brief against its declared length tier
-npm run hype-check     # does posting pay for the hour it costs?
 npm run kickoff-check  # a kickoff needs the whole crew (or five of a big one)
 npm run layout-check   # nothing is used from off the floor; a bigger room keeps the layout
 npm run time-budget    # where a volunteer's day actually goes

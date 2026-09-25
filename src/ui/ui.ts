@@ -2,15 +2,12 @@ import type { GameState } from '@/game/store';
 import type {
   BacklogEntry,
   BuyItem,
-  Wish,
-  CampaignId,
   ProjectCategory,
   ScoreRow,
   MemberSnapshot,
   MachineSnapshot,
   ProjectData,
   ProjectDef,
-  ClaimKey,
   ShippedRecord,
   FailedRecord,
   SkillKey,
@@ -22,7 +19,6 @@ import type {
   ProjectPlan,
 } from '@/game/types';
 import type { Ceremony, CeremonyAward, YearStanding } from '@/systems/RivalSystem';
-import { ROLE_BLURB, ROLE_LABEL, SPACE_SUBJECT, type Role } from '@/game/types';
 import { CATALOG_MAP, catalogForEra, customDefId, missingMachines } from '@/utils/catalog';
 import {
   CATEGORY_ORDER,
@@ -34,18 +30,16 @@ import {
 } from '@/utils/categories';
 import {
   APPLICANTS,
-  FILAMENT,
-  MACHINE,
   PLAYER,
   ORDERS,
   crewCap,
   ROSTER,
+  FOUNDER_NAMES,
   STAGE_MAP,
   STAGE_ORDER,
   TIME,
   TRAIT_BLURB,
   TRAIN,
-  DESIGN,
   SEATS,
   TRAIT_LABEL,
   VERB_HOURS,
@@ -54,8 +48,23 @@ import {
   WEEKLY_HOURS,
 } from '@/utils/constants';
 import { TOUR, hasToured, rememberToured } from './tour';
-import { awardsDay, clock, dayMonth, dayName, hours, money, pct, shortDate, span, workSpan } from '@/utils/format';
+import {
+  CURRENCIES,
+  awardsDay,
+  clock,
+  currencySymbol,
+  dayMonth,
+  dayName,
+  hours,
+  money,
+  pct,
+  shortDate,
+  span,
+  workSpan,
+  type CurrencyKey,
+} from '@/utils/format';
 import { LOCALES, getLocale, msg, num, say, t, type Locale, type MessageKey, type Text } from '@/i18n';
+import { caseLocale } from '@/i18n/locale';
 import {
   AMENITIES,
   BUILD_SHELVES,
@@ -63,8 +72,6 @@ import {
   effectLines,
   type BuildShelf,
 } from '@/utils/amenities';
-import { CLAIMS, SUBREDDITS, SUBREDDIT_MAP, tasteMatch } from '@/utils/subreddits';
-import { merit, projectSubject, react, type Subject } from '@/systems/HypeSystem';
 import { PRINTERS, PRINTER_MAP, type PrinterModel } from '@/utils/printers';
 import {
   AXES,
@@ -77,18 +84,16 @@ import {
   defaultPlan,
   genreStars,
   designStars,
-  licenceCost,
-  type Licences,
   optionCost,
   crewLevels,
   forecastBuild,
   isMulti,
+  clampDesign,
+  isLocked,
   optionLevel,
   picked,
   presetDesign,
-  shortBy,
   TECH_LABELS,
-  wishesFor,
   type Preset,
   qualityStars,
   teamFit,
@@ -100,11 +105,17 @@ import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { AWARDS, LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import type { DifficultyKey } from '@/utils/difficulty';
 import { VERSION } from '@/version';
-import { ECONOMY } from '@/utils/economy';
-import { CAMPAIGN, CAMPAIGNS, CAMPAIGN_MAP, REPORT, campaignGain, campaignRange, campaignSales } from '@/utils/campaigns';
+import { ECONOMY, rentFor } from '@/utils/economy';
+import { DILEMMA_MAP, effectCash, effectRep, type DilemmaEffect } from '@/utils/dilemmas';
 import { MACHINE_LABEL, STATIONS, STATION_MAP } from '@/machines/layout';
 import { partsEta, partsPending, projectProgress } from '@/systems/ProjectSystem';
-import { SHELVE } from '@/utils/constants';
+import { PROMO, REPORT, SHELVE } from '@/utils/constants';
+
+/** The start screen's other choices: the money's symbol and the two founders' names. */
+export interface StartExtras {
+  currency: CurrencyKey;
+  founders: string[];
+}
 
 export interface UIHandlers {
   setSpeed(speed: number): void;
@@ -112,6 +123,8 @@ export interface UIHandlers {
   buyFurniture(id: string): void;
   train(memberId: string, skill: SkillKey): void;
   resaleOf(id: string): { value: number; reason: MessageKey | null };
+  upgradeOptions(id: string): { to: string; name: string; cost: number; reason: MessageKey | null }[];
+  upgradePiece(id: string, to: string): void;
   sellPiece(id: string): void;
   trainCost(memberId: string, skill: SkillKey): number;
   /** Could a piece of furniture go anywhere on the floor right now? */
@@ -120,23 +133,14 @@ export interface UIHandlers {
   thumbnail(key: string): string | null;
   workOn(projectId: string): void;
   stopWork(): void;
-  calibrate(): void;
   invite(projectId: string, memberId: string): void;
   release(projectId: string, memberId: string): void;
-  repitch(projectId: string): void;
-  bounty(projectId: string): void;
-  bountyCost(projectId: string): number;
   orderParts(projectId: string): void;
-  expedite(projectId: string): void;
-  expediteCost(projectId: string): number;
   skipSim(projectId: string): void;
   queueAll(projectId: string): void;
   queuePart(projectId: string, partId: string): void;
   moveJob(machineId: string, jobId: string, dir: -1 | 1): void;
   cancelJob(machineId: string, jobId: string): void;
-  buyFilament(machineId?: string): void;
-  refillCost(machineId?: string): number;
-  buyAllFilament(): void;
   setBuildMode(on: boolean): void;
   pickBuy(item: BuyItem | null): void;
   buyQuote(item: BuyItem): { name: string; price: number; upkeep: number } | null;
@@ -147,10 +151,6 @@ export interface UIHandlers {
   retireNotice(id: string): void;
   /** A toast that was never a log line (a seat short): write it to the log as it goes. */
   logToast(text: Text, kind: 'info' | 'good' | 'bad' | 'warn'): void;
-  refillAllCost(): number;
-  buySpools(count: number): void;
-  shelfCapacity(): number;
-  maintainAll(): void;
   acceptOrder(offerId: string): void;
   declineOrder(offerId: string): void;
   buyPrinter(modelId: string): void;
@@ -168,16 +168,14 @@ export interface UIHandlers {
   passApplicant(memberId: string): void;
   /** Turn an applicant down. (Declared to match the handler already wired in Game.ts.) */
   passApplicant(memberId: string): void;
-  post(projectId: string, subreddit: string, claim: ClaimKey): void;
-  setRole(memberId: string, role: Role | null): void;
-  /** What a post about the space itself is judged on — the same one the sim will use. */
-  spaceSubject(): Subject;
   hireCost(memberId: string): number;
-  begin(name: string, logo: number, difficulty: DifficultyKey, player: string): void;
+  begin(name: string, logo: number, difficulty: DifficultyKey, player: string, extras: StartExtras): void;
   dismissCeremony(): void;
   dismissBill(): void;
   dismissReport(): void;
-  launchCampaign(recordId: string, id: CampaignId): void;
+  resolveDilemma(index: number): void;
+  promoQuote(recordId: string): { cost: number; gain: number } | null;
+  promote(recordId: string): void;
   continueRun(): void;
   discardSave(): void;
   savedRun(): {
@@ -188,6 +186,7 @@ export interface UIHandlers {
     shipped: number;
     reputation: number;
     cash: number;
+    currency?: CurrencyKey;
     era: string;
   } | null;
   letGo(memberId: string): void;
@@ -206,7 +205,6 @@ const SOURCE_BADGE: Record<BacklogEntry['source'], { label: MessageKey | null; c
   catalog: { label: null, cls: '' },
   member: { label: 'ui.source.member', cls: 'src-member' },
   sponsor: { label: 'ui.source.sponsor', cls: 'src-sponsor' },
-  trending: { label: 'ui.source.trending', cls: 'src-trending' },
 };
 
 type NewStep = 'genre' | 'brief' | 'design' | 'crew' | 'review';
@@ -238,7 +236,7 @@ function suggestName(): string {
 }
 
 /** Something with a date on the calendar under the clock. */
-type CalKind = 'awards' | 'bill' | 'order' | 'wish' | 'parts' | 'offer' | 'recruit';
+type CalKind = 'awards' | 'bill' | 'order' | 'parts' | 'offer' | 'recruit';
 interface CalEvent {
   day: number;
   kind: CalKind;
@@ -248,7 +246,7 @@ interface CalEvent {
   urgent?: boolean;
 }
 /** Same-day events in this order: what costs you if missed first. */
-const CAL_ORDER: CalKind[] = ['order', 'awards', 'bill', 'wish', 'offer', 'parts', 'recruit'];
+const CAL_ORDER: CalKind[] = ['order', 'awards', 'bill', 'offer', 'parts', 'recruit'];
 
 /** The promise each tier makes about length (CLAUDE.md §4). */
 const TIER_DAYS: Record<ProjectDef['tier'], string> = {
@@ -265,11 +263,6 @@ function categoryChip(category: ProjectCategory): string {
 }
 
 /** Tier badge — the length promise, in the tier's own muted tone. */
-function tierBadge(tier: ProjectDef['tier']): string {
-  const tone = { small: '#7ac74f', medium: '#7fb2f0', large: '#c58ef0' }[tier];
-  return `<span class="ui-badge ui-badge--tone" style="--tone:${tone}">${t(`ui.tier.${tier}`)} · ${t('ui.days.short', { days: TIER_DAYS[tier] })}</span>`;
-}
-
 /**
  * Stars, as line icons with a fill. Half stars are real — a 0.63 build is three and a half —
  * and the empty ones are drawn too, so a two-star option reads as two *of five*.
@@ -283,67 +276,42 @@ function starRow(value: number): string {
   return `<span class="stars" title="${esc(t('build.stars', { value }))}">${out.join('')}</span>`;
 }
 
-/** What the market wants this week, as a badge: a trend arrow and the multiplier. */
-function demandBadge(value: number): string {
+/** The market for a genre as quiet text: a small trend arrow and the multiplier. */
+function demandText(value: number): string {
   const { tone } = demandLabel(value);
-  const colour = { hot: 'var(--success)', warm: 'var(--primary)', flat: 'var(--muted-foreground)', cold: 'var(--warning)' }[tone];
-  return `<span class="ui-badge ui-badge--tone" style="--tone:${colour}"
-    title="${esc(t('build.demand.hint'))}">
-    ${icon(value >= 1 ? 'trendUp' : 'trendDown')}${t(`build.demand.${tone}` as MessageKey)} ×${num(Number(value.toFixed(2)))}
-  </span>`;
+  return `<span class="demand-text demand-text--${tone}" title="${esc(t('build.demand.hint'))}">${icon(value >= 1 ? 'trendUp' : 'trendDown')}${t(`build.demand.${tone}` as MessageKey)} ×${num(Number(value.toFixed(2)))}</span>`;
 }
 
-/** One badge per thing a design option changes. Good reads green, a cost reads red. */
-function optionEffects(
-  option: DesignOption,
-  seats: number,
-  def: ProjectDef,
-  axis: DesignAxisId,
-  index: number,
-  licences: Licences,
-): string {
+/**
+ * What a design option changes, as **one quiet line** (§4c): the price first, then each
+ * effect as coloured text — green what it gives, red what it costs. They were pills, four or
+ * five to a card and six cards to a screen, which read as a wall of alerts.
+ */
+function optionEffects(option: DesignOption, def: ProjectDef): string {
   const out: string[] = [];
-  const badge = (text: string, good: boolean | null, title = '') =>
-    `<span class="ui-badge ${good === null ? '' : 'ui-badge--tone'}" ${
-      good === null ? '' : `style="--tone:var(--${good ? 'success' : 'destructive'})"`
-    } title="${title}">${text}</span>`;
+  const fx = (text: string, good: boolean | null, title = '') =>
+    `<span class="fx ${good === null ? '' : good ? 'fx--good' : 'fx--bad'}" title="${esc(title)}">${text}</span>`;
   const signed = (v: number) => `${v > 0 ? '+' : '−'}${Math.round(Math.abs(v) * 100)}`;
   const change = (v: number) => `${v > 1 ? '+' : '−'}${Math.round(Math.abs(v - 1) * 100)}%`;
-  if (option.quality) out.push(badge(t('build.fx.quality', { value: signed(option.quality) }), option.quality > 0));
+  if (option.quality) out.push(fx(t('build.fx.quality', { value: signed(option.quality) }), option.quality > 0));
   if (option.appeal && option.appeal !== 1) {
-    out.push(badge(t('build.fx.appeal', { value: change(option.appeal) }), option.appeal > 1, t('build.fx.appealHint')));
+    out.push(fx(t('build.fx.appeal', { value: change(option.appeal) }), option.appeal > 1, t('build.fx.appealHint')));
   }
-  if (option.work && option.work !== 1) out.push(badge(t('build.fx.work', { value: change(option.work) }), option.work < 1));
+  if (option.work && option.work !== 1) out.push(fx(t('build.fx.work', { value: change(option.work) }), option.work < 1));
   if (option.testRisk && option.testRisk !== 1) {
-    out.push(badge(t('build.fx.testRisk', { value: change(option.testRisk) }), option.testRisk < 1));
+    out.push(fx(t('build.fx.testRisk', { value: change(option.testRisk) }), option.testRisk < 1));
   }
-  if (option.bom && option.bom !== 1) out.push(badge(t('build.fx.parts', { value: change(option.bom) }), option.bom < 1));
-  if (option.print && option.print !== 1) {
-    out.push(badge(t('build.fx.printing', { value: change(option.print) }), option.print < 1));
-  }
-  if (option.lead) out.push(badge(t('build.fx.delivery', { days: option.lead }), false));
-  // Every option has a price now, and it rises with the stars (§4c).
-  // Seat licences the space already owns are not charged again (§4c), and the card says so.
-  const seat = licenceCost(axis, index, seats, licences);
-  const cost = optionCost(def, option) + (option.keeps ? 0 : (option.cost ?? 0)) + seat.cost;
-  const text = option.keeps
-    ? seat.missing
-      ? t('build.fx.setUp', { cost })
-      : t('build.fx.inPlace', { cost })
-    : !option.perSeat
-      ? t('build.fx.cost', { cost })
-      : seat.missing
-        ? t('build.fx.perSeat', { cost, each: option.perSeat })
-        : t('build.fx.licensed', { cost, seats: seat.owned });
-  out.unshift(
-    `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)" title="${esc(t('build.fx.costHint'))}">${icon('coins')}${text}</span>`,
-  );
-  if (option.skipSim) out.push(badge(t('build.fx.noSim'), null));
+  if (option.bom && option.bom !== 1) out.push(fx(t('build.fx.parts', { value: change(option.bom) }), option.bom < 1));
+  if (option.print && option.print !== 1) out.push(fx(t('build.fx.printing', { value: change(option.print) }), option.print < 1));
+  if (option.lead) out.push(fx(t('build.fx.delivery', { days: option.lead }), false));
+  if (option.skipSim) out.push(fx(t('build.fx.noSim'), null));
   if (option.requires?.length) {
-    out.push(badge(t('build.fx.needs', { machines: option.requires.map((m) => MACHINE_LABEL[m]).join(', ') }), null));
+    out.push(fx(t('build.fx.needs', { machines: option.requires.map((m) => MACHINE_LABEL[m]).join(', ') }), null));
   }
-  if (!out.length) out.push(badge(t('build.fx.asBrief'), null));
-  return out.join('');
+  if (!out.length) out.push(fx(t('build.fx.asBrief'), null));
+  // Every option has one price, and it rises with the stars (§4c).
+  const price = `<span class="fx fx--price" title="${esc(t('build.fx.costHint'))}">${money(optionCost(def, option))}</span>`;
+  return `<span class="fx-line">${price}${out.join('<i class="fx-sep">·</i>')}</span>`;
 }
 
 /** Where on the size curve a crew sits: under, right, generous, crowded. */
@@ -419,7 +387,7 @@ export class UI {
 
   /** Which build-menu panel is open, if any. */
   private openModal:
-    | 'new' | 'people' | 'ranking' | 'machines' | 'projects' | 'reddit' | 'training' | null = null;
+    | 'new' | 'people' | 'ranking' | 'machines' | 'projects' | 'training' | null = null;
 
   /** The Learning Station's panel: which skill is being taught, and who is signed up for it. */
   private trainSkill: SkillKey | null = null;
@@ -481,22 +449,22 @@ export class UI {
   private rankSpace: string | null = null;
 
   /**
-   * Whether the log is folded. It used to share the right column with a roster, and started
-   * folded to give that room; the roster is gone (People has it), so the log opens.
+   * Whether the log is folded to its last two lines (§11). It sits in the bottom-left corner
+   * like a terminal: two lines are enough to notice something happened, and a press opens
+   * the history.
    */
-  private folded: { log: boolean } = { log: false };
+  private folded: { log: boolean } = { log: true };
+  /** The build whose "ask somebody" list is open on the bench, and whose parts list is. */
+  private benchAsk: string | null = null;
+  /** The crew member whose little card is open on the bench: `project:member`. */
+  private benchPerson: string | null = null;
+  private benchParts: string | null = null;
 
-  /** Which standing job is showing its list of candidates. */
-  private roleOpen: Role | null = null;
 
   /** Which slice of the roster is on screen. */
   private peopleTab: 'all' | 'free' | 'on' | 'open' = 'all';
 
   /** What the composer is pointed at. Three decisions, and the claim is the one with teeth. */
-  private reddit: { projectId: string | null; claim: ClaimKey } = {
-    projectId: null,
-    claim: 'wip',
-  };
   /** Start screen state; the sim is not running yet so nothing clobbers it. */
   private start = {
     // Pre-named and pre-badged: an empty form with a dead CTA is a worse first frame
@@ -504,6 +472,10 @@ export class UI {
     name: '',
     /** Your own name. Left empty, you are "You". */
     player: '',
+    /** The money's symbol for the run; lira unless chosen otherwise. */
+    currency: 'TRY' as CurrencyKey,
+    /** The two on day one. Left empty, they are Safa and Abdullah. */
+    founders: ['', ''] as string[],
     logo: Math.floor(Math.random() * LOGOS.length),
     difficulty: 'normal' as DifficultyKey,
     /** With a saved run on the table, the new-game form waits folded until asked for. */
@@ -535,8 +507,6 @@ export class UI {
 
   /** The agenda under the clock: what is coming, as a list. */
   private agendaOpen = false;
-  /** The campaign chosen on a ship report, before it is paid for. */
-  private campaignPick: { record: string; id: CampaignId } | null = null;
 
   /** The New Project wizard (§4d). Survives re-renders; reset each time it is opened. */
   private np: {
@@ -609,6 +579,8 @@ export class UI {
   private topbar!: HTMLElement;
   private clockPanel!: HTMLElement;
   private bottombar!: HTMLElement;
+  private statsEl!: HTMLElement;
+  private timelineEl!: HTMLElement;
   private modal!: HTMLElement;
   private startEl!: HTMLElement;
   private left!: HTMLElement;
@@ -624,8 +596,6 @@ export class UI {
     history: [],
     at: -1,
   };
-  /** Rolling buffer of recent keystrokes, so typing the magic word opens the console. */
-  private typed = '';
   private log!: HTMLElement;
 
   constructor(root: HTMLElement, handlers: UIHandlers) {
@@ -637,15 +607,21 @@ export class UI {
 
   private build() {
     this.root.innerHTML = `
-      <div class="panel" id="clockpanel"></div>
-      <div class="panel" id="topbar"></div>
-      <div class="panel" id="left"><h2>On the bench</h2><div class="body"></div></div>
-      <div id="right">
-        <div class="panel" id="log">
-          <h2 data-action="panel-toggle" data-value="log">Log<i class="fold"></i></h2>
-          <div class="body"></div>
-        </div>
+      <div id="menubar">
+        <div id="clockpanel"></div>
+        <span class="mb-sep"></span>
+        <div id="stats"></div>
+        <div id="bottombar"></div>
+        <div class="mb-spacer"></div>
+        <div id="topbar"></div>
+        <div id="mb-extras"></div>
       </div>
+      <div class="panel" id="leasecard"></div>
+      <div id="leftcol">
+        <div class="panel" id="timeline"></div>
+        <div class="panel" id="left"><h2>On the bench</h2><div class="body"></div></div>
+      </div>
+      <div id="log" class="folded" data-action="panel-toggle" data-value="log"><div class="body"></div></div>
 
       <div class="panel" id="moving"></div>
       <div id="toasts" aria-live="polite"></div>
@@ -653,7 +629,6 @@ export class UI {
       <div class="panel" id="buyconfirm"></div>
       <div class="panel" id="treat"></div>
       <div class="panel" id="devconsole"></div>
-      <div id="bottombar"></div>
       <div id="modal"></div>
       <div id="start"></div>
       <div id="tour-ring"></div>
@@ -666,6 +641,8 @@ export class UI {
     this.topbar = this.root.querySelector('#topbar')!;
     this.clockPanel = this.root.querySelector('#clockpanel')!;
     this.bottombar = this.root.querySelector('#bottombar')!;
+    this.statsEl = this.root.querySelector('#stats')!;
+    this.timelineEl = this.root.querySelector('#timeline')!;
     this.movingEl = this.root.querySelector('#moving')!;
     this.buildEl = this.root.querySelector('#buildpanel')!;
     this.toastEl = this.root.querySelector('#toasts')!;
@@ -690,8 +667,8 @@ export class UI {
      * one keypress loses the two screens you had not read yet.
      */
     /**
-     * The console's own keys. It sits above the Escape stack below, and the backtick and
-     * the magic word are both guarded on the focused element — the same rule that stopped
+     * The console's own keys, and the menu's letters. It sits above the Escape stack below,
+     * and everything here is guarded on the focused element — the same rule that stopped
      * the speed shortcuts eating a hackerspace's name (§13).
      */
     window.addEventListener('keydown', (event) => {
@@ -712,7 +689,7 @@ export class UI {
           const step = event.key === 'ArrowUp' ? -1 : 1;
           this.dev.at = Math.max(0, Math.min(this.dev.history.length, this.dev.at + step));
           input.value = this.dev.history[this.dev.at] ?? '';
-        } else if (event.key === 'Escape') {
+        } else if (event.key === 'Escape' || (event.ctrlKey && event.shiftKey && event.code === 'KeyD')) {
           event.preventDefault();
           this.toggleDev(false);
         }
@@ -720,23 +697,16 @@ export class UI {
       }
 
       if (typing) return;
-      if (event.key === '`' || event.key === '~') {
+      // The console: the backtick, or Ctrl+Shift+D — Ctrl, not Cmd, on a Mac, where
+      // Cmd+Shift+D is the browser's. It used to open on typing the word "debug" anywhere,
+      // which the menu's letters would now trip over: the b of debug is Build.
+      const devCombo = event.ctrlKey && event.shiftKey && event.code === 'KeyD';
+      if (event.key === '`' || event.key === '~' || devCombo) {
         event.preventDefault();
         this.toggleDev(!this.dev.open);
         return;
       }
-      // Typing the word anywhere opens it. A rolling buffer rather than an index, so a
-      // mistyped letter does not lock you out until you stop and start again.
-      if (/^[a-z]$/.test(event.key)) {
-        this.typed = (this.typed + event.key).slice(-8);
-        if (this.typed.endsWith('debug')) {
-          // Swallow the last letter. Without this the `g` that opened the console was
-          // inserted into the input it had just focused, and the first command was `ghelp`.
-          event.preventDefault();
-          this.typed = '';
-          this.toggleDev(true);
-        }
-      }
+      this.menuShortcut(event);
     });
 
     window.addEventListener('keydown', (event) => {
@@ -754,7 +724,6 @@ export class UI {
       else if (state?.buildMode && state.placingBuy) this.handlers.pickBuy(null);
       else if (state?.buildMode && state.moving) return;
       else if (state?.buildMode && !this.openModal) this.handlers.setBuildMode(false);
-      else if (this.roleOpen) this.roleOpen = null;
       else if (this.rankSpace) this.rankSpace = null;
       else if (this.openModal) this.openModal = null;
       else return;
@@ -786,10 +755,11 @@ export class UI {
     // Enter in the name box opens the doors: the field and the button are the whole form.
     this.root.addEventListener('keydown', (event) => {
       const target = event.target as HTMLElement;
-      if ((target.id !== 'space-name' && target.id !== 'player-name') || event.key !== 'Enter') return;
+      const fields = ['space-name', 'player-name', 'founder-0', 'founder-1'];
+      if (!fields.includes(target.id) || event.key !== 'Enter') return;
       event.preventDefault();
       const name = this.nameField().trim();
-      if (name) this.handlers.begin(name, this.start.logo, this.start.difficulty, this.playerField());
+      if (name) this.handlers.begin(name, this.start.logo, this.start.difficulty, this.playerField(), this.startExtras());
     });
 
     // pointerdown, NOT click. The panels re-render as the sim advances, so the element
@@ -883,25 +853,32 @@ export class UI {
           this.openModal = 'projects';
           this.rerender();
           break;
-        case 'role-open':
-          this.roleOpen = (value || null) as Role | null;
-          this.rerender();
-          break;
-        case 'set-role':
-          if (id) h.setRole(id, (value || null) as Role | null);
-          this.roleOpen = null;
-          this.rerender();
-          break;
         case 'bench-open':
           // Clicking the open one folds it away, so you can see the whole bench at a glance.
           this.benchOpen = this.benchOpen === id ? '' : (id ?? null);
           this.rerender();
           break;
+        case 'bench-ask':
+          this.benchAsk = this.benchAsk === id ? null : (id ?? null);
+          this.benchPerson = null;
+          this.rerender();
+          break;
+        case 'bench-person': {
+          const key = `${id}:${id2}`;
+          this.benchPerson = this.benchPerson === key ? null : key;
+          this.benchAsk = null;
+          this.rerender();
+          break;
+        }
+        case 'bench-parts':
+          this.benchParts = this.benchParts === id ? null : (id ?? null);
+          this.rerender();
+          break;
         case 'panel-toggle': {
-          // Two panels compete for one column; folding one gives the other the room.
           const key = value as 'log';
           if (key) this.folded[key] = !this.folded[key];
           this.rerender();
+          this.log.scrollTop = this.log.scrollHeight;
           break;
         }
         case 'people-tab':
@@ -925,18 +902,16 @@ export class UI {
           h.dismissBill();
           this.rerender();
           break;
+        case 'promote':
+          if (id) h.promote(id);
+          this.rerender();
+          break;
+        case 'dilemma-pick':
+          h.resolveDilemma(Number(value));
+          this.rerender();
+          break;
         case 'report-close':
-          this.campaignPick = null;
           h.dismissReport();
-          this.rerender();
-          break;
-        case 'campaign-pick':
-          if (id && value) this.campaignPick = { record: id, id: value as CampaignId };
-          this.rerender();
-          break;
-        case 'campaign-run':
-          if (this.campaignPick) h.launchCampaign(this.campaignPick.record, this.campaignPick.id);
-          this.campaignPick = null;
           this.rerender();
           break;
         case 'let-go':
@@ -962,9 +937,13 @@ export class UI {
           h.setLocale(value as Locale);
           break;
         case 'logo':
-          this.start.name = this.nameField();
-          this.start.player = this.playerField();
+          this.keepStartFields();
           this.start.logo = Number(value);
+          this.rerender();
+          break;
+        case 'currency':
+          this.keepStartFields();
+          this.start.currency = value as CurrencyKey;
           this.rerender();
           break;
         case 'continue':
@@ -990,6 +969,11 @@ export class UI {
           this.startFocused = false; // the name box has just appeared — give it the caret
           this.rerender();
           break;
+        case 'start-back':
+          this.keepStartFields();
+          this.start.newOpen = false;
+          this.rerender();
+          break;
         case 'shuffle-name': {
           // Swap the text in place rather than re-render: only the field changes, and a
           // repaint of the whole card for one word reads as the screen jumping.
@@ -1004,40 +988,13 @@ export class UI {
         case 'begin': {
           const name = this.nameField().trim();
           if (!name) break;
-          h.begin(name, this.start.logo, this.start.difficulty, this.playerField());
+          h.begin(name, this.start.logo, this.start.difficulty, this.playerField(), this.startExtras());
           // Somebody who has never played gets shown round; everybody else gets the game.
           if (!hasToured()) this.startTour();
           break;
         }
         case 'people-open':
           this.openModal = 'people';
-          this.rerender();
-          break;
-        case 'reddit-open': {
-          this.openModal = 'reddit';
-          // Open on the build most worth showing that has not already gone up today; the
-          // space is the fallback, and it is always a legitimate thing to post about.
-          const state = this.lastState;
-          const fresh = (id: string) =>
-            !state?.posts.some((p) => p.projectId === id && p.day === state.day);
-          const best = (state?.runtime.projects ?? [])
-            .filter((p) => !p.shipped && fresh(p.id))
-            .sort((a, b) => merit(b) - merit(a))[0];
-          this.reddit.projectId = best?.id ?? SPACE_SUBJECT;
-          this.rerender();
-          break;
-        }
-        case 'reddit-project':
-          this.reddit.projectId = id ?? SPACE_SUBJECT;
-          this.rerender();
-          break;
-        case 'reddit-claim':
-          this.reddit.claim = (value as ClaimKey) ?? 'wip';
-          this.rerender();
-          break;
-        case 'reddit-post':
-          // The room *is* the button, so the click carries everything the post needs.
-          if (value) h.post(this.reddit.projectId ?? SPACE_SUBJECT, value, this.reddit.claim);
           this.rerender();
           break;
         case 'jobs-close':
@@ -1135,7 +1092,7 @@ export class UI {
         case 'np-preset': {
           const def = this.npDef();
           if (def && this.lastState) {
-            this.np.design = presetDesign(def, value as Preset, this.npPlanWithCrew(this.lastState), this.lastState.ownedMachines, this.lastState.licences);
+            this.np.design = presetDesign(def, value as Preset, this.npPlanWithCrew(this.lastState), this.lastState.ownedMachines);
             this.npFitDesign(this.lastState);
           }
           this.rerender();
@@ -1183,26 +1140,15 @@ export class UI {
         case 'stop-work':
           h.stopWork();
           break;
-        case 'calibrate':
-          h.calibrate();
-          break;
         case 'invite':
           if (id && id2) h.invite(id, id2);
           break;
         case 'release':
+          this.benchPerson = null;
           if (id && id2) h.release(id, id2);
-          break;
-        case 'repitch':
-          if (id) h.repitch(id);
-          break;
-        case 'bounty':
-          if (id) h.bounty(id);
           break;
         case 'order':
           if (id) h.orderParts(id);
-          break;
-        case 'expedite':
-          if (id) h.expedite(id);
           break;
         case 'skip-sim':
           if (id) h.skipSim(id);
@@ -1222,22 +1168,6 @@ export class UI {
         case 'job-cancel':
           if (id && id2) h.cancelJob(id, id2);
           break;
-        case 'filament':
-          h.buyFilament(id || undefined);
-          this.rerender();
-          break;
-        case 'filament-all':
-          h.buyAllFilament();
-          this.rerender();
-          break;
-        case 'spools':
-          h.buySpools(Number(value) || 1);
-          this.rerender();
-          break;
-        case 'maintain-all':
-          h.maintainAll();
-          this.rerender();
-          break;
         case 'order-accept':
           if (id) h.acceptOrder(id);
           this.rerender();
@@ -1251,6 +1181,10 @@ export class UI {
           break;
         case 'turn-amenity':
           h.turnAmenity();
+          break;
+        case 'upgrade-held':
+          if (id && value) h.upgradePiece(id, value);
+          this.rerender();
           break;
         case 'sell-held':
           if (id) h.sellPiece(id);
@@ -1344,6 +1278,25 @@ export class UI {
     return (input ? input.value : this.start.player).trim();
   }
 
+  /** The two founders as typed; a blank one keeps the roster's name. */
+  private founderFields(): string[] {
+    return [0, 1].map((i) => {
+      const input = this.root.querySelector<HTMLInputElement>(`#founder-${i}`);
+      return (input ? input.value : this.start.founders[i]).trim();
+    });
+  }
+
+  /** Everything typed on the start screen, kept before a re-render replaces the inputs. */
+  private keepStartFields() {
+    this.start.name = this.nameField();
+    this.start.player = this.playerField();
+    this.start.founders = this.founderFields();
+  }
+
+  private startExtras(): StartExtras {
+    return { currency: this.start.currency, founders: this.founderFields() };
+  }
+
   /** The live value of the name box, so a re-render never eats what was typed. */
   private nameField(): string {
     const input = this.root.querySelector<HTMLInputElement>('#space-name');
@@ -1352,6 +1305,8 @@ export class UI {
 
   render(state: GameState) {
     this.lastState = state;
+    // Before the doors open the start screen is see-through, so the game's chrome waits.
+    this.root.classList.toggle('pre-start', !state.started);
     if (!state.started) {
       this.renderStart();
       this.renderTour(state);
@@ -1387,7 +1342,7 @@ export class UI {
       if (el) this.setHTML(el, `head:${selector}`, html);
     };
     head('#left > h2', esc(t('ui.bench.title')));
-    head('#log > h2', `${esc(t('ui.log.title'))}<i class="fold"></i>`);
+    this.root.querySelector('#log')?.setAttribute('title', t('ui.log.title'));
     // The build menu is translated now, so it takes the page's language — which is what
     // lets Turkish casing rules uppercase its labels correctly.
     this.bottombar.removeAttribute('lang');
@@ -1489,7 +1444,8 @@ export class UI {
    * it?" — the money moves only on yes.
    */
   private renderBuildPanel(state: GameState) {
-    this.bottombar.classList.toggle('hidden', state.buildMode);
+    // The build shelves own the bottom of the screen; the log steps aside while they are up.
+    this.root.querySelector('#log')?.classList.toggle('hidden', state.buildMode);
     this.movingEl.classList.toggle('above-build', state.buildMode);
     this.renderBuyConfirm(state);
     if (!state.buildMode) {
@@ -1717,7 +1673,6 @@ export class UI {
           blocked: why(locked ? model.era : null, this.affordable(state, model.price), room),
           badges: [
             badge(`${icon('effort')}${Math.round(PRINTER_MAP[model.id].speed * 100)}%`),
-            badge(`${icon('package')}${t('ui.machines.kg', { kg: model.capacity / 1000 })}`),
             badge(t('build.printer.fails', { pct: `×${model.reliability.toFixed(2)}` })),
             ...(owned ? [badge(`${icon('check')}${t('build.card.ownedN', { count: owned })}`, 'success')] : []),
           ],
@@ -1792,6 +1747,20 @@ export class UI {
                ${icon('coins')}${t('build.sell.button', { value: sale.value })}
              </button>`;
        })()}
+       ${
+         // A station can be traded in for its bigger version — the garage's kit too, which
+         // is the one way to grow a piece that cannot be sold.
+         station
+           ? this.handlers
+               .upgradeOptions(id)
+               .map(
+                 (o) => `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="upgrade-held" data-id="${id}" data-value="${o.to}"
+                   ${o.reason || !this.affordable(state, o.cost) ? 'disabled' : ''}
+                   title="${esc(o.reason ? t(o.reason) : t('build.upgrade.hint'))}">${icon('arrowUp')}${esc(t('build.upgrade.button', { item: o.name, cost: o.cost }))}</button>`,
+               )
+               .join('')
+           : ''
+       }
        <button class="ui-btn ui-btn--primary ui-btn--sm" data-action="done-moving">${icon('check')}${t('ui.done')}</button>`,
     );
   }
@@ -1895,22 +1864,27 @@ export class UI {
     const name = this.start.name;
     const badge = LOGOS[this.start.logo];
     const saved = this.handlers.savedRun();
-    // A saved run is the likelier reason to be here, so it leads and the new form folds.
-    const formOpen = !saved || this.start.newOpen;
+    /**
+     * **A game's menu, not a form** (§3c): the title large on the left, a short list of
+     * things to do under it, and the room itself swaying slowly behind — the first frame is
+     * the place you are about to run, not a card on a grid. The new-run form opens in the
+     * same column, with a way back.
+     */
+    const formOpen = this.start.newOpen;
     this.setHTML(
       this.startEl,
       'start',
-      `<div class="start-backdrop">
-        <div class="start-stack">
-        <div class="start-wordmark">
-          ${icon('wrench', 'ui-icon')}<span>Hackerspace Tycoon</span>
-        </div>
-        <div class="start-version" title="${esc(t('ui.start.versionHint'))}">v${VERSION}</div>
-        ${this.languagePicker()}
-        ${saved ? this.resumeCard(saved) : ''}
+      `<div class="start-backdrop start-menu">
+        <div class="start-side">
+        <header class="start-title">
+          <span class="start-title__mark">${icon('wrench', 'ui-icon')}</span>
+          <h1>Hackerspace<br />Tycoon</h1>
+          <span class="start-version" title="${esc(t('ui.start.versionHint'))}">v${VERSION}</span>
+        </header>
         ${
           formOpen
-            ? `<div class="start-card">
+            ? `<button class="start-back" data-action="start-back">${icon('arrowLeft')}${t('ui.start.back')}</button>
+          <div class="start-card">
           <header class="start-brand">
             <span class="icon-chip start-badge" style="--tone:${badge.colour}">
               ${icon(badge.icon, 'ui-icon')}
@@ -1935,6 +1909,31 @@ export class UI {
               value="${esc(this.start.player)}" />
           </div>
           <p class="ui-desc start-intro">${t('ui.start.intro')}</p>
+
+          <section class="start-section">
+            <div class="ui-label">${t('ui.start.founders')}</div>
+            <div class="start-founders">
+              ${FOUNDER_NAMES.map(
+                (fallback, i) => `<input id="founder-${i}" class="start-player__input" maxlength="20"
+                  placeholder="${esc(fallback)}" autocomplete="off" spellcheck="false"
+                  aria-label="${esc(t('ui.start.founderN', { n: i + 1 }))}"
+                  value="${esc(this.start.founders[i] ?? '')}" />`,
+              ).join('')}
+            </div>
+          </section>
+
+          <section class="start-section start-currency">
+            <div class="ui-label">${t('ui.start.currency')}</div>
+            <div class="ui-segmented" role="radiogroup" aria-label="${esc(t('ui.start.currency'))}">
+              ${CURRENCIES.map((c) => {
+                const on = c.key === this.start.currency;
+                return `<button role="radio" aria-checked="${on}" aria-pressed="${on}"
+                  data-action="currency" data-value="${c.key}">
+                  <span class="mono">${c.symbol}</span>${c.key}
+                </button>`;
+              }).join('')}
+            </div>
+          </section>
 
           <section class="start-section">
             <div class="ui-label">${t('ui.start.badge')}</div>
@@ -1962,13 +1961,7 @@ export class UI {
               : ''
           }
         </div>`
-            : `<button class="start-card start-new" data-action="start-new">
-                <span class="icon-chip" style="--tone:var(--primary)">${icon('plus')}</span>
-                <span class="start-new__text">
-                  <span class="ui-title">${t('ui.start.new')}</span>
-                  <span class="ui-desc">${t('ui.start.newBlurb')}</span>
-                </span>
-              </button>`
+            : this.startMenu(saved)
         }
         </div>
       </div>`,
@@ -1985,41 +1978,39 @@ export class UI {
     }
   }
 
-  private resumeCard(saved: NonNullable<ReturnType<UIHandlers['savedRun']>>): string {
-    const actions = this.start.confirmDiscard
-      ? `<div class="start-confirm" role="alert">
-          <span>${t('ui.resume.confirm')}</span>
-          <button class="ui-btn ui-btn--ghost" data-action="discard-keep">${t('ui.resume.keep')}</button>
-          <button class="ui-btn ui-btn--danger" data-action="discard-save">${icon('x')}${t('ui.resume.discard')}</button>
-        </div>`
-      : `<div class="row" style="gap:8px">
-          <button class="ui-btn ui-btn--primary ui-btn--lg" style="flex:1" data-action="continue">
-            ${t('ui.resume.carryOn')}
-          </button>
-          <button class="ui-btn ui-btn--ghost ui-btn--lg" data-action="discard-ask"
-            title="${esc(t('ui.resume.discardHint'))}">
-            ${icon('x')}${t('ui.resume.discard')}
-          </button>
-        </div>`;
-    return `<div class="start-card resume">
-      <header class="start-brand">
-        <span class="icon-chip start-badge" style="--tone:${saved.colour}">
-          ${icon(saved.icon as IconName, 'ui-icon')}
-        </span>
-        <div class="start-brand__text">
-          <div class="ui-label">${t('ui.resume.title')}</div>
-          <h1>${esc(saved.name)}</h1>
+  /** The menu: carry on with the saved run, start a new one, the language. */
+  private startMenu(saved: ReturnType<UIHandlers['savedRun']>): string {
+    const cash = saved ? `${currencySymbol(saved.currency ?? 'TRY')}${num(Math.round(saved.cash))}` : '';
+    const resume = saved
+      ? `<button class="start-item start-item--primary" data-action="continue">
+          <span class="start-item__label">${icon('chevronRight')}${t('ui.resume.carryOn')}</span>
+          <span class="start-item__sub">
+            <span class="start-item__badge" style="color:${saved.colour}">${icon(saved.icon as IconName)}</span>
+            ${esc(saved.name)} · ${t('ui.top.day', { day: saved.day })} · ${esc(saved.era)} · ${cash}
+          </span>
+        </button>`
+      : '';
+    const discard = !saved
+      ? ''
+      : this.start.confirmDiscard
+        ? `<div class="start-confirm" role="alert">
+            <span>${t('ui.resume.confirm')}</span>
+            <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="discard-keep">${t('ui.resume.keep')}</button>
+            <button class="ui-btn ui-btn--danger ui-btn--sm" data-action="discard-save">${icon('x')}${t('ui.resume.discard')}</button>
+          </div>`
+        : `<button class="start-link" data-action="discard-ask" title="${esc(t('ui.resume.discardHint'))}">${t('ui.resume.discardHint')}</button>`;
+    return `<nav class="start-list">
+        ${resume}
+        <button class="start-item ${saved ? '' : 'start-item--primary'}" data-action="start-new">
+          <span class="start-item__label">${icon(saved ? 'plus' : 'chevronRight')}${t('ui.start.new')}</span>
+          <span class="start-item__sub">${t('ui.start.newBlurb')}</span>
+        </button>
+        <div class="start-item start-item--static">
+          <span class="start-item__label">${icon('globe')}${t('ui.language')}</span>
+          ${this.languagePicker()}
         </div>
-        <span class="ui-badge start-era">${icon('building')}${esc(saved.era)}</span>
-      </header>
-      <div class="resume-stats">
-        <div><b>${saved.day}</b><span>${t('ui.stat.day')}</span></div>
-        <div><b>${saved.shipped}</b><span>${t('ui.stat.shipped')}</span></div>
-        <div><b>${saved.reputation}</b><span>${t('ui.stat.reputation')}</span></div>
-        <div><b>${money(saved.cash)}</b><span>${t('ui.stat.cash')}</span></div>
-      </div>
-      ${actions}
-    </div>`;
+      </nav>
+      ${discard}`;
   }
 
   /**
@@ -2149,98 +2140,96 @@ export class UI {
     this.tourCard.style.top = `${clamp(top, vh - card.height)}px`;
   }
 
+  /**
+   * **One strip along the top, like a desktop's menu bar** (§11). It used to be four boxes —
+   * the clock in one corner, the totals in the middle, the log in the other and the build
+   * menu along the bottom — and the room was what was left between them. Now the chrome is
+   * a line: who you are and the menu on the left, the money, the name and the clock on the
+   * right, and the room gets the screen.
+   */
   private renderTopbar(state: GameState) {
     const speedButton = (value: number, label: string) => {
       const active = value === 0 ? state.paused : !state.paused && state.speed === value;
-      return `<button data-action="speed" data-value="${value}" class="tiny ${active ? 'active' : ''}">${label}</button>`;
+      return `<button data-action="speed" data-value="${value}" class="mb-speed ${active ? 'active' : ''}">${label}</button>`;
     };
     const allocation = this.handlers.allocation();
 
-    // The clock lives in its own corner: it is the one thing you glance at constantly,
-    // and it changes every frame, so it has no business sharing a box with the totals.
+    // The clock changes every frame, so its figure is written as text below and never
+    // rebuilds the buttons beside it. Your day is the thin line under it.
     this.setHTML(
       this.clockPanel,
       'clock',
       `<b class="clock"></b>
        <span class="day">${dayName(state.day)} · ${t('ui.top.day', { day: state.day })}</span>
-       <div class="speeds">
+       <span class="speeds">
          ${speedButton(0, '❙❙')}
          ${TIME.speeds.map((s) => speedButton(s, `${s}×`)).join('')}
-       </div>
-       ${this.dayBar(state)}
-       ${this.calendar(state)}`,
+       </span>
+       ${this.dayBar(state)}`,
     );
     const clockEl = this.clockPanel.querySelector('.clock');
     if (clockEl) clockEl.textContent = clock(state.simTime);
 
-    // Money reads as a state, not a number: in the black, running low, or under water.
     // In the black green, under water red, exactly nothing plain.
     const cashTone = state.cash > 0 ? 'good' : state.cash < 0 ? 'bad' : 'flat';
     const next = this.handlers.previewBill();
     const era = eraDef(state.era);
     const target = Number.isFinite(era.repToAdvance) ? era.repToAdvance : null;
     const lease = this.handlers.nextLease();
-    /**
-     * The top bar is four groups, not eight boxes: who you are, what you have, how far the
-     * name has got, and what is on. **Cash is one number**: a projection of the next bill
-     * under it read as a second balance, and nobody could say which one they had. The
-     * statement is where the month is explained.
-     */
     this.setHTML(this.topbar, 'topbar', `
-      <div class="tb-group tb-identity">
-        <button class="tb-me" data-action="my-space" title="${esc(t('ui.top.mySpaceHint'))}">
-          <span class="icon-chip" style="--tone:${state.identity?.colour ?? 'var(--primary)'};width:30px;height:30px">
-            ${icon((state.identity?.icon ?? 'wrench') as IconName)}
+      <button class="tb-me" data-action="my-space" title="${esc(t('ui.top.mySpaceHint'))}">
+        <span class="icon-chip" style="--tone:${state.identity?.colour ?? 'var(--primary)'}">
+          ${icon((state.identity?.icon ?? 'wrench') as IconName)}
+        </span>
+        <b class="tb-name">${esc(state.identity?.name ?? t('ui.top.yourSpace'))}</b>
+        <span class="tb-sub">${esc(era.name)}</span>
+      </button>
+`);
+
+    // **The next lease is a card of its own** (§8), the calendar's size, centred at the top:
+    // a move is the biggest decision of a run and it was a button squeezed into the menu bar.
+    const leaseEl = this.root.querySelector<HTMLElement>('#leasecard')!;
+    leaseEl.classList.toggle('on', !!lease?.ready);
+    this.root.classList.toggle('has-lease', !!lease?.ready);
+    this.setHTML(
+      leaseEl,
+      'lease',
+      lease?.ready
+        ? `<span class="icon-chip" style="--tone:var(--primary)">${icon('building')}</span>
+          <span class="lease-text" title="${esc(t('ui.top.leaseHint', { space: lease.def.name }))}">
+            <b>${esc(t('ui.lease.open', { space: lease.def.name }))}</b>
+            <span>${esc(t('ui.lease.rent', { rent: rentFor(lease.era) }))}</span>
           </span>
-          <span class="tb-text">
-            <b class="tb-name">${esc(state.identity?.name ?? t('ui.top.yourSpace'))}</b>
-            <span class="tb-sub">${esc(era.name)}</span>
-          </span>
-        </button>
-        ${
-          lease?.ready
-            ? `<button class="ui-btn ${lease.afford ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
-                data-action="sign-lease" ${lease.afford ? '' : 'disabled'}
-                title="${esc(t('ui.top.leaseHint', { space: lease.def.name }))}">
-                ${icon('building')}${esc(t('ui.top.moveTo', { space: lease.def.name }))} · ${money(lease.def.moveCost)}
-              </button>`
-            : ''
-        }
-      </div>
-      <div class="tb-group" title="${esc(t('build.top.cashHint', { days: next.dueInDays }))}">
-        <span class="tb-icon">${icon('coins')}</span>
-        <div class="tb-text">
-          <b class="tb-value cash cash--${cashTone}">${money(state.cash)}</b>
-          <span class="tb-sub">${t('ui.stat.cash')}</span>
-        </div>
-      </div>
-      <div class="tb-group" title="${esc(t('ui.top.reputationHint'))}">
-        <span class="tb-icon">${icon('flame')}</span>
-        <div class="tb-text">
-          <b class="tb-value">${num(state.reputation)}${target ? `<small>/${num(target)}</small>` : ''}</b>
-          ${
-            target
-              ? `<span class="tb-meter"><i style="width:${Math.min(100, (state.reputation / target) * 100).toFixed(1)}%"></i></span>`
-              : `<span class="tb-sub">${t('ui.stat.reputation')}</span>`
-          }
-        </div>
-      </div>
-      <div class="tb-group" title="${esc(t('ui.top.allocatedHint'))}">
-        <span class="tb-icon">${icon('clipboard')}</span>
-        <div class="tb-text">
-          <b class="tb-value">${t('build.top.projects', { count: state.runtime.projects.length })}</b>
-          <span class="tb-sub">${t('build.top.busy', { used: allocation.used, total: allocation.total })} · ${t('build.top.shipped', { count: state.shippedCount })}</span>
-        </div>
-      </div>
-      ${(() => {
-        // One press flips between the two; the button names the language it switches *to*,
-        // in that language, so somebody who cannot read the current one can still find it.
-        const next: Locale = getLocale() === 'tr' ? 'en' : 'tr';
-        return `<button class="lang-toggle" data-action="lang" data-value="${next}" lang="${next}"
-          title="${next === 'tr' ? 'Türkçe' : 'English'}">${icon('globe')}${next.toUpperCase()}</button>`;
-      })()}
-      <button class="lang-toggle" data-action="tour-start" title="${esc(t('tour.replayHint'))}">${icon('lightbulb')}</button>
-    `);
+          <button class="ui-btn ui-btn--primary ui-btn--sm" data-action="sign-lease" ${lease.afford ? '' : 'disabled'}>
+            ${t('ui.lease.move')} · ${money(lease.def.moveCost)}
+          </button>`
+        : '',
+    );
+
+    // One press flips the language; the button names the language it switches *to*, in that
+    // language, so somebody who cannot read the current one can still find it.
+    const other: Locale = getLocale() === 'tr' ? 'en' : 'tr';
+    this.setHTML(this.statsEl, 'stats', `
+      <span class="mb-stat mb-cash" title="${esc(t('build.top.cashHint', { days: next.dueInDays }))}">
+        ${icon('coins')}<b class="cash cash--${cashTone}">${money(state.cash)}</b>
+      </span>
+      <span class="mb-stat" title="${esc(t('ui.top.reputationHint'))}${target ? ` · ${num(state.reputation)}/${num(target)}` : ''}">
+        ${icon('flame')}<b>${num(state.reputation)}</b>
+        ${target ? `<span class="mb-meter"><i style="width:${Math.min(100, (state.reputation / target) * 100).toFixed(1)}%"></i></span>` : ''}
+      </span>
+      <span class="mb-stat" title="${esc(t('ui.top.allocatedHint'))} · ${esc(t('build.top.shipped', { count: state.shippedCount }))}">
+        ${icon('users')}<b>${allocation.used}/${allocation.total}</b>
+      </span>
+      <span class="mb-sep"></span>`);
+
+    this.setHTML(this.timelineEl, 'timeline', this.calendar(state));
+
+    // The language and the tour live at the far right, where a menu bar keeps its extras.
+    const extras = `<span class="mb-sep"></span>
+      <button class="mb-item mb-icon" data-action="lang" data-value="${other}" lang="${other}"
+        title="${other === 'tr' ? 'Türkçe' : 'English'}">${icon('globe')}${other.toUpperCase()}</button>
+      <button class="mb-item mb-icon" data-action="tour-start" title="${esc(t('tour.replayHint'))}">${icon('lightbulb')}</button>`;
+    this.setHTML(this.root.querySelector<HTMLElement>('#mb-extras')!, 'extras', extras);
   }
 
   /**
@@ -2248,6 +2237,40 @@ export class UI {
    * (CLAUDE.md §14). Machines sits here rather than in a permanent sidebar: a queue you
    * only touch a few times a day does not earn a third of the right-hand column.
    */
+  /**
+   * **One letter a panel** (§11): N a new project, B Build, M Machines, R Ranking, P People
+   * — a press opens it, a second closes it. They stand down while anything else has the
+   * floor: a card or a bill on the table, the console, a piece in hand in Build (where R
+   * turns it), and before the doors open.
+   */
+  private menuShortcut(event: KeyboardEvent) {
+    if (event.ctrlKey || event.metaKey || event.altKey || this.dev.open) return;
+    const state = this.lastState;
+    if (!state?.started || state.gameOver) return;
+    if (state.bill || state.ceremony || state.shipReport || state.dilemma) return;
+    if (state.placingBuy || state.moving) return;
+    const panels: Record<string, 'new' | 'machines' | 'ranking' | 'people'> = { n: 'new', m: 'machines', r: 'ranking', p: 'people' };
+    const panel = panels[event.key.toLowerCase()];
+    if (event.key.toLowerCase() === 'b') {
+      event.preventDefault();
+      this.openModal = null;
+      this.handlers.setBuildMode(!state.buildMode);
+      this.rerender();
+      return;
+    }
+    if (!panel) return;
+    event.preventDefault();
+    if (this.openModal === panel) {
+      this.openModal = null;
+    } else {
+      if (state.buildMode) this.handlers.setBuildMode(false);
+      this.openModal = panel;
+      if (panel === 'new') this.np = this.freshWizard();
+      if (panel === 'ranking') this.agendaOpen = false;
+    }
+    this.rerender();
+  }
+
   private renderBottomBar(state: GameState) {
     const offers = state.backlog.length;
     // People standing about because every seat of their kind is taken — the Build panel's
@@ -2255,61 +2278,53 @@ export class UI {
     const seatQueue = Object.values(state.runtime.waitingFor).reduce((n, v) => n + (v ?? 0), 0);
     const machines = state.runtime.machines;
     const jobs = machines.reduce((n, m) => n + m.queue.length + (m.current ? 1 : 0), 0);
-    // The one thing the bar must say from across the room: something needs a human.
-    const needsHand = machines.some(
-      (m) =>
-        m.calibration < MACHINE.calibrationWarning ||
-        (m.consumableMax > 0 && m.consumable < FILAMENT.lowWarning),
-    );
+    const item = (
+      action: string,
+      glyph: IconName,
+      label: string,
+      hint: string,
+      opts: { active?: boolean; pip?: number; tone?: string; key?: string } = {},
+    ) =>
+      `<button class="mb-item ${opts.active ? 'active' : ''} ${opts.tone ?? ''}" data-action="${action}" title="${esc(opts.key ? `${hint} (${opts.key})` : hint)}">
+        ${icon(glyph)}<span class="mb-label">${label}</span>${opts.pip ? `<i class="pip">${opts.pip}</i>` : ''}
+      </button>`;
     this.setHTML(
       this.bottombar,
       'bottombar',
-      // The bar's one call to action, so it reads as a button rather than a tab: starting
-      // something is the verb every other panel in the game is downstream of.
-      `<button class="bar-item bar-item--cta ${this.openModal === 'new' ? 'active' : ''}" data-action="new-open"
-         title="${esc(t('build.bar.newHint'))}">
-         ${icon('plus', 'ui-icon bar-icon')}
-         <span class="bar-label">${t('build.bar.new')}</span>
-         ${offers ? `<i class="pip">${offers}</i>` : ''}
-       </button>
-       <button class="bar-item ${this.openModal === 'projects' ? 'active' : ''}" data-action="projects-open"
-         title="${esc(t('build.bar.projectsHint'))}">
-         ${icon('clipboard', 'ui-icon bar-icon')}
-         <span class="bar-label">${t('build.bar.projects')}</span>
-         ${state.runtime.projects.length ? `<i class="pip">${state.runtime.projects.length}</i>` : ''}
-       </button>
-       <button class="bar-item ${this.openModal === 'ranking' ? 'active' : ''}" data-action="ranking-open"
-         title="${esc(t('build.bar.rankingHint'))}">
-         ${icon('flame', 'ui-icon bar-icon')}
-         <span class="bar-label">${t('build.bar.ranking')}</span>
-       </button>
-       <button class="bar-item ${this.openModal === 'machines' ? 'active' : ''} ${needsHand ? 'bar-item--alert' : ''}"
-         data-action="machines-open"
-         title="${esc(t(needsHand ? 'build.bar.machinesAlert' : 'build.bar.machinesHint'))}">
-         ${icon('printer', 'ui-icon bar-icon')}
-         <span class="bar-label">${t('build.bar.machines')}</span>
-         ${jobs ? `<i class="pip">${jobs}</i>` : ''}
-       </button>
-       <button class="bar-item ${this.openModal === 'people' ? 'active' : ''} ${state.applicants.length ? 'bar-item--news' : ''}"
-         data-action="people-open"
-         title="${esc(state.applicants.length ? t('build.bar.peopleWaiting', { count: state.applicants.length }) : t('build.bar.peopleHint'))}">
-         ${icon('users', 'ui-icon bar-icon')}
-         <span class="bar-label">${t('build.bar.people')}</span>
-         ${state.applicants.length ? `<i class="pip">${state.applicants.length}</i>` : ''}
-       </button>
-       <button class="bar-item ${state.buildMode ? 'active' : ''} ${seatQueue ? 'bar-item--alert' : ''}"
-         data-action="build-open"
-         title="${esc(seatQueue ? t('build.bar.buildQueue', { count: seatQueue }) : t('build.bar.buildHint'))}">
-         ${icon('hammer', 'ui-icon bar-icon')}
-         <span class="bar-label">${t('build.bar.build')}</span>
-         ${seatQueue ? `<i class="pip">${seatQueue}</i>` : ''}
-       </button>
-       <button class="bar-item ${this.openModal === 'reddit' ? 'active' : ''}" data-action="reddit-open"
-         title="${esc(t('build.bar.socialsHint'))}">
-         ${icon('flame', 'ui-icon bar-icon')}
-         <span class="bar-label">${t('build.bar.socials')}</span>
-         ${state.hype >= 1 ? `<i class="pip">${Math.round(state.hype)}</i>` : ''}
-       </button>`,
+      // Build leads: the room is where everything else happens. Then starting something.
+      item(
+          'build-open',
+          'hammer',
+          t('build.bar.build'),
+          seatQueue ? t('build.bar.buildQueue', { count: seatQueue }) : t('build.bar.buildHint'),
+          { active: state.buildMode, pip: seatQueue, tone: seatQueue ? 'mb-item--alert' : '', key: 'B' },
+        ) +
+        item('new-open', 'plus', t('build.bar.new'), t('build.bar.newHint'), {
+        active: this.openModal === 'new',
+        pip: offers,
+        tone: 'mb-item--cta',
+        key: 'N',
+      }) +
+        item('projects-open', 'clipboard', t('build.bar.projects'), t('build.bar.projectsHint'), {
+          active: this.openModal === 'projects',
+          pip: state.runtime.projects.length,
+        }) +
+        item('ranking-open', 'trophy', t('build.bar.ranking'), t('build.bar.rankingHint'), {
+          active: this.openModal === 'ranking',
+          key: 'R',
+        }) +
+        item('machines-open', 'printer', t('build.bar.machines'), t('build.bar.machinesHint'), {
+          active: this.openModal === 'machines',
+          pip: jobs,
+          key: 'M',
+        }) +
+        item(
+          'people-open',
+          'users',
+          t('build.bar.people'),
+          state.applicants.length ? t('build.bar.peopleWaiting', { count: state.applicants.length }) : t('build.bar.peopleHint'),
+          { active: this.openModal === 'people', pip: state.applicants.length, tone: state.applicants.length ? 'mb-item--news' : '', key: 'P' },
+        ),
     );
   }
 
@@ -3018,7 +3033,6 @@ export class UI {
         ${stat(t('ui.space.shipped'), String(row.projects), t('ui.space.thisYear', { value: row.projectsThisYear }))}
         ${stat(t('ui.space.crew'), String(row.members), t('ui.stat.onTheBooks'))}
         ${stat(t('ui.space.cash'), money(row.cash), t('ui.space.inHand'))}
-        ${stat(t('ui.space.upvotes'), num(row.upvotesThisYear), t('ui.space.thisYearPlain'))}
         ${stat(t('ui.space.growth'), `+${row.growthThisYear}%`, t('ui.space.growthNote'))}
         ${stat(t('ui.trophy.trophies'), String(trophies.length), trophies.length ? t('ui.space.allTime') : t('ui.space.noneYet'))}
         ${stat(
@@ -3188,10 +3202,8 @@ export class UI {
   private reportVerdict(record: ShippedRecord): 'above' | 'asPlanned' | 'below' | 'none' {
     const f = record.forecast;
     if (!f) return 'none';
-    // Only a wish the plan said it would meet counts against the build: missing one it never
-    // promised is not a surprise. Days count only when clearly late (`REPORT.lateFactor`).
-    const missed = (record.wishes ?? []).some((w, i) => !w.met && (f.wishes?.[i] ?? true));
-    if (record.quality < f.quality - REPORT.belowQuality || missed || this.reportLate(record)) return 'below';
+    // Days count only when clearly late (`REPORT.lateFactor`).
+    if (record.quality < f.quality - REPORT.belowQuality || this.reportLate(record)) return 'below';
     // Beating the plan has to be a real margin: traits and the owner joining in lift a build
     // a little past its forecast as a matter of course (§3).
     if (record.quality > f.quality + REPORT.aboveQuality || record.payout > f.payout * REPORT.abovePay) return 'above';
@@ -3204,9 +3216,9 @@ export class UI {
   }
 
   /** The report's substance, for the popup and for the build's page in Projects alike. */
-  private reportBlocks(state: GameState, record: ShippedRecord): { stats: string; wishes: string; campaign: string } {
+  private reportBlocks(record: ShippedRecord): { stats: string } {
     const f = record.forecast;
-    const baseHype = record.hype - (record.campaign?.hype ?? 0);
+    const baseHype = record.hype;
     // A figure, and under it what the review said it would be — green past it, red short.
     const stat = (label: string, value: string, planned: string | null, better: boolean | null, hint = '') =>
       `<div class="review-stat" title="${esc(hint)}"><span class="ui-label">${label}</span>
@@ -3240,61 +3252,22 @@ export class UI {
         f ? t('ui.days.short', { days: f.days }) : null,
         f ? (this.reportLate(record) ? false : record.days <= f.days ? true : null) : null,
       )}`;
-    const judged = record.wishes ?? [];
-    const wishes = judged.length
-      ? `<div class="ui-label" style="margin:12px 0 6px">${t('report.wishes', { met: judged.filter((w) => w.met).length, total: judged.length })}</div>
-         <div class="row" style="gap:6px;flex-wrap:wrap">${judged.map((w) => this.wishChip(w.wish, w.met)).join('')}</div>`
-      : `<p class="ui-desc" style="margin:12px 0 0">${t('report.noWishes')}</p>`;
-
-    // Advertising it: once, soon, and priced against what this build is worth.
-    let campaign: string;
-    if (record.order) campaign = `<p class="ui-desc">${t('report.campaign.order')}</p>`;
-    else if (record.campaign) {
-      const c = record.campaign;
-      campaign = `<p class="report-done ${c.hype < 0 ? 'down' : 'up'}">${icon(CAMPAIGN_MAP[c.id].icon)}${esc(
-        t('report.campaign.done', { campaign: t(`report.campaign.${c.id}.name` as MessageKey), gain: c.hype }),
-      )}${c.sales ? `<span class="report-sales">${esc(t('report.campaign.sales', { paid: c.paid ?? 0, total: c.sales }))}</span>` : ''}</p>`;
-    } else if (state.day - record.day > CAMPAIGN.windowDays) {
-      campaign = `<p class="ui-desc">${t('report.campaign.closed')}</p>`;
-    } else {
-      const hoursOk = (state.runtime.player?.hoursLeft ?? 0) >= CAMPAIGN.hours;
-      const pick = this.campaignPick?.record === record.id ? this.campaignPick.id : null;
-      const cards = CAMPAIGNS.map((c) => {
-        const gain = campaignGain(c.id, baseHype, record.quality);
-        const [low, high] = campaignRange(c.id, baseHype, record.quality);
-        const ok = hoursOk && this.affordable(state, c.cost);
-        // A review is a reading, so it shows a spread; the rest are what they are.
-        const expect = c.judged ? t('report.campaign.range', { min: low, max: high }) : t('report.campaign.expect', { gain });
-        const back = c.judged
-          ? t('report.campaign.backRange', { min: campaignSales(low), max: campaignSales(high) })
-          : t('report.campaign.back', { sales: campaignSales(gain) });
-        const tone = high < 0 ? 'down' : low < 0 ? 'risk' : 'up';
-        return `<button class="ui-option campaign-card" data-action="campaign-pick"
-            data-id="${record.id}" data-value="${c.id}" aria-pressed="${pick === c.id}" ${ok ? '' : 'disabled'}
-            title="${esc(ok ? t(`report.campaign.${c.id}.blurb` as MessageKey) : hoursOk ? t('build.review.pastOverdraft') : t('report.campaign.noHours'))}">
-            <span class="campaign-card__head">${icon(c.icon)}<b>${esc(t(`report.campaign.${c.id}.name` as MessageKey))}</b></span>
-            <span class="ui-desc ui-clamp-2">${esc(t(`report.campaign.${c.id}.blurb` as MessageKey))}</span>
-            <span class="campaign-card__foot">
-              <span class="mono">${money(c.cost)}</span>
-              <span class="mono campaign-gain ${tone}">${esc(expect)}</span>
-            </span>
-            <span class="campaign-card__back ${campaignSales(high) >= c.cost ? 'up' : ''}">${esc(back)}</span>
-            ${c.judged ? `<span class="campaign-card__tag">${t('report.campaign.judged')}</span>` : ''}
-          </button>`;
-      }).join('');
-      campaign = `<p class="ui-desc" style="margin:0 0 8px">${t('report.campaign.hint', { days: CAMPAIGN.windowDays, week: CAMPAIGN.salesDays })}</p>
-        <div class="campaign-grid">${cards}</div>`;
-    }
-    return { stats, wishes, campaign };
+    return { stats };
   }
 
-  /** The Run button for the chosen campaign, or a quiet prompt to choose one. */
-  private campaignButton(record: ShippedRecord): string {
-    const pick = this.campaignPick?.record === record.id ? CAMPAIGN_MAP[this.campaignPick.id] : null;
-    if (!pick) return `<button class="ui-btn ui-btn--outline" disabled>${t('report.campaign.pick')}</button>`;
-    return `<button class="ui-btn ui-btn--primary" data-action="campaign-run">${icon(pick.icon)}${esc(
-      t('report.campaign.launch', { campaign: t(`report.campaign.${pick.id}.name` as MessageKey), cost: pick.cost }),
-    )}</button>`;
+  /**
+   * Promoting a build (§4c): one button with its price and what it brings, or how a running
+   * promotion is getting on. Nothing at all once the window has closed or for a print order.
+   */
+  private promoControl(state: GameState, record: ShippedRecord): string {
+    if (record.promo) {
+      return `<span class="promo-running">${icon('trendUp')}${esc(t('promo.running', { paid: record.promo.paid, gain: record.promo.gain }))}</span>`;
+    }
+    const quote = this.handlers.promoQuote(record.id);
+    if (!quote) return '';
+    return `<button class="ui-btn ui-btn--outline" data-action="promote" data-id="${record.id}"
+      ${this.affordable(state, quote.cost) ? '' : 'disabled'}
+      title="${esc(t('promo.hint', { days: PROMO.days, window: PROMO.window }))}">${icon('trendUp')}${esc(t('promo.button', quote))}</button>`;
   }
 
   private renderShipReport(state: GameState): boolean {
@@ -3302,12 +3275,11 @@ export class UI {
     if (!record) return false;
     const verdict = this.reportVerdict(record);
     const tone = { above: 'var(--success)', asPlanned: 'var(--primary)', below: 'var(--warning)', none: 'var(--muted-foreground)' }[verdict];
-    const blocks = this.reportBlocks(state, record);
+    const blocks = this.reportBlocks(record);
     const crew = (record.crew ?? [])
       .slice(0, 4)
       .map((c) => `${esc(c.id === 'player' ? state.identity?.player || t('ui.space.you') : c.name)} <span class="mono">${pct(c.share)}</span>`)
       .join(' · ');
-    const open = !record.order && !record.campaign && state.day - record.day <= CAMPAIGN.windowDays;
     this.setHTML(
       this.modal,
       'modal',
@@ -3322,15 +3294,11 @@ export class UI {
           </header>
           <div class="modal-body">
             <div class="review-grid">${blocks.stats}</div>
-            ${blocks.wishes}
             ${crew ? `<p class="ui-desc report-crew"><span class="ui-label">${t('report.madeBy')}</span> ${crew}</p>` : ''}
-            <hr class="ui-sep" />
-            <div class="ui-label" style="margin-bottom:6px">${t('report.campaign.title')}</div>
-            ${blocks.campaign}
           </div>
           <footer class="report-foot">
-            <button class="ui-btn ui-btn--ghost" data-action="report-close">${t('report.close')}</button>
-            ${open ? this.campaignButton(record) : ''}
+            ${this.promoControl(state, record)}
+            <button class="ui-btn ui-btn--primary" data-action="report-close">${t('report.close')}</button>
           </footer>
         </div>
       </div>`,
@@ -3342,8 +3310,73 @@ export class UI {
   private modalShell = '';
   private modalSection = '';
 
+  /**
+   * A dilemma card (§7c): the situation, and two answers with what each one costs said in
+   * full before it is chosen — a decision you cannot price is a coin toss.
+   */
+  private renderDilemma(state: GameState): boolean {
+    const card = state.dilemma;
+    const def = card ? DILEMMA_MAP[card.id] : undefined;
+    if (!card || !def) return false;
+    const target = card.target ? state.runtime.members.find((m) => m.id === card.target) : undefined;
+    const name = target?.name ?? state.identity?.name ?? '';
+    const rent = rentFor(state.era);
+    const fx = (text: string, good: boolean | null) => `<span class="fx ${good === null ? '' : good ? 'fx--good' : 'fx--bad'}">${esc(text)}</span>`;
+    const describe = (effects: DilemmaEffect[]): string[] =>
+      effects.flatMap((e): string[] => {
+        switch (e.kind) {
+          case 'cash': {
+            const amount = effectCash(e, rent);
+            return [fx(t('dilemma.fx.cash', { amount }), amount > 0)];
+          }
+          case 'rep': {
+            const amount = effectRep(e, state.reputation);
+            return [fx(t('dilemma.fx.rep', { amount }), amount > 0)];
+          }
+          case 'mood':
+            return [fx(e.who === 'all' ? t('dilemma.fx.moodAll', { delta: e.delta }) : t('dilemma.fx.moodOne', { delta: e.delta, name }), e.delta > 0)];
+          case 'away':
+            return [fx(t('dilemma.fx.away', { days: e.days, name }), false)];
+          case 'leave':
+            return [fx(t('dilemma.fx.leave', { name }), false)];
+          case 'mod':
+            if (e.mod === 'work') return [fx(t('dilemma.fx.work', { pct: Math.round((e.value - 1) * 100), days: e.days }), e.value > 1)];
+            if (e.mod === 'printers') return [fx(t('dilemma.fx.printers', { days: e.days }), false)];
+            return [fx(t(e.mod === 'power' ? 'dilemma.fx.power' : 'dilemma.fx.filament', { times: e.value, days: e.days }), e.value < 1)];
+          case 'dayOff':
+            return [fx(t('dilemma.fx.dayOff'), false)];
+          case 'chance':
+            return [`<span class="fx">${esc(t('dilemma.chance', { pct: Math.round(e.p * 100) }))}</span> ${describe(e.then).join(' ')}`];
+        }
+      });
+    const options = def.options
+      .map((option, i) => {
+        const lines = describe(option.effects);
+        return `<button class="dilemma-option" data-action="dilemma-pick" data-value="${i}">
+          <b>${esc(t(`dilemma.${def.id}.${option.key}` as MessageKey))}</b>
+          <span class="fx-line">${lines.length ? lines.join('<i class="fx-sep">·</i>') : `<span class="fx">${t('dilemma.nothing')}</span>`}</span>
+        </button>`;
+      })
+      .join('');
+    this.setHTML(
+      this.modal,
+      'modal',
+      `<div class="modal-backdrop">
+        <div class="modal modal--fit dilemma" data-action="noop">
+          <div class="dilemma-body">
+            <span class="ui-label">${t('dilemma.kicker')} · ${shortDate(card.day)}</span>
+            <h2>${esc(t(`dilemma.${def.id}.title` as 'dilemma.burnout.title', { name }))}</h2>
+            <p>${esc(t(`dilemma.${def.id}.body` as 'dilemma.burnout.body', { name }))}</p>
+            <div class="dilemma-options">${options}</div>
+          </div>
+        </div>
+      </div>`,
+    );
+    return true;
+  }
+
   private renderModal(state: GameState) {
-    if (this.renderBill(state) || this.renderCeremony(state) || this.renderShipReport(state)) {
+    if (this.renderBill(state) || this.renderCeremony(state) || this.renderShipReport(state) || this.renderDilemma(state)) {
       this.modalShell = '';
       return;
     }
@@ -3361,9 +3394,7 @@ export class UI {
             ? this.machinesBody(state)
             : this.openModal === 'projects'
               ? this.projectsBody(state)
-              : this.openModal === 'reddit'
-                ? this.redditBody(state)
-                : this.openModal === 'training'
+              : this.openModal === 'training'
                   ? this.trainingBody(state)
                   : this.newProjectBody(state);
     const classes = [
@@ -3422,123 +3453,6 @@ export class UI {
       this.modalSection = section;
       bodyEl.scrollTop = 0;
     }
-  }
-
-  // --- Reddit: attention, and what you claimed to get it -------------------
-
-  /**
-   * The composer and the feed (§6), and deliberately shallow: **the room is the button**.
-   * It used to ask three questions down a long screen and then make you find a Post button
-   * at the bottom, which is a lot of ceremony for a verb you use several times a day. Pick
-   * what you are talking about, pick how loudly, then click a room — and each room card
-   * shows the reaction it would actually give, so the choice between a big sceptical room
-   * and a small warm one is made where it is made.
-   */
-  private redditBody(state: GameState): { head: string; content: string; foot: string } {
-    const open = state.runtime.projects.filter((p) => !p.shipped);
-    const hoursLeft = state.runtime.player?.hoursLeft ?? 0;
-    const postedToday = (id: string) => state.posts.some((p) => p.projectId === id && p.day === state.day);
-
-    const subjects: { id: string; label: string; sub: ReturnType<typeof projectSubject> }[] = [
-      {
-        id: SPACE_SUBJECT,
-        label: t('ui.social.theSpace'),
-        // Straight from the sim: a preview built from different tags is a preview that lies.
-        sub: this.handlers.spaceSubject(),
-      },
-      ...open.map((p) => ({ id: p.id, label: p.name, sub: projectSubject(p) })),
-    ];
-    const chosen = subjects.find((x) => x.id === this.reddit.projectId) ?? subjects[0];
-
-    /**
-     * Two panes, one decision each (§6): **what** on the left, **where** on the right —
-     * with the claim above the rooms because it changes every number in them. The rooms are
-     * sorted by what they would actually give, so the answer to "where should this go" is
-     * the first row rather than a grid of eight to compare by eye.
-     */
-    const subjectList = subjects
-      .map((x) => {
-        const done = postedToday(x.id);
-        return `<button class="social-subject ${x.id === chosen.id ? 'on' : ''}" data-action="reddit-project"
-          data-id="${x.id}" ${done ? 'disabled' : ''}
-          title="${esc(done ? t('ui.social.postedToday') : t('ui.social.meritHint', { merit: pct(x.sub.merit) }))}">
-          <span class="social-subject__name">${esc(x.label)}</span>
-          <span class="social-subject__meter"><i style="width:${Math.round(x.sub.merit * 100)}%"></i></span>
-          <span class="social-subject__val">${done ? icon('check') : pct(x.sub.merit)}</span>
-        </button>`;
-      })
-      .join('');
-
-    const claimChips = `<div class="ui-segmented social-claims">
-      ${CLAIMS.map(
-        (claim) => `<button data-action="reddit-claim" data-value="${claim.key}"
-          aria-pressed="${claim.key === this.reddit.claim}" title="${esc(claim.blurb)}">
-          ${esc(claim.label)}
-        </button>`,
-      ).join('')}
-    </div>`;
-
-    const blocked = postedToday(chosen.id);
-    const can = !blocked && hoursLeft >= VERB_HOURS.post;
-    const previews = SUBREDDITS.map((room) => {
-      const already = state.posts.filter((p) => p.projectId === chosen.id && p.subreddit === room.id).length;
-      return { room, preview: react(chosen.sub, room, this.reddit.claim, already), fit: tasteMatch(chosen.sub.tags, room) };
-    }).sort((a, b) => b.preview.upvotes - a.preview.upvotes);
-    const top = previews.find((x) => !x.preview.burned)?.room.id;
-    const rooms = previews
-      .map(({ room, preview, fit }) => {
-        const bad = preview.burned;
-        return `<div class="social-room ${bad ? 'bad' : ''}" title="${esc(room.blurb)}">
-          <span class="social-room__icon">${icon(room.icon, 'ui-icon')}</span>
-          <span class="social-room__name"><span class="social-room__label">${esc(room.name)}</span>${
-            room.id === top ? `<span class="social-best">${t('build.social.best')}</span>` : ''
-          }</span>
-          <span class="social-room__fit" title="${esc(t('ui.social.tasteHint'))}"><i style="width:${Math.round(fit * 100)}%"></i></span>
-          <span class="social-room__votes">${bad ? t('ui.social.theyTurn') : `${icon('arrowUp')}${num(preview.upvotes)}`}</span>
-          <button class="ui-btn ${bad ? 'ui-btn--outline' : room.id === top ? 'ui-btn--primary' : 'ui-btn--outline'} ui-btn--sm"
-            data-action="reddit-post" data-value="${room.id}" ${can ? '' : 'disabled'}>${t('build.social.post')}</button>
-        </div>`;
-      })
-      .join('');
-
-    const feed = state.posts.length
-      ? [...state.posts]
-          .reverse()
-          .slice(0, 5)
-          .map(
-            (post) => `<div class="social-post ${post.burned ? 'bad' : ''}" title="${esc(post.comment)}">
-              <span class="social-post__votes">${post.burned ? '−' : icon('arrowUp')}${num(post.upvotes)}</span>
-              <span class="social-post__what">${esc(post.projectName)}</span>
-              <span class="social-post__where">${esc(SUBREDDIT_MAP[post.subreddit]?.name ?? post.subreddit)} · ${t('ui.top.day', { day: post.day })}</span>
-            </div>`,
-          )
-          .join('')
-      : `<p class="ui-desc" style="margin:0">${t('ui.social.nothingYet')}</p>`;
-
-    return {
-      head: `<div class="modal-head">${icon('flame', 'ui-icon ui-icon--lg')}<b>${t('ui.social.title')}</b>
-        <span class="ui-badge ui-badge--tone" style="--tone:var(--primary)"
-          title="${esc(t('ui.social.hypeHint'))}">
-          ${t('ui.social.hype', { hype: Math.round(state.hype) })}
-        </span></div>`,
-      content: `<div class="social">
-        <div class="social-left">
-          <div class="ui-label">${t('ui.social.about')}</div>
-          <div class="social-subjects">${subjectList}</div>
-          <div class="ui-label" style="margin-top:14px">${t('ui.social.cameBack')}</div>
-          <div class="social-feed">${feed}</div>
-        </div>
-        <div class="social-right">
-          <span class="ui-label">${t('ui.social.howLoud')}</span>
-          ${claimChips}
-          <div class="ui-label" style="margin-top:12px">
-            ${blocked ? t('ui.social.blocked') : t('ui.social.pickRoom')}
-          </div>
-          <div class="social-rooms">${rooms}</div>
-        </div>
-      </div>`,
-      foot: `<span class="ui-desc" style="font-size:10.5px">${t('ui.social.foot', { hours: hours(VERB_HOURS.post) })}</span>`,
-    };
   }
 
   // --- People: who is here, and who could be ------------------------------
@@ -3721,103 +3635,6 @@ export class UI {
         .join('')}
     </div>`;
 
-    /**
-     * Who is actually suited to a standing job. Each one leans on a different skill and a
-     * different trait, so the picker can lead with the person who ought to have it rather
-     * than making you cross-reference the table underneath — which is what you were doing.
-     */
-    const roleFit = (id: string, role: Role): { score: number; why: string } => {
-      const data = MEMBER_DATA[id];
-      if (!data) return { score: 0, why: '' };
-      const skill = (key: SkillKey) => (data.skills[key] ?? 0) / 5;
-      const has = (trait: string) => (data.traits ?? []).includes(trait as never);
-      let score = 0;
-      let why = '';
-      if (role === 'host') {
-        // Somebody who talks about the place well: broad taste, and the docs to show.
-        const breadth = Math.min(1, Object.keys(data.passions ?? {}).length / 4);
-        score = breadth * 0.55 + skill('comms') * 0.45;
-        why = has('mentor') ? t('ui.fit.mentor') : breadth > 0.7 ? t('ui.fit.broad') : t('ui.fit.goodEye');
-      } else if (role === 'printer') {
-        score = skill('mechanical') * 0.8 + 0.2;
-        why = has('nightOwl') ? t('ui.fit.nightOwl') : t('ui.fit.machining', { level: data.skills.mechanical ?? 0 });
-      } else if (role === 'quartermaster') {
-        score = skill('electronics') * 0.6 + skill('mechanical') * 0.4;
-        why = has('documenter') ? t('ui.fit.documenter') : t('ui.fit.goodEye');
-      } else {
-        // Knowing what reads well is taste and writing, not a bench skill.
-        const breadth = Math.min(1, Object.keys(data.passions ?? {}).length / 4);
-        score = skill('software') * 0.65 + breadth * 0.35;
-        why = has('documenter') ? t('ui.fit.writesItDown') : breadth > 0.7 ? t('ui.fit.broad') : t('ui.fit.goodEye');
-      }
-      if (has('mentor') && role === 'host') score *= 1.25;
-      if (has('nightOwl') && role === 'printer') score *= 1.2;
-      if (has('documenter') && role === 'quartermaster') score *= 1.3;
-      if (has('documenter') && role === 'social') score *= 1.25;
-      // Somebody who signs up and then stops turning up is nobody's keyholder.
-      if (has('ghost')) score *= 0.4;
-      return { score: Math.min(1, score), why };
-    };
-
-    const roleIcon: Record<Role, IconName> = {
-      host: 'users',
-      printer: 'printer',
-      quartermaster: 'package',
-      social: 'flame',
-    };
-    const roles = Object.keys(ROLE_LABEL) as Role[];
-    const openRole = this.roleOpen;
-    const jobs = `<div class="ui-label" style="margin-bottom:7px">
-        ${t('ui.people.keyholders')} <span class="muted" style="text-transform:none;letter-spacing:0">
-          · ${t('ui.people.keyholdersHint')}</span>
-      </div>
-      <div class="keyholders">
-        ${roles
-          .map((role) => {
-            const holder = members.find((m) => m.role === role);
-            return `<button class="keyslot ${holder ? 'keyslot--held' : ''} ${openRole === role ? 'keyslot--open' : ''}"
-              data-action="role-open" data-value="${openRole === role ? '' : role}"
-              title="${ROLE_BLURB[role]}">
-              <span class="icon-chip" style="--tone:${holder ? 'var(--primary)' : 'var(--muted-foreground)'}">
-                ${icon(roleIcon[role], 'ui-icon')}
-              </span>
-              <span class="keyslot__text">
-                <span class="keyslot__role">${ROLE_LABEL[role]}</span>
-                <span class="keyslot__who">${holder ? esc(holder.name) : t('ui.people.nobodyYet')}</span>
-              </span>
-            </button>`;
-          })
-          .join('')}
-      </div>
-      ${
-        openRole
-          ? `<div class="job-pick">
-              <p class="ui-desc" style="width:100%;margin:0 0 3px">${ROLE_BLURB[openRole]}</p>
-              ${[...members]
-                .map((m) => ({ m, fit: roleFit(m.id, openRole) }))
-                .sort((a, b) => b.fit.score - a.fit.score)
-                .map(
-                  ({ m, fit }, index) => `<button class="ui-toggle ${index === 0 && m.role !== openRole ? 'suggested' : ''}"
-                    aria-pressed="${m.role === openRole}"
-                    data-action="set-role" data-id="${m.id}" data-value="${openRole}"
-                    title="${esc(fit.why)}${m.role && m.role !== openRole ? ` · ${esc(t('ui.people.currently', { role: ROLE_LABEL[m.role] }))}` : ''}">
-                    ${icon(m.role === openRole ? 'check' : 'plus')}${esc(m.name)}
-                    <span class="ui-toggle__pct">${pct(fit.score)}</span>
-                  </button>`,
-                )
-                .join('')}
-              ${
-                members.some((m) => m.role === openRole)
-                  ? `<button class="ui-toggle" data-action="set-role"
-                      data-id="${members.find((m) => m.role === openRole)!.id}" data-value="">
-                      ${icon('x')}${t('ui.people.takeBack')}
-                    </button>`
-                  : ''
-              }
-            </div>`
-          : ''
-      }`;
-
     const rows =
       tab === 'free' ? free.map(memberRow) : tab === 'on' ? busy.map(memberRow) : [...free, ...busy].map(memberRow);
 
@@ -3876,7 +3693,7 @@ export class UI {
     return {
       head: `<div class="modal-head">${icon('users', 'ui-icon ui-icon--lg')}<b>${t('ui.people.title')}</b></div>`,
       content:
-        (members.length ? jobs + `<hr class="ui-sep" />` : '') + waiting + chips + body + trainHint,
+        waiting + chips + body + trainHint,
       foot: `<span class="ui-desc" style="font-size:10.5px">
           ${
             free.length
@@ -4078,16 +3895,14 @@ export class UI {
           <span class="wing-card__icon">${icon(CATEGORY_ICON[category], 'ui-icon')}</span>
           <div>
             <span class="ui-title">${profile.label}</span>
-            <span class="wing-card__role">${t(`build.role.${category}` as MessageKey)}</span>
+            <span class="wing-card__role">${t('build.np.wingBriefs', { count: briefs.length })}</span>
           </div>
-          <span class="ui-badge" style="margin-left:auto">${t('build.np.wingBriefs', { count: briefs.length })}</span>
         </div>
         <span class="ui-option__desc">${esc(profile.blurb)}</span>
         <div class="wing-card__facts">
-          <span class="ui-badge" title="${esc(t('build.np.wingBestHint'))}">${icon('users')}${who}</span>
-          ${demandBadge(state.market[category] ?? 1)}
+          <span title="${esc(t('build.np.wingBestHint'))}">${icon('users')}${who}</span>
+          ${demandText(state.market[category] ?? 1)}
         </div>
-        <span class="wing-card__taste">${briefs.slice(0, 3).map((def) => esc(def.name)).join(' · ')}</span>
       </button>`;
     }).join('');
 
@@ -4124,7 +3939,7 @@ export class UI {
     return `
       <div class="row between" style="gap:10px;margin-bottom:11px">
         <span class="ui-label">${t('build.np.asking')}</span>
-        <span class="row" style="gap:6px">${categoryChip(category)}${demandBadge(state.market[category] ?? 1)}</span>
+        ${demandText(state.market[category] ?? 1)}
       </div>
       ${this.ownProjectRow(category, state)}
       ${defs.length ? defs.map((def) => this.briefRow(def, state)).join('') : `<p class="ui-desc">${t('build.np.nothingInGenre')}</p>`}`;
@@ -4155,44 +3970,38 @@ export class UI {
     </div>`;
   }
 
+  /**
+   * A brief as one quiet row (§4c): the name, one line of what it is, and on the right how
+   * long and what it pays. Everything else a brief carries — the crew it was scoped for, the
+   * reputation, the machine time, the parts — is on hover and on the review step; six
+   * coloured pills on every row made the list a wall to read rather than a menu to pick from.
+   */
   private briefRow(def: ProjectDef, state: GameState, entry?: BacklogEntry): string {
     const badge = entry ? SOURCE_BADGE[entry.source] : null;
     const missing = missingMachines(def, state.ownedMachines);
-    const profile = profileOf(def.category);
-    // The brief as written — the default design — so the card and the review agree (§4c).
-    const brief = planProject(def, defaultPlan(def), state.ownedMachines, state.licences);
+    // The brief as written — the default design — so the row and the review agree (§4c).
+    const brief = planProject(def, defaultPlan(def), state.ownedMachines);
     const printHours = brief.parts.reduce((sum, part) => sum + part.hours, 0);
-    return `<button class="ui-row" data-action="np-brief"
-      data-id="${def.id}" data-id2="${entry?.id ?? ''}" ${missing.length ? 'disabled' : ''}>
-      <span class="icon-chip" style="--tone:${profile.accent}">${icon(CATEGORY_ICON[def.category], 'ui-icon ui-icon--lg')}</span>
+    const details = [
+      t('build.np.scopedFor', { count: def.teamSize }),
+      `${t('build.np.hypeHint')}: ${num(def.hype)}`,
+      `${t('build.np.machineTimeHint')}: ${printHours ? span(printHours) : t('build.np.none')}`,
+      `${t('build.np.bomHint')}: ${def.bomCost ? `${money(def.bomCost)} · ${t('build.days', { days: brief.leadDays })}` : t('build.np.none')}`,
+    ].join('\n');
+    return `<button class="ui-row brief-row" data-action="np-brief"
+      data-id="${def.id}" data-id2="${entry?.id ?? ''}" ${missing.length ? 'disabled' : ''} title="${esc(details)}">
       <span class="ui-row__main">
-        <span class="row between" style="gap:8px">
+        <span class="brief-row__head">
+          ${entry ? `<span class="wing" style="color:${profileOf(def.category).accent}">${icon(CATEGORY_ICON[def.category])}</span>` : ''}
           <span class="ui-title">${esc(def.name)}</span>
           ${badge?.label ? `<span class="ui-badge ui-badge--accent">${t(badge.label)}</span>` : ''}
+          <span class="brief-row__facts">${t(`ui.tier.${def.tier}`)} · ${def.payout ? money(def.payout) : t('build.np.keepIt')}</span>
         </span>
-        <p class="ui-desc ui-clamp-2" style="margin:4px 0 0">${esc(def.blurb)}</p>
-        <span class="ui-row__meta">
-          ${tierBadge(def.tier)}
-          <span class="ui-badge ui-badge--tone" style="--tone:var(--primary)" title="${esc(t('build.np.scopedForHint'))}">
-            ${icon('users')}${t('build.np.scopedFor', { count: def.teamSize })}
-          </span>
-          ${
-            def.payout
-              ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)" title="${esc(t('build.np.payoutHint'))}">${icon('coins')}${money(def.payout)}</span>`
-              : `<span class="ui-badge">${icon('coins')}${t('build.np.keepIt')}</span>`
-          }
-          <span class="ui-badge" title="${esc(t('build.np.hypeHint'))}">${icon('flame')}${num(def.hype)}</span>
-          <span class="ui-badge" title="${esc(t('build.np.machineTimeHint'))}">${icon('printer')}${printHours ? span(printHours) : t('build.np.none')}</span>
-          <span class="ui-badge" title="${esc(t('build.np.bomHint'))}">
-            ${icon('package')}${def.bomCost ? `${money(def.bomCost)} · ${t('build.days', { days: brief.leadDays })}` : t('build.np.none')}
-          </span>
-        </span>
-        ${wishesFor(def).length ? `<span class="ui-row__meta brief-wishes">${wishesFor(def).map((w) => this.wishChip(w, null)).join('')}</span>` : ''}
+        <p class="ui-desc ui-clamp-1">${esc(def.blurb)}</p>
         ${entry ? this.offerMeta(entry, state) : ''}
         ${
           missing.length
-            ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning);margin-top:6px"
-                 title="${esc(t('build.np.needsHint'))}">
+            ? `<span class="brief-row__needs" title="${esc(t('build.np.needsHint'))}">
                  ${icon('printer')}${t('build.np.needs', { machines: missing.map((m) => MACHINE_LABEL[m]).join(' + ') })}
                </span>`
             : ''
@@ -4212,15 +4021,15 @@ export class UI {
   }
 
   /**
-   * Keep the plan to what the space can pay for (§7a): the design budget is spent at the
-   * pitch, so a plan the overdraft cannot cover is not a plan. Nothing is dropped for the
-   * crew's sake any more — reaching past them is priced, not locked (design §5.4).
+   * Keep the plan to what the crew can back and the space can pay for (§4c, §7a): a card
+   * the crew is not good enough for is locked, and the design budget is spent at the pitch,
+   * so a plan the overdraft cannot cover is not a plan.
    */
   private npFitDesign(state: GameState) {
     const def = this.npDef();
     if (!def) return;
-    const design = { ...this.np.design };
-    const tooling = () => planProject(def, { design, seats: this.np.seats }, state.ownedMachines, state.licences).tooling;
+    const design = clampDesign(def.category, this.np.design, this.npPlanWithCrew(state).levels);
+    const tooling = () => planProject(def, { design, seats: this.np.seats }, state.ownedMachines).tooling;
     for (const axis of CATEGORY_AXES[def.category]) {
       if (isMulti(axis)) {
         while ((design[axis] ?? 0) > 0 && !this.affordable(state, tooling())) design[axis] = (design[axis] ?? 0) >> 1;
@@ -4234,7 +4043,7 @@ export class UI {
   /** What the design budget would be with one axis switched to another option. */
   private npToolingWith(def: ProjectDef, state: GameState, axis: DesignAxisId, index: number): number {
     const design = { ...this.np.design, [axis]: index };
-    return planProject(def, { design, seats: this.np.seats }, state.ownedMachines, state.licences).tooling;
+    return planProject(def, { design, seats: this.np.seats }, state.ownedMachines).tooling;
   }
 
   /** The plan with the picked crew's levels in it — what the forecast reads. */
@@ -4245,14 +4054,14 @@ export class UI {
 
   /**
    * Everything the design step and the review promise, worked out once (design §5.4): the
-   * plan through `planProject`, quality from the crew's craft and the design **under the
-   * crew's ceiling**, the days, the pay with the wishes it would meet, and the hype.
+   * plan through `planProject`, quality from the crew's craft and the design, the days, the
+   * pay and the hype.
    */
   private npForecast(state: GameState) {
     const def = this.npDef()!;
     const entry = this.np.offerId ? state.backlog.find((e) => e.id === this.np.offerId) : undefined;
     const plan = this.npPlanWithCrew(state);
-    const summary = planProject(def, plan, state.ownedMachines, state.licences);
+    const summary = planProject(def, plan, state.ownedMachines);
     const crew = [...this.np.crew]
       .map((id) => state.runtime.members.find((m) => m.id === id))
       .filter((m): m is MemberSnapshot => !!m);
@@ -4263,31 +4072,16 @@ export class UI {
       plan,
       summary,
       crew.map((m) => m.skills[def.category] ?? 2),
-      { demand, built, hypeMultiplier: entry?.hypeMultiplier },
+      { demand, built },
     );
     return { def, entry, plan, summary, crew, demand, ...forecast };
-  }
-
-  /** A client wish, in words, ticked when the plan would meet it. */
-  private wishChip(wish: Wish, ok: boolean | null): string {
-    const label =
-      wish.kind === 'stars'
-        ? t('build.wish.stars', { min: wish.min })
-        : wish.kind === 'platform'
-          ? t('build.wish.platform', { name: AXES.platforms.options[wish.bit].label })
-          : wish.kind === 'scope'
-            ? t('build.wish.scope', { name: AXES[wish.axis].options[wish.min].label })
-            : t('build.wish.days', { days: wish.within });
-    const tone = ok === null ? '' : ok ? 'ui-badge--tone" style="--tone:var(--success)' : 'ui-badge--tone" style="--tone:var(--muted-foreground)';
-    return `<span class="ui-badge ${tone}" title="${esc(t('build.wish.hint'))}">${ok ? icon('check') : icon('star')}${esc(label)}</span>`;
   }
 
   /**
    * Step 4 (design §5.4): **three questions, not a menu.** The approach — quick or good; the
    * scope, in the wing's own words; and the technology, which is not asked but read off the
-   * crew. Nothing is locked for the crew's sake: reaching past them is allowed and priced on
-   * the card. A forecast strip on top moves with every choice, the client's wishes tick as
-   * the plan meets them, and three ready plans do it in one press.
+   * crew. A card above the crew's level is locked and says which level opens it. A forecast
+   * strip on top moves with every choice, and three ready plans do it in one press.
    */
   private npDesignStep(state: GameState): string {
     const def = this.npDef();
@@ -4302,18 +4096,14 @@ export class UI {
       <div class="forecast__item" title="${esc(`${t('build.np.fDaysHint')}\n${t('build.np.fDaysRisk', { clean: span(f.clean * 24), retry: span(f.retry * 24), pct: Math.round(f.fail * 100) })}`)}"><span class="ui-label">${t('build.np.fDays')}</span><b>≈ ${esc(span(f.days * 24))}</b>
         <span class="forecast__sub">${esc(t('build.np.fDaysFail', { pct: Math.round(f.fail * 100), retry: span(f.retry * 24) }))}</span></div>
       <div class="forecast__item" title="${esc(t('build.np.fQualityHint'))}"><span class="ui-label">${t('build.np.fQuality')}</span>
-        <span class="row" style="gap:6px">${starRow(qualityStars(f.quality))}<span class="ui-desc">${t('build.np.fCeiling', { stars: qualityStars(f.summary.ceiling) })}</span></span></div>
+        <span class="row" style="gap:6px">${starRow(qualityStars(f.quality))}</span></div>
       <div class="forecast__item"><span class="ui-label">${t('build.np.fPays')}</span><b class="mono">~${money(f.payout)}</b></div>
       <div class="forecast__item"><span class="ui-label">${t('build.np.fHype')}</span><b class="mono">~${num(f.hype)}</b></div>
     </div>`;
 
-    const wishes = f.wishes.length
-      ? `<div class="design-wishes"><span class="ui-label">${t('build.np.wishes')}</span>${f.wishes.map((w) => this.wishChip(w.wish, w.ok)).join('')}</div>`
-      : '';
-
     const presets = `<div class="design-presets">
       ${(['fast', 'best', 'profit'] as Preset[])
-        .map((p) => `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="np-preset" data-value="${p}" title="${esc(t(`build.np.preset.${p}Hint` as MessageKey))}">
+        .map((p) => `<button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="np-preset" data-value="${p}" title="${esc(t(`build.np.preset.${p}Hint` as MessageKey))}">
           ${icon(p === 'fast' ? 'clock' : p === 'best' ? 'star' : 'coins')}${t(`build.np.preset.${p}` as MessageKey)}</button>`)
         .join('')}
     </div>`;
@@ -4323,23 +4113,16 @@ export class UI {
       const missing = (option.requires ?? []).filter((m) => !state.ownedMachines.includes(m));
       const tooling = this.npToolingWith(def, state, axisId, isMulti(axisId) ? (this.np.design[axisId] ?? 0) | (1 << index) : index);
       const pricey = !on && !this.affordable(state, tooling);
-      const locked = missing.length > 0 || pricey;
-      const gap = shortBy(option, def.category, levels);
+      // Above the crew's level the card is shut, and says which level opens it (§4c).
+      const skill = isLocked(option, def.category, levels);
+      const locked = missing.length > 0 || pricey || skill;
       const why = missing.length
         ? t('build.np.needsMachine', { machines: missing.map((m) => MACHINE_LABEL[m]).join(' + ') })
-        : pricey
-          ? t('build.np.cantAfford', { cost: tooling })
-          : '';
-      const reach = gap
-        ? `<span class="design-reach">${esc(
-            t('build.np.reach', {
-              have: rank(level),
-              need: rank(optionLevel(option)),
-              work: Math.round((Math.pow(DESIGN.shortWork, gap) - 1) * 100),
-              risk: num(Number(Math.pow(DESIGN.shortRisk, gap).toFixed(2))),
-            }),
-          )}</span>`
-        : '';
+        : skill
+          ? t('build.np.needsLevel', { need: rank(optionLevel(option)), have: rank(level) })
+          : pricey
+            ? t('build.np.cantAfford', { cost: tooling })
+            : '';
       return `<button class="ui-option design-option ${on ? 'ui-option--on' : ''} ${locked ? 'design-option--locked' : ''}"
         data-action="${action}" data-value="${axisId}" data-id="${index}" aria-pressed="${on}" ${locked ? 'disabled' : ''} title="${esc(why)}">
         <span class="row between" style="width:100%">
@@ -4347,8 +4130,7 @@ export class UI {
           ${isMulti(axisId) ? '' : starRow(option.stars)}
         </span>
         <span class="ui-option__desc ui-clamp-2">${esc(option.blurb)}</span>
-        <span class="ui-row__meta" style="margin:0">${optionEffects(option, this.np.seats, def, axisId, index, state.licences)}</span>
-        ${reach}
+        <span class="ui-row__meta" style="margin:0">${optionEffects(option, def)}</span>
         ${locked ? `<span class="design-lock">${icon('x')}${esc(why)}</span>` : ''}
       </button>`;
     };
@@ -4381,7 +4163,7 @@ export class UI {
       </div>
     </div>`;
 
-    return `${this.npHeader(def)}${strip}${wishes}${presets}${sections}${techRow}`;
+    return `${this.npHeader(def)}${strip}${presets}${sections}${techRow}`;
   }
 
   /** The brief being designed, as a line at the top of each step after it. */
@@ -4408,30 +4190,24 @@ export class UI {
     const max = this.maxSeats(state);
     const fit = teamFit(this.np.seats, def.teamSize);
 
-    const fitTone = fit.quality >= 0.04 ? 'var(--success)' : fit.quality <= -0.04 ? 'var(--destructive)' : 'var(--muted-foreground)';
-    const fitCard = `<div class="ui-card fit-card">
-      <div class="row between" style="gap:10px">
-        <span class="ui-label">${t('build.np.crewSize')}</span>
-        <span class="ui-badge ui-badge--tone" style="--tone:${fitTone}" title="${esc(t('build.np.fitQualityHint'))}">
-          ${icon('star')}${t('build.np.fitQuality', { value: `${fit.quality >= 0 ? '+' : '−'}${Math.round(Math.abs(fit.quality) * 100)}` })}
-        </span>
-      </div>
+    // The size and its verdict on one line; why sizes matter is on hover, not a paragraph.
+    const fitTone = fit.quality >= 0.04 ? 'fx--good' : fit.quality <= -0.04 ? 'fx--bad' : '';
+    const fitCard = `<div class="np-section">
+      <span class="ui-label">${t('build.np.crewSize')}</span>
       ${fitMeter(def.teamSize, this.np.seats, max, state.runtime.members.filter((m) => !m.team).length)}
-      <p class="ui-desc" style="margin:8px 0 0"><b>${t('build.people', { count: this.np.seats })} · ${fitLabel(this.np.seats, def.teamSize)}.</b>
-        ${t('build.np.fitExplain', { count: def.teamSize })}</p>
+      <p class="ui-desc fit-verdict" title="${esc(`${t('build.np.fitExplain', { count: def.teamSize })}\n${t('build.np.fitQualityHint')}`)}">
+        ${t('build.people', { count: this.np.seats })} · ${fitLabel(this.np.seats, def.teamSize)}
+        · <span class="fx ${fitTone}">${t('build.np.fitQuality', { value: `${fit.quality >= 0 ? '+' : '−'}${Math.round(Math.abs(fit.quality) * 100)}` })}</span>
+      </p>
     </div>`;
 
     const free = this.rankedFree(def, state);
     const proposer = this.npProposer(state);
     const axes = CATEGORY_AXES[def.category];
     const picker = free.length
-      ? `<div class="ui-card" style="padding:11px;margin-top:10px">
-          <div class="row between" style="margin-bottom:8px;gap:10px">
-            <span class="ui-label" data-crew="${this.np.crew.size}/${this.np.seats}">${t('build.np.ask', { picked: this.np.crew.size, seats: this.np.seats })}</span>
-            <span class="ui-desc" style="font-size:10.5px;margin:0">${t('build.np.starsLegend', {
-              axes: axes.map((axis) => AXES[axis].label).join(' · '),
-            })}</span>
-          </div>
+      ? `<div class="np-section">
+          <span class="ui-label" data-crew="${this.np.crew.size}/${this.np.seats}"
+            title="${esc(t('build.np.starsLegend', { axes: axes.map((axis) => AXES[axis].label).join(' · ') }))}">${t('build.np.ask', { picked: this.np.crew.size, seats: this.np.seats })}</span>
           <div class="crew-grid">
             ${free
               .slice(0, 15)
@@ -4451,19 +4227,13 @@ export class UI {
                 return `<button class="crew-pick" aria-pressed="${on}" ${full || locked ? 'disabled' : ''}
                   data-action="np-crew" data-id="${m.id}" title="${esc(tip)}">
                   <span class="crew-pick__name">${icon(on ? 'check' : 'plus')}${esc(m.name)}</span>
-                  <span class="crew-pick__meta">
-                    ${starRow(rating.stars)}
-                    <span class="crew-pick__axes">${rating.axes.map((a) => `<i class="axis-dot axis-dot--${a.stars}">${a.stars}</i>`).join('')}</span>
-                    <span class="mono">${pct(match)}</span>
-                  </span>
+                  <span class="crew-pick__meta">${starRow(rating.stars)}</span>
                 </button>`;
               })
               .join('')}
           </div>
         </div>`
-      : `<div class="ui-card" style="padding:11px;margin-top:10px">
-          <p class="ui-desc" style="margin:0">${t('build.np.everyoneBusy')}</p>
-        </div>`;
+      : `<div class="np-section"><p class="ui-desc" style="margin:0">${t('build.np.everyoneBusy')}</p></div>`;
 
     // The name first: it is the first thing about a build that is the player's own, and
     // with the brief just chosen it is the moment to say what this one is called.
@@ -4479,16 +4249,7 @@ export class UI {
     return `${this.npHeader(def)}
       ${nameField}
       ${fitCard}
-      ${picker}
-      ${
-        max < 5
-          ? `<p class="ui-desc" style="margin:10px 0 0;font-size:10.5px">${icon('table')} ${t('build.np.largeHint', {
-              table: `<b>${esc(FURNITURE_MAP['meeting-corner'].name)}</b>`,
-              other: `<b>${esc(FURNITURE_MAP['table-large'].name)}</b>`,
-              build: `<b>${t('build.bar.build')}</b>`,
-            })}</p>`
-          : ''
-      }`;
+      ${picker}`;
   }
 
   /** Step 5: everything the plan works out to, and the button. */
@@ -4496,7 +4257,7 @@ export class UI {
     const def = this.npDef();
     if (!def) return `<p class="empty">${t('build.np.pickBrief')}</p>`;
     // The same forecast the design step showed (§5.4): one sum, two screens.
-    const { entry, plan, summary, crew, quality, payout, hype, demand, wishes } = this.npForecast(state);
+    const { entry, plan, summary, crew, quality, payout, hype, demand, days, clean, fail, retry } = this.npForecast(state);
     const cost = summary.bomCost + summary.tooling;
     const handWork = STAGE_ORDER.reduce((sum, key) => sum + summary.work[key], 0);
     const machineHours = summary.parts.reduce((sum, part) => sum + part.hours, 0);
@@ -4513,22 +4274,26 @@ export class UI {
     const stat = (label: string, value: string, hint = '') =>
       `<div class="review-stat" title="${esc(hint)}"><span class="ui-label">${label}</span><span class="review-stat__value">${value}</span></div>`;
 
-    const designLines =
-      CATEGORY_AXES[def.category]
-        .map((axisId) => {
-          if (isMulti(axisId)) {
-            const names = ['Web', ...picked(axisId, plan.design).map((i) => AXES[axisId].options[i].label)];
-            return `<div class="breakdown-row"><span>${esc(AXES[axisId].label)}</span><span class="mono">${esc(names.join(' · '))}</span></div>`;
-          }
-          const option = optionOf(axisId, plan.design);
-          return `<div class="breakdown-row"><span>${esc(AXES[axisId].label)}</span>
-            <span class="row" style="gap:6px"><span class="mono">${esc(option.label)}</span>${starRow(option.stars)}</span></div>`;
-        })
-        .join('') +
-      `<div class="breakdown-row"><span>${t('build.np.qTech')}</span><span class="mono">${esc(TECH_LABELS[def.category][summary.tech])}</span></div>` +
-      (wishes.length
-        ? `<div class="breakdown-row"><span>${t('build.np.wishes')}</span><span class="row" style="gap:4px;flex-wrap:wrap;justify-content:flex-end">${wishes.map((w) => this.wishChip(w.wish, w.ok)).join('')}</span></div>`
-        : '');
+    // The design as one line: each decision's pick and its stars. The technology the crew
+    // brings is the line's tooltip — it is not a choice, so it is not a row.
+    const designLine = CATEGORY_AXES[def.category]
+      .map((axisId) => {
+        if (isMulti(axisId)) {
+          return esc(['Web', ...picked(axisId, plan.design).map((i) => AXES[axisId].options[i].label)].join(' + '));
+        }
+        const option = optionOf(axisId, plan.design);
+        return `${esc(option.label)} ${starRow(option.stars)}`;
+      })
+      .join('<i class="fx-sep">·</i>');
+    // What it asks of the space, as detail on hover of the days.
+    const takesHint = [
+      `${t('build.review.handWork')}: ${workSpan(crewHours(handWork, plan.seats))}`,
+      `${t('build.review.machineTime')}: ${machineHours ? span(machineHours) : t('build.np.none')}`,
+      t('build.np.fDaysRisk', { clean: span(clean * 24), retry: span(retry * 24), pct: Math.round(fail * 100) }),
+      `${t('build.review.testRisk')}: ×${num(Number(summary.testRisk.toFixed(2)))}${summary.skipSim ? ` · ${t('build.review.noSim')}` : ''}`,
+    ].join('\n');
+    const row = (label: string, value: string, hint = '') =>
+      `<div class="breakdown-row" title="${esc(hint)}"><span>${label}</span><span class="review-value">${value}</span></div>`;
 
     // The design budget is paid at the pitch and refused past the overdraft, so a plan it
     // cannot cover must not reach a Start button that looks like it will work.
@@ -4537,31 +4302,19 @@ export class UI {
     return `${this.npHeader(def)}
       <div class="review-grid">
         ${stat(t('build.review.quality'), `${starRow(qualityStars(quality))}<span class="mono">${pct(quality)}</span>`, t('build.review.qualityHint'))}
-        ${stat(t('build.review.market'), demandBadge(demand), t('build.review.marketHint'))}
-        ${stat(t('build.review.pays'), `<span class="mono">~${money(payout)}</span>`, t('build.review.paysHint'))}
+        ${stat(t('build.np.fDays'), `<span class="mono">≈ ${esc(span(days * 24))}</span>`, takesHint)}
+        ${stat(t('build.review.pays'), `<span class="mono">~${money(payout)}</span>`, `${t('build.review.paysHint')}\n${t('build.review.market')}: ×${num(Number(demand.toFixed(2)))}`)}
         ${stat(t('build.review.reputation'), `<span class="mono">~${num(hype)}</span>`, t('build.review.reputationHint'))}
       </div>
       ${entry ? this.offerMeta(entry, state) : ''}
-      <div class="breakdown" style="margin-top:12px">
-        <div>
-          <div class="ui-label" style="margin-bottom:6px">${t('build.review.design')}</div>
-          ${designLines}
-          <div class="breakdown-row"><span>${t('build.review.crew')}</span><span class="mono">${num(plan.seats)} · ${esc(fitLabel(Math.max(1, crew.length || plan.seats), def.teamSize))}</span></div>
-          <div class="breakdown-row"><span>${t('build.review.kickoff')}</span><span class="mono">${tableLine}</span></div>
-        </div>
-        <div>
-          <div class="ui-label" style="margin-bottom:6px">${t('build.review.commitment')}</div>
-          <div class="breakdown-row"><span>${t('build.review.handWork')}</span><span class="mono">${workSpan(crewHours(handWork, plan.seats))}</span></div>
-          <div class="breakdown-row"><span>${t('build.review.machineTime')}</span><span class="mono">${machineHours ? span(machineHours) : t('build.np.none')}</span></div>
-          <div class="breakdown-row"><span>${t('build.review.parts')}</span><span class="mono">${summary.bomCost ? `${money(summary.bomCost)} · ${t('build.days', { days: summary.leadDays })}` : t('build.np.none')}</span></div>
-          <div class="breakdown-row"><span>${t('build.review.licences')}</span><span class="mono">${summary.tooling ? money(summary.tooling) : t('build.np.none')}</span></div>
-          <div class="breakdown-row"><span>${t('build.review.testRisk')}</span><span class="mono">×${num(Number(summary.testRisk.toFixed(2)))}${summary.skipSim ? ` · ${t('build.review.noSim')}` : ''}</span></div>
-        </div>
+      <div class="review-list">
+        ${row(t('build.review.crew'), crew.length ? esc(crew.map((m) => m.name).join(', ')) : esc(t('build.review.nobodyAsked')),
+          `${num(plan.seats)} · ${fitLabel(Math.max(1, crew.length || plan.seats), def.teamSize)}${this.npProposer(state) ? `\n${t('build.review.proposerSigns')}` : ''}`)}
+        ${row(t('build.review.design'), designLine, `${t('build.np.qTech')}: ${TECH_LABELS[def.category][summary.tech]}`)}
+        ${row(t('build.review.kickoff'), tableLine)}
+        ${summary.bomCost ? row(t('build.review.parts'), `${money(summary.bomCost)} · ${t('build.days', { days: summary.leadDays })}`) : ''}
+        ${summary.tooling ? row(t('build.review.licences'), money(summary.tooling)) : ''}
       </div>
-      <p class="ui-desc" style="margin:10px 0 0">
-        ${esc(crew.length ? t('build.review.asking', { names: crew.map((m) => m.name).join(', ') }) : t('build.review.nobodyAsked'))}
-        ${this.npProposer(state) ? esc(t('build.review.proposerSigns')) : ''}
-      </p>
       <button class="ui-btn ui-btn--primary ui-btn--lg pitch-cta" data-action="np-start" data-blocked="${blocked ? 1 : 0}"
         ${blocked ? 'disabled' : ''}>
         ${esc(t('build.review.start', { project: this.np.name.trim() || def.name }))}${cost ? ` · ${money(cost)}` : ''}
@@ -4593,9 +4346,6 @@ export class UI {
       proposer ? `<span class="ui-badge">${icon('users')}${esc(t('build.offer.proposer', { member: proposer }))}</span>` : '',
       entry.sponsorCash
         ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('coins')}${t('build.offer.upFront', { cash: entry.sponsorCash })}</span>`
-        : '',
-      entry.hypeMultiplier
-        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('flame')}${t('build.offer.hype', { multiplier: entry.hypeMultiplier })}</span>`
         : '',
       daysLeft !== null
         ? `<span class="ui-badge ${daysLeft <= 3 ? 'ui-badge--tone' : ''}" ${daysLeft <= 3 ? 'style="--tone:var(--destructive)"' : ''}>${icon('clock')}${t('build.offer.daysLeft', { days: daysLeft })}</span>`
@@ -4732,13 +4482,12 @@ export class UI {
    * (a print order's date, a client's "within N days").
    * A date you cannot see is not a deadline, it is an ambush.
    */
-  private benchDates(project: ProjectData, state: GameState): { html: string; stop: { text: string; tone: string } | null } {
+  private benchDates(project: ProjectData, state: GameState): { html: string; stop: { text: string; tone: string } | null; eta: number | null } {
     const eta = this.finishDays(project, state);
     const chips: string[] = [];
     let stop: { text: string; tone: string } | null = null;
     const chip = (iconName: IconName, text: string, tone: string, hint: string) =>
       `<span class="bench-date ${tone}" title="${esc(hint)}">${icon(iconName)}${esc(text)}</span>`;
-    if (eta !== null) chips.push(chip('clock', t('ui.bench.eta', { span: span(eta * 24) }), '', t('ui.bench.etaHint')));
     if (project.order) {
       const left = project.order.dueDay - state.day;
       const late = eta !== null && eta > left + 1;
@@ -4747,16 +4496,9 @@ export class UI {
       chips.push(chip('alert', text, tone, t('ui.bench.dueHint', { client: project.order.client, day: project.order.dueDay, rep: ORDERS.missedRep })));
       if (tone) stop = { text, tone };
     }
-    const within = project.wishes?.find((w): w is Extract<Wish, { kind: 'days' }> => w.kind === 'days');
-    if (within) {
-      const left = project.startedOnDay + within.within - state.day;
-      if (left >= 0) {
-        const tone = eta !== null && eta > left + 1 ? 'warn' : '';
-        chips.push(chip('star', t('ui.bench.wishBy', { days: left }), tone, t('ui.bench.wishHint')));
-      }
-    }
     // The awards night is not a date of this build's: the countdown comes as a notification.
-    return { html: `<div class="bench-dates">${chips.join('')}</div>`, stop };
+    // The finish estimate is on the stage line now; only a due date needs a line of its own.
+    return { html: chips.length ? `<div class="bench-dates">${chips.join('')}</div>` : '', stop, eta };
   }
 
   private projectCard(project: ProjectData, state: GameState, expanded = true): string {
@@ -4823,27 +4565,58 @@ export class UI {
       .sort((a, b) => (b.affinity[project.id] ?? 0) - (a.affinity[project.id] ?? 0));
     const room = project.teamSize - project.team.length;
 
-    // One flat row: who is on it, and whether you are. It was a box with its own heading.
-    const teamBlock = `<div class="crew-row">
-      <span class="crew-row__label">${t('ui.bench.team', { on: project.team.length, size: project.teamSize })}</span>
-      ${
-        team.length
-          ? team
-              .map(
-                (m) => `<span class="person ${m.present ? '' : 'off'}" title="${m.present ? esc(m.note) : esc(t('ui.bench.notInToday'))}">
-                  ${m.name}
-                  <button class="x" data-action="release" data-id="${project.id}" data-id2="${m.id}" title="${esc(t('ui.bench.takeOff'))}">×</button>
-                </span>`,
-              )
-              .join('')
-          : `<span class="muted" style="font-size:11px">${t('ui.bench.nobody')}</span>`
-      }
-      ${playerOn ? `<span class="person person--you">${t('ui.space.you')}</span>` : ''}
+    // **Who is on it, as a row of faces** — an initial in the colour of their wing, with
+    // what they are doing on the face itself rather than behind a hover: a ring while they
+    // work, dim when they are not in. A press opens a little card with the name, what they
+    // are up to and the way off the project; the empty chairs are one "+" at the end.
+    const avatar = (m: MemberSnapshot) => {
+      const state = !m.present ? 'off' : m.activity === 'working' ? 'busy' : 'in';
+      const open = this.benchPerson === `${project.id}:${m.id}`;
+      return `<button class="avatar avatar--${state} ${open ? 'on' : ''}" data-action="bench-person" data-id="${project.id}" data-id2="${m.id}"
+        style="--tone:${CATEGORY_PROFILES[m.primary].accent}" title="${esc(`${m.name} · ${m.present ? noteHere(m.note) : t('ui.bench.notInToday')}`)}">${esc(
+          m.name.charAt(0).toLocaleUpperCase(caseLocale()),
+        )}</button>`;
+    };
+    // On the build's own card its name goes without saying: "Kiosk: implementation" reads as
+    // "implementation", and a note about something else is left whole.
+    const noteHere = (note: string) => {
+      const name = project.name;
+      const at = note.indexOf(name);
+      if (at < 0) return note;
+      const rest = (note.slice(0, at) + note.slice(at + name.length)).replace(/^[\s:·—-]+|[\s:·—-]+$/g, '').replace(/\s{2,}/g, ' ');
+      return rest ? rest.charAt(0).toLocaleUpperCase(caseLocale()) + rest.slice(1) : note;
+    };
+    const asking = this.benchAsk === project.id;
+    const opened = team.find((m) => this.benchPerson === `${project.id}:${m.id}`);
+    const teamBlock = `<div class="crew-line">
+      <span class="crew-line__label">${t('ui.bench.team', { on: project.team.length, size: project.teamSize })}</span>
+      <span class="avatars">
+        ${team.map(avatar).join('')}
+        <!--you-->
+        ${
+          room > 0 && free.length
+            ? `<button class="avatar avatar--add ${asking ? 'on' : ''}" data-action="bench-ask" data-id="${project.id}"
+                title="${esc(room === 1 ? t('ui.bench.askOne') : t('ui.bench.askUpTo', { n: room }))}">${icon('plus')}${room > 1 ? `<i>${room}</i>` : ''}</button>`
+            : ''
+        }
+      </span>
+
     </div>
     ${
-      room > 0 && free.length
-        ? `<div class="candidates">
-            <span class="muted" style="font-size:10px">${room === 1 ? t('ui.bench.askOne') : t('ui.bench.askUpTo', { n: room })}</span>
+      opened
+        ? `<div class="person-card">
+            <span class="avatar avatar--${!opened.present ? 'off' : opened.activity === 'working' ? 'busy' : 'in'}" style="--tone:${CATEGORY_PROFILES[opened.primary].accent}">${esc(opened.name.charAt(0).toLocaleUpperCase(caseLocale()))}</span>
+            <span class="person-card__text">
+              <b>${esc(opened.name)}</b>
+              <span>${esc(t(`build.rank.${Math.max(1, Math.min(5, opened.skills[project.category] ?? 1))}` as MessageKey))} · ${esc(opened.present ? noteHere(opened.note) || t('ui.activity.idle') : t('ui.bench.notInToday'))}</span>
+            </span>
+            <button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="release" data-id="${project.id}" data-id2="${opened.id}" title="${esc(t('ui.bench.takeOff'))}">${icon('x')}${t('ui.bench.remove')}</button>
+          </div>`
+        : ''
+    }
+    ${
+      asking && room > 0 && free.length
+        ? `<div class="bench-cands">
             ${free
               .slice(0, 6)
               .map((m) => {
@@ -4873,62 +4646,57 @@ export class UI {
     } else if (waiting > 0) {
       // Whole days, rounded up: "1.4d" is a spreadsheet, "2 days" is a delivery.
       const days = Math.ceil(waiting / 24);
-      const cost = this.handlers.expediteCost(project.id);
       sourcing = `<div class="sourcing ${project.stage === 'assembly' ? 'urgent' : ''}">
         <span>${t('ui.bench.arriveIn', { days })}</span>
-        ${
-          project.expedited
-            ? `<span class="ui-badge">${t('ui.bench.expedited')}</span>`
-            : `<button class="tiny" data-action="expedite" data-id="${project.id}" ${this.affordable(state, cost) ? '' : 'disabled'}
-                title="${esc(t('ui.bench.expediteHint', { from: days, to: Math.ceil(waiting / 2 / 24) }))}">
-                ${t('ui.bench.expedite', { cost })}
-              </button>`
-        }
       </div>`;
     }
 
     // --- your involvement ---------------------------------------------------
     const handStage = stageDef.skill !== null || project.required[project.stage] > 0;
     const blockedAssembly = project.stage === 'assembly' && waiting > 0;
-    let workButton = '';
-    if (playerOn) {
-      workButton = `<button class="ui-btn ui-btn--sm" data-action="stop-work">${t('ui.bench.stop')}</button>`;
-    } else if (handStage && !blockedAssembly && project.required[project.stage] > 0) {
-      workButton = `<button class="ui-btn ui-btn--primary ui-btn--sm" data-action="work"
-        data-id="${project.id}" title="${esc(t('ui.bench.workHint', { stage: stageName }))}">
-        ${t('ui.bench.work')}
-      </button>`;
-    }
+    // **You are one of the faces** (§3a): the gold star is you on this build, and a press
+    // steps you off it for the rest of the day; off it, a dashed star puts you on. It was a
+    // Work / Stop working button in a row of its own.
+    const canWork = handStage && !blockedAssembly && project.required[project.stage] > 0;
+    const youAvatar = playerOn
+      ? `<button class="avatar avatar--you" data-action="stop-work" title="${esc(`${t('ui.space.you')} · ${t('ui.bench.stop')}`)}">${icon('star')}</button>`
+      : `<button class="avatar avatar--join" data-action="work" data-id="${project.id}" ${canWork ? '' : 'disabled'}
+          title="${esc(canWork ? t('ui.bench.workHint', { stage: stageName }) : t('ui.bench.nothingForYou'))}">${icon('star')}</button>`;
 
-    const bountyCost = this.handlers.bountyCost(project.id);
-    const canBounty = project.required[project.stage] > 0 && !project.bounties.includes(project.stage);
-    const hoursLeft = player?.hoursLeft ?? 0;
-    const afford = (verb: string) => hoursLeft >= (VERB_HOURS[verb] ?? 0);
 
+    // The parts as one line — how many are made and what to press — with the list behind
+    // a press. It only opens by itself when something is waiting to be queued.
+    const pending = project.parts.filter((x) => x.status === 'pending').length;
+    const made = project.parts.filter((x) => x.status === 'done').length;
+    const printing = project.parts.some((x) => x.status === 'queued');
+    const partsOpen = this.benchParts === project.id || pending > 0;
     const parts = project.parts.length
       ? `<div class="parts">
-          <div class="row between" style="margin-bottom:6px">
-            <span class="section">${t('ui.bench.parts')}</span>
-            ${(() => {
-              const pending = project.parts.filter((x) => x.status === 'pending').length;
-              const printing = project.parts.some((x) => x.status === 'queued');
-              if (pending) {
-                return `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="queue-all"
-                  data-id="${project.id}">${t('ui.bench.queueN', { n: pending })}</button>`;
-              }
-              return `<span class="ui-badge">${printing ? t('ui.bench.onPrinter') : t('ui.bench.allPrinted')}</span>`;
-            })()}
+          <div class="parts-line">
+            <button class="parts-toggle" data-action="bench-parts" data-id="${project.id}">
+              ${icon(partsOpen ? 'chevronDown' : 'chevronRight')}${t('ui.bench.parts')}
+              <span class="mono">${made}/${project.parts.length}</span>
+            </button>
+            ${
+              pending
+                ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="queue-all" data-id="${project.id}">${t('ui.bench.queueN', { n: pending })}</button>`
+                : `<span class="parts-state">${printing ? t('ui.bench.onPrinter') : t('ui.bench.allPrinted')}</span>`
+            }
           </div>
-          ${project.parts
-            .map(
-              (p) => `<div class="part ${p.status}">
-                <span class="pname">${esc(p.name)}</span>
-                ${p.attempts > 0 ? `<span class="tag" title="${esc(t('ui.bench.failedAttempts'))}">×${p.attempts}</span>` : ''}
-                <span class="tag">${p.status === 'done' ? t('ui.bench.partDone') : p.status === 'queued' ? t('ui.bench.partQueued') : span(p.hours)}</span>
-                ${p.status === 'pending' ? `<button class="tiny" data-action="queue-part" data-id="${project.id}" data-id2="${p.id}">${t('ui.bench.queue')}</button>` : ''}
-              </div>`,
-            )
-            .join('')}
+          ${
+            partsOpen
+              ? project.parts
+                  .map(
+                    (p) => `<div class="part ${p.status}">
+                      <span class="pname">${esc(p.name)}</span>
+                      ${p.attempts > 0 ? `<span class="tag" title="${esc(t('ui.bench.failedAttempts'))}">×${p.attempts}</span>` : ''}
+                      <span class="tag">${p.status === 'done' ? t('ui.bench.partDone') : p.status === 'queued' ? t('ui.bench.partQueued') : span(p.hours)}</span>
+                      ${p.status === 'pending' ? `<button class="tiny" data-action="queue-part" data-id="${project.id}" data-id2="${p.id}">${t('ui.bench.queue')}</button>` : ''}
+                    </div>`,
+                  )
+                  .join('')
+              : ''
+          }
         </div>`
       : '';
 
@@ -4970,17 +4738,29 @@ export class UI {
       <span class="row between" style="gap:8px;width:100%">
         ${expanded ? `<span class="proj-wing" style="--tone:${profileOf(project.category).accent}" title="${esc(profileOf(project.category).label)}">${icon(CATEGORY_ICON[project.category])}</span>` : ''}
         <span class="ui-title" style="flex:1;min-width:0;text-align:left">${esc(project.name)}</span>
-        ${expanded ? rating : ''}
         <span class="mono" style="font-size:10.5px;color:var(--subtle-foreground)">
           ${Math.round(overall.ratio * 100)}%
         </span>
       </span>
-      <span class="bar ${stop?.tone ?? ''}" style="margin:6px 0 5px">
-        <i style="width:${(overall.ratio * 100).toFixed(1)}%"></i>
-      </span>
+      ${
+        // Open, the bar is the pipeline itself — a segment a stage — rather than a bar with
+        // the pipeline drawn again under it.
+        expanded
+          ? `<span class="pipe pipe--bar">${strip}</span>`
+          : `<span class="bar ${stop?.tone ?? ''}" style="margin:6px 0 5px"><i style="width:${(overall.ratio * 100).toFixed(1)}%"></i></span>`
+      }
       <span class="proj-line">
-        <span class="proj-line__stage">${stageName}</span>
-        ${expanded ? `<span class="proj-line__val">${statusLine}</span>` : ''}
+        <span class="proj-line__stage" title="${esc(statusLine)}">${stageName}</span>
+        ${expanded && project.stage === 'simulation' ? `<button class="proj-line__link" data-action="skip-sim" data-id="${project.id}" title="${esc(t('ui.bench.skipSimHint'))}">${t('ui.bench.skipSim')}</button>` : ''}
+        ${
+          expanded
+            ? `<span class="proj-line__val" title="${esc(t('ui.bench.etaHint'))}">${
+                project.stage === 'fabrication' || waitingParts || dates.eta === null
+                  ? statusLine
+                  : t('ui.bench.eta', { span: span(dates.eta * 24) })
+              }</span>${rating}`
+            : ''
+        }
         ${
           expanded
             ? ''
@@ -5002,9 +4782,6 @@ export class UI {
     }
 
     const extras = [
-      project.hypeMultiplier > 1
-        ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--warning)">${icon('flame')}×${project.hypeMultiplier}</span>`
-        : '',
       project.sponsorCash
         ? `<span class="ui-badge ui-badge--tone" style="--tone:var(--success)">${icon('coins')}${t('ui.bench.sponsored')}</span>`
         : '',
@@ -5012,30 +4789,17 @@ export class UI {
 
     return `<div class="project project--open">
       ${header}
-      <div class="pipe">${strip}</div>
       ${dates.html}
       ${extras ? `<div class="row wrap" style="gap:5px;margin-bottom:8px">${extras}</div>` : ''}
       ${
         notice
           ? `<div class="bench-notice ${notice.tone}"
-               title="${kickoff && notice === kickoff ? esc(kickoff.tone === 'bad' ? t('build.kick.hintBounty') : t('build.kick.hintEveryone')) : ''}">
+               title="${kickoff && notice === kickoff ? esc(t('build.kick.hintEveryone')) : ''}">
                ${icon(kickoff && notice === kickoff ? 'table' : 'alert')}<span>${esc(notice.text)}</span></div>`
           : ''
       }
       ${sourcing}
-      ${teamBlock}
-      <div class="verbs">
-        ${workButton}
-        <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="repitch" data-id="${project.id}"
-          ${afford('repitch') && project.required[project.stage] > 0 ? '' : 'disabled'}>
-          ${t('ui.bench.repitch', { hours: hours(VERB_HOURS.repitch) })}
-        </button>
-        <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="bounty" data-id="${project.id}"
-          ${canBounty && this.affordable(state, bountyCost) && afford('bounty') ? '' : 'disabled'}>
-          ${t('ui.bench.bounty', { cost: bountyCost })}
-        </button>
-        ${project.stage === 'simulation' ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="skip-sim" data-id="${project.id}">${t('ui.bench.skipSim')}</button>` : ''}
-      </div>
+      ${teamBlock.replace('<!--you-->', youAvatar)}
       ${parts}
     </div>`;
   }
@@ -5069,10 +4833,6 @@ export class UI {
     for (const project of state.runtime.projects) {
       if (project.order) {
         events.push({ day: project.order.dueDay, kind: 'order', icon: 'alert', label: t('ui.cal.order', { project: project.name }), urgent: project.order.dueDay - today <= 1 });
-      }
-      const within = project.wishes?.find((w): w is Extract<Wish, { kind: 'days' }> => w.kind === 'days');
-      if (within && project.startedOnDay + within.within >= today) {
-        events.push({ day: project.startedOnDay + within.within, kind: 'wish', icon: 'star', label: t('ui.cal.wish', { project: project.name }) });
       }
       if (project.partsOrdered && project.partsArriveAt > now) {
         const day = today + Math.floor((state.simTime + project.partsArriveAt - now) / 24);
@@ -5156,10 +4916,12 @@ export class UI {
     const usable = Math.max(0, Math.min(p.hoursLeft, untilClose));
     const share = usable / Math.max(1, p.hoursToday);
     const tone = share <= 0.08 ? 'bad' : share <= 0.2 ? 'warn' : 'good';
+    // It fills as the day goes, left to right with the clock — a bar that emptied from the
+    // right read as time running backwards. The colour still says how much is left.
     const task = p.project ? state.runtime.projects.find((x) => x.id === p.project) : null;
     return `<div class="daybar bar ${tone}"
       title="${esc(t('ui.daybar.left', { hours: hours(usable) }))}${task ? ` · ${esc(t('ui.daybar.on', { project: task.name }))}` : ''}">
-      <i style="width:${(share * 100).toFixed(1)}%"></i>
+      <i style="width:${((1 - share) * 100).toFixed(1)}%"></i>
     </div>`;
   }
 
@@ -5223,12 +4985,13 @@ export class UI {
          .map((m) => {
            const tone = m.mood < 35 ? 'bad' : m.mood < 55 ? 'warn' : '';
            const picked = this.treatPick.has(m.id);
+           const had = !!m.treated?.includes(def.id);
            return `<button class="treat-row ${picked ? 'picked' : ''}" data-action="treat" data-id="${m.id}"
-               ${m.treated || (!picked && many && this.treatPick.size >= max) ? 'disabled' : ''} aria-pressed="${picked}">
+               ${had || (!picked && many && this.treatPick.size >= max) ? 'disabled' : ''} aria-pressed="${picked}">
              <span class="wing" style="color:${CATEGORY_PROFILES[m.primary].accent}">${icon(CATEGORY_ICON[m.primary])}</span>
              <b>${esc(m.name)}</b>
              <span class="treat-mood ${tone}"><i style="width:${Math.round(m.mood)}%"></i></span>
-             <span class="ui-desc">${m.treated ? t('build.treat.had') : Math.round(m.mood)}</span>
+             <span class="ui-desc">${had ? t('build.treat.had') : Math.round(m.mood)}</span>
            </button>`;
          })
          .join('')}</div>
@@ -5415,63 +5178,19 @@ export class UI {
             <thead><tr>
               <th class="space-head">${t('build.machines.col.printer')}</th>
               <th>${t('ui.machine.now')}</th>
-              <th>${t('ui.machine.calibration')}</th>
-              <th>${t('ui.machine.filament')}</th>
               <th></th>
             </tr></thead>
             <tbody>${machines.map((m) => this.machineRow(m, state)).join('')}</tbody>
           </table>`
-        : `<p class="ui-desc">${t('ui.machines.empty')}</p>`) + this.shelfRow(state) + shop + this.ordersSection(state);
-    // One button for every printer's filament: four trips were four half-hours. The shelf
-    // is drawn on first, so a fill can cost nothing and still be worth pressing.
-    const fillAll = this.handlers.refillAllCost();
-    const anyShort = machines.some((m) => m.consumableMax > 0 && m.consumable < m.consumableMax);
-    const fill = machines.some((m) => m.consumableMax > 0)
-      ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="filament-all" ${anyShort ? '' : 'disabled'}
-          title="${esc(t('build.orders.fillAllHint'))}">${icon('package')}${
-            !anyShort ? t('build.orders.allFull') : fillAll > 0 ? t('build.orders.fillAll', { cost: fillAll }) : t('build.orders.fillFromShelf')
-          }</button>`
-      : '';
-    // And one for every bed: a maintenance round, an hour of your day.
-    const drifting = machines.filter((m) => m.consumableMax > 0 && m.calibration < 0.97).length;
-    const maintain = machines.some((m) => m.consumableMax > 0)
-      ? `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="maintain-all" ${drifting ? '' : 'disabled'}
-          title="${esc(t('build.orders.maintainHint'))}">${icon('cog')}${t('build.orders.maintain', { count: drifting })}</button>`
-      : '';
+        : `<p class="ui-desc">${t('ui.machines.empty')}</p>`) + shop + this.ordersSection(state);
     return {
       head: `<div class="modal-head">${icon('printer', 'ui-icon ui-icon--lg')}<b>${t('ui.machines.title')}</b>
         <span class="ui-badge${running ? ' ui-badge--accent' : ''}">${t('ui.machines.running', { n: running })}</span>
         <span class="ui-badge">${t('ui.machines.queued', { n: queued })}</span>
-        <span class="row" style="margin-left:auto;gap:6px">${maintain}${fill}</span>
       </div>`,
       content,
       foot: `<span class="ui-desc" style="font-size:10.5px">${t('ui.machines.foot')}</span>`,
     };
-  }
-
-  /**
-   * The Filament Shelf (§5): what is in stock, and buying ahead. Without a shelf the row
-   * says where to get one — stock needs somewhere to sit.
-   */
-  private shelfRow(state: GameState): string {
-    const capacity = this.handlers.shelfCapacity();
-    if (!capacity) {
-      return `<p class="ui-desc" style="margin:12px 0 0">${t('build.shelf.none', { build: `<b>${t('build.bar.build')}</b>` })}</p>`;
-    }
-    const spools = Math.floor(state.filamentStock / 1000);
-    const max = Math.floor(capacity / 1000);
-    const room = max - spools;
-    const button = (n: number, label: string) =>
-      `<button class="ui-btn ui-btn--outline ui-btn--sm" data-action="spools" data-value="${n}" ${room >= 1 ? '' : 'disabled'}
-        title="${esc(money(Math.min(n, room) * FILAMENT.spoolCost))}">${label}</button>`;
-    return `<div class="shelf-row">
-      ${icon('package')}<b>${t('build.shelf.title')}</b>
-      ${bar(spools, max)}
-      <span class="mono">${t('build.shelf.count', { count: spools, max })}</span>
-      <span class="row" style="gap:6px;margin-left:auto">
-        ${button(1, '+1')}${button(4, '+4')}${button(room, t('build.shelf.fill', { cost: room * FILAMENT.spoolCost }))}
-      </span>
-    </div>`;
   }
 
   /**
@@ -5540,8 +5259,6 @@ export class UI {
   private machineRow(machine: MachineSnapshot, state: GameState): string {
     const projectName = (id: string) => state.runtime.projects.find((p) => p.id === id)?.name ?? '';
     const job = machine.current;
-    const calLow = machine.calibration < MACHINE.calibrationWarning;
-    const filamentLow = machine.consumableMax > 0 && machine.consumable < FILAMENT.lowWarning;
     const riskTone = machine.risk > 0.35 ? 'bad' : machine.risk > 0.2 ? 'warn' : '';
 
     const now = job
@@ -5554,19 +5271,9 @@ export class UI {
           machine.queue.length ? t('ui.machine.waiting') : t('ui.activity.idle')
         }</span>`;
 
-    const refill = machine.consumableMax > 0 ? this.handlers.refillCost(machine.id) : 0;
     const resale = this.handlers.resaleFor(machine.id);
-    // Icon buttons with the price in the tooltip: three verbs on a row, not three labels.
+    // An icon button with the price in the tooltip.
     const actions = [
-      refill
-        ? `<button class="ui-btn ${filamentLow ? 'ui-btn--primary' : 'ui-btn--ghost'} ui-btn--sm" data-action="filament" data-id="${machine.id}"
-             ${this.affordable(state, refill) ? '' : 'disabled'} title="${esc(t('ui.machine.fill', { cost: refill }))}">
-             ${icon('package')}</button>`
-        : '',
-      machine.calibration < 0.99
-        ? `<button class="ui-btn ${calLow ? 'ui-btn--primary' : 'ui-btn--ghost'} ui-btn--sm" data-action="calibrate"
-             title="${esc(`${t('ui.machine.level')} · ${t('ui.machine.levelHint')}`)}">${icon('cog')}</button>`
-        : '',
       resale
         ? `<button class="ui-btn ui-btn--ghost ui-btn--sm" data-action="sell-printer" data-id="${machine.id}"
              title="${esc(`${t('ui.machine.sell', { value: resale })} · ${t('ui.machine.sellHint')}`)}">${icon('coins')}</button>`
@@ -5575,7 +5282,7 @@ export class UI {
 
     const queue = machine.queue
       .map(
-        (item, index) => `<tr class="mrow-queue"><td colspan="5">
+        (item, index) => `<tr class="mrow-queue"><td colspan="3">
           <div class="queue-row">
             <span class="queue-no">${index + 1}</span>
             <span class="queue-name">${esc(item.partName)}</span>
@@ -5590,20 +5297,13 @@ export class UI {
       )
       .join('');
 
-    return `<tr class="${calLow || filamentLow ? 'needs-hand' : ''}">
+    return `<tr>
       <td class="space-cell">
         <span class="space-dot" style="--tone:${job ? 'var(--primary)' : 'var(--muted-foreground)'}">${icon('printer')}</span>
         <span class="space-name">${esc(machine.label)}</span>
         ${machine.queue.length ? `<span class="ui-badge" title="${esc(t('ui.machine.queue', { n: machine.queue.length }))}">+${machine.queue.length}</span>` : ''}
       </td>
       <td class="mrow-now">${now}</td>
-      <td class="mrow-meter">${bar(machine.calibration, 1, calLow ? 'bad' : machine.calibration < 0.75 ? 'warn' : '')}</td>
-      <td class="mrow-meter">${
-        machine.consumableMax > 0
-          ? `${bar(machine.consumable, machine.consumableMax, filamentLow ? 'warn' : '')}
-             <span class="mono">${num(Math.round(machine.consumable))}g</span>`
-          : '—'
-      }</td>
       <td class="mrow-actions">${actions}</td>
     </tr>${queue}`;
   }
@@ -5931,18 +5631,11 @@ export class UI {
       </div>
       ${record ? '' : `<div class="review-grid">${stats}</div>`}
       ${
-        // A shipped build carries its report: what was promised, the client's wishes, and —
-        // for a few days — the chance to advertise it, the same as the popup offered.
+        // A shipped build carries its report: what was promised against what shipped, and
+        // for a few days the chance to promote it, the same as the popup offered.
         record
-          ? (() => {
-              const blocks = this.reportBlocks(state, record);
-              const open = !record.order && !record.campaign && state.day - record.day <= CAMPAIGN.windowDays;
-              return `<div class="review-grid">${blocks.stats}</div>
-                ${blocks.wishes}
-                <div class="ui-label" style="margin:14px 0 6px">${t('report.campaign.title')}</div>
-                ${blocks.campaign}
-                ${open ? `<div class="row" style="justify-content:flex-end;margin-top:8px">${this.campaignButton(record)}</div>` : ''}`;
-            })()
+          ? `<div class="review-grid">${this.reportBlocks(record).stats}</div>
+             <div class="row" style="justify-content:flex-end;margin-top:8px">${this.promoControl(state, record)}</div>`
           : ''
       }
       <div class="detail-grid">
@@ -5957,8 +5650,14 @@ export class UI {
       </div>`;
   }
 
+  /**
+   * The log as a terminal in the bottom-left corner (§11): oldest at the top, newest at the
+   * bottom, the last two lines showing until a press opens the rest.
+   */
   private renderLog(state: GameState) {
-    this.setHTML(this.log, 'log', state.log
+    const before = this.htmlCache.get('log');
+    this.setHTML(this.log, 'log', [...state.log]
+      .reverse()
       .map(
         (entry) =>
           `<div class="entry ${entry.kind}"><time>${t('ui.log.day', { day: entry.day })} ${clock(entry.time)}</time><span>${esc(say(entry.text))}${
@@ -5966,6 +5665,8 @@ export class UI {
           }</span></div>`,
       )
       .join(''));
+    // New lines arrive at the bottom, so that is where the view stays.
+    if (before !== this.htmlCache.get('log')) this.log.scrollTop = this.log.scrollHeight;
   }
 }
 

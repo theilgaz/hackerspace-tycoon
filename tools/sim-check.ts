@@ -5,18 +5,18 @@
  *   npm run sim-check -- [runs] [seed] [days]
  *
  * Three player archetypes, all of which do the unavoidable things (pitch something, order
- * the bill of materials, keep filament in stock) and differ only in how hard they push:
+ * the bill of materials) and differ only in how hard they push:
  *
- *  'aggressive' — works every available hour personally, bounties every stage, expedites,
- *                 re-queues instantly. The ceiling on what player effort is worth.
- *  'attentive'  — works personally, re-queues failures, bounties a visible stall.
- *  'hands-off'  — pitches, orders parts, buys filament, and otherwise lets the space run
- *                 itself. The floor, and the mode that catches soft-locks.
+ *  'aggressive' — works every available hour personally, re-queues instantly, fills every
+ *                 short crew with whoever is free. The ceiling on what player effort is worth.
+ *  'attentive'  — works personally, re-queues failures, steps in on a visible stall.
+ *  'hands-off'  — pitches, orders parts, and otherwise lets the space run itself. The
+ *                 floor, and the mode that catches soft-locks.
  */
 import { Simulation } from '@/systems/Simulation';
 import { store, emptyRuntime } from '@/game/store';
 import { rng } from '@/utils/rng';
-import { FILAMENT, START_CASH, STAGE_MAP, VERB_HOURS } from '@/utils/constants';
+import { START_CASH, STAGE_MAP, VERB_HOURS } from '@/utils/constants';
 import { catalogForEra, canBuild, CATALOG_MAP } from '@/utils/catalog';
 
 /** Pick a crew on the pitch screen the way a player would: best passion match first. */
@@ -32,6 +32,7 @@ import { STAGE_STATION } from '@/machines/layout';
 import { partsPending } from '@/systems/ProjectSystem';
 import { ECONOMY } from '@/utils/economy';
 import { furnish } from './furnish';
+import { answerDilemma } from './dilemma';
 import { freshMarket } from '@/utils/market';
 
 const RUNS = Number(process.argv[2] ?? 6);
@@ -52,7 +53,7 @@ interface Result {
   days: number;
   failedPrints: number;
   cash: number;
-  bounties: number;
+  invites: number;
   playerHoursWorked: number;
   stuck: string | null;
 }
@@ -72,7 +73,7 @@ function runOnce(seed: number, mode: Mode): Result {
     missedBills: 0,
     gameOver: null,
     backlog: [],
-    applicants: [], upvotes: 0,
+    applicants: [], dilemma: null, dilemmasSeen: [],
     ownedMachines: ['fdm', 'bench', 'assembly', 'cad-desk', 'lounge'],
     runtime: emptyRuntime(),
     // Rolled after the reseed, or every process starts from a different market (§13).
@@ -80,7 +81,7 @@ function runOnce(seed: number, mode: Mode): Result {
   });
 
   const sim = new Simulation();
-  let bounties = 0;
+  let invites = 0;
   let failedPrints = 0;
   let firstShipDay: number | null = null;
   let playerHoursWorked = 0;
@@ -91,6 +92,7 @@ function runOnce(seed: number, mode: Mode): Result {
   while (sim.day <= MAX_DAYS) {
     sim.tick(DT, SPEED);
     if (store.getState().bill) store.getState().setBill(null);
+    answerDilemma(sim);
     if (store.getState().gameOver) break;
     // Keep the next bill covered — the *net* of it, since dues arrive at the same moment.
     const reserve = Math.max(0, -sim.previewBill().net);
@@ -122,10 +124,6 @@ function runOnce(seed: number, mode: Mode): Result {
     }
     for (const project of sim.projects) {
       if (!project.partsOrdered && spendable() >= project.bomCost) sim.orderParts(project.id);
-    }
-    const printer = sim.printer;
-    if (printer.consumable < FILAMENT.lowWarning && spendable() >= FILAMENT.spoolCost) {
-      sim.buyFilament();
     }
     // Take on anybody who is interested and affordable — the roster is the constraint.
     for (const id of [...store.getState().applicants]) {
@@ -176,33 +174,24 @@ function runOnce(seed: number, mode: Mode): Result {
     }
 
     if (mode === 'aggressive') {
+      // Fill every short crew on a hand stage with whoever is free.
       for (const project of sim.projects) {
-        if (
-          STAGE_MAP[project.stage].work > 0 &&
-          project.required[project.stage] > 0 &&
-          !project.bounties.includes(project.stage) &&
-          spendable() >= sim.bountyCost(project.id) &&
-          sim.player.hoursLeft >= VERB_HOURS.bounty
-        ) {
-          if (sim.postBounty(project.id)) bounties += 1;
-        }
-        if (project.stage === 'assembly' && partsPending(project, sim.totalHours)) {
-          sim.expediteParts(project.id);
+        if (STAGE_MAP[project.stage].work <= 0 || project.required[project.stage] <= 0) continue;
+        for (const m of sim.members.filter((x) => !x.team && !x.isCoolingOff(project.id))) {
+          if (project.team.length >= project.teamSize) break;
+          if (sim.inviteMember(project.id, m.id)) invites += 1;
         }
       }
     }
 
-    // Throw money at a stage that has visibly stopped moving.
+    // Step in on a stage that has visibly stopped moving.
     const signature = sim.projects.map((p) => `${p.id}:${p.stage}:${Math.floor(p.progress[p.stage])}`).join('|');
     if (signature === lastSignature) {
       stallHours += HOURS_PER_TICK;
       if (stallHours > 36) {
         stallHours = 0;
         const stalled = sim.projects.find((p) => p.required[p.stage] > 0);
-        if (stalled) {
-          if (!stalled.bounties.includes(stalled.stage) && sim.postBounty(stalled.id)) bounties += 1;
-          else sim.repitch(stalled.id);
-        }
+        if (stalled) sim.workOn(stalled.id);
       }
     } else {
       stallHours = 0;
@@ -215,8 +204,6 @@ function runOnce(seed: number, mode: Mode): Result {
   }
 
   const waiting = sim.projects.find((p) => p.stage === 'assembly' && partsPending(p, sim.totalHours));
-  const starved = sim.printer.starved && store.getState().cash < FILAMENT.spoolCost;
-  const stuck = starved ? 'broke, no filament' : waiting ? `${waiting.name} waiting on parts` : null;
   return {
     era: store.getState().era,
     reputation: store.getState().reputation,
@@ -226,9 +213,9 @@ function runOnce(seed: number, mode: Mode): Result {
     days: sim.day,
     failedPrints,
     cash: store.getState().cash,
-    bounties,
+    invites,
     playerHoursWorked,
-    stuck: stuck ? `${stuck.name} waiting on parts` : null,
+    stuck: waiting ? `${waiting.name} waiting on parts` : null,
   };
 }
 
@@ -243,14 +230,14 @@ for (const mode of ['aggressive', 'attentive', 'hands-off'] as Mode[]) {
   const firstShips = results.filter((r) => r.firstShipDay !== null);
 
   console.log(`\n  ${MAX_DAYS} days — ${RUNS} runs, ${mode} player (seed ${SEED})\n`);
-  console.log('  run   shipped  first ship  people  failed  bounties  your hours   cash');
+  console.log('  run   shipped  first ship  people  failed   invites  your hours   cash');
   console.log('  ' + '-'.repeat(72));
   results.forEach((r, i) => {
     console.log(
       `  ${String(i + 1).padStart(3)}   ${String(r.shipped).padStart(7)}  ` +
         `${String(r.firstShipDay ?? '—').padStart(10)}  ${String(r.members).padStart(6)}  ` +
         `${String(r.failedPrints).padStart(6)}  ` +
-        `${String(r.bounties).padStart(8)}  ${r.playerHoursWorked.toFixed(0).padStart(10)}  ` +
+        `${String(r.invites).padStart(8)}  ${r.playerHoursWorked.toFixed(0).padStart(10)}  ` +
         `${String(Math.round(r.cash)).padStart(5)}`,
     );
   });

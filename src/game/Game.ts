@@ -74,33 +74,22 @@ export class Game {
       buyFurniture: (id) => act(() => sim.buyFurniture(id)),
       train: (memberId, skill) => act(() => sim.train(memberId, skill)),
       resaleOf: (id) => sim.resaleOf(id),
+      upgradeOptions: (id) => sim.upgradeOptions(id),
+      upgradePiece: (id, to) => act(() => sim.upgradePiece(id, to)),
       sellPiece: (id) => act(() => sim.sellPiece(id)),
       trainCost: (memberId, skill) => sim.trainCost(memberId, skill),
       furnitureFits: (type, span) => this.fits(type, span),
       thumbnail: (key) => this.thumbs.get(key),
       workOn: (projectId) => act(() => sim.workOn(projectId)),
       stopWork: () => act(() => sim.stopWork()),
-      calibrate: () => act(() => sim.calibratePrinter()),
       invite: (projectId, memberId) => act(() => sim.inviteMember(projectId, memberId)),
       release: (projectId, memberId) => act(() => sim.releaseMember(projectId, memberId)),
-      repitch: (projectId) => act(() => sim.repitch(projectId)),
-      bounty: (projectId) => act(() => sim.postBounty(projectId)),
-      bountyCost: (projectId) => sim.bountyCost(projectId),
       orderParts: (projectId) => act(() => sim.orderParts(projectId)),
-      expedite: (projectId) => act(() => sim.expediteParts(projectId)),
-      expediteCost: (projectId) => sim.expediteCostFor(projectId),
       skipSim: (projectId) => act(() => sim.skipSimulation(projectId)),
       queueAll: (projectId) => act(() => sim.queueAllPending(projectId)),
       queuePart: (projectId, partId) => act(() => sim.queuePart(projectId, partId)),
       moveJob: (machineId, jobId, dir) => act(() => sim.moveJob(machineId, jobId, dir)),
       cancelJob: (machineId, jobId) => act(() => sim.cancelJob(machineId, jobId)),
-      buyFilament: (machineId) => act(() => sim.buyFilament(machineId)),
-      refillCost: (machineId) => sim.refillCost(machineId),
-      buyAllFilament: () => act(() => sim.buyAllFilament()),
-      buySpools: (count) => act(() => sim.buySpools(count)),
-      shelfCapacity: () => sim.shelfCapacity(),
-      maintainAll: () => act(() => sim.maintainAll()),
-      refillAllCost: () => sim.refillAllCost(),
       acceptOrder: (offerId) => act(() => sim.acceptOrder(offerId)),
       declineOrder: (offerId) => act(() => sim.declineOrder(offerId)),
       buyPrinter: (modelId) => act(() => sim.buyPrinter(modelId)),
@@ -139,15 +128,21 @@ export class Game {
       buyablePrinters: () => sim.buyablePrinters(),
       hire: (memberId) => act(() => sim.hire(memberId)),
       passApplicant: (memberId) => act(() => sim.passApplicant(memberId)),
-      post: (projectId, subreddit, claim) => act(() => sim.post(projectId, subreddit, claim)),
-      spaceSubject: () => sim.spaceSubject(),
-      setRole: (memberId, role) => act(() => sim.setRole(memberId, role)),
       hireCost: (memberId) => sim.hireCost(memberId),
-      begin: (name, logo, difficulty, player) => {
+      begin: (name, logo, difficulty, player, extras) => {
         const badge = LOGOS[logo] ?? LOGOS[0];
-        store
-          .getState()
-          .begin({ name, icon: badge.icon, colour: badge.colour, player: player || undefined }, difficulty);
+        const founders = extras.founders.map((f) => f.trim());
+        store.getState().begin(
+          {
+            name,
+            icon: badge.icon,
+            colour: badge.colour,
+            player: player || undefined,
+            currency: extras.currency,
+            founders: founders.some(Boolean) ? founders : undefined,
+          },
+          difficulty,
+        );
         // The difficulty is only known now, and it decides the size of the crew — so the
         // roster is built here rather than in the constructor.
         sim.seedRoster();
@@ -162,7 +157,9 @@ export class Game {
       savedRun: () => readSave()?.summary ?? null,
       dismissBill: () => store.getState().setBill(null),
       dismissReport: () => store.getState().setShipReport(null),
-      launchCampaign: (recordId, id) => act(() => sim.launchCampaign(recordId, id)),
+      resolveDilemma: (index) => act(() => sim.resolveDilemma(index)),
+      promoQuote: (recordId) => sim.promoQuote(recordId),
+      promote: (recordId) => act(() => sim.promote(recordId)),
       letGo: (memberId) => act(() => sim.letGo(memberId)),
       previewBill: () => sim.previewBill(),
       scoreboard: () => sim.scoreboard(),
@@ -257,6 +254,7 @@ export class Game {
         shipped: state.shippedCount,
         reputation: state.reputation,
         cash: state.cash,
+        currency: state.identity?.currency,
         era: eraDef(state.era).name,
       },
     };
@@ -425,8 +423,6 @@ export class Game {
     // Everything bought from the Shop stands in the room the moment it is paid for.
     this.view.setAmenities(state.amenities, state.amenityRev);
     this.view.setPlacing(state.moving);
-    // The Filament Shelf shows the stock, a spool a kilo.
-    this.view.setFilamentStock(state.filamentStock);
     // What is being placed from the shelves, where the cursor is, and which way it faces.
     const buying = state.buildMode ? state.placingBuy : null;
     const aim = buying ? (state.buyConfirm ?? this.scene.pickTile(this.pointer.x, this.pointer.y)) : null;
@@ -446,6 +442,8 @@ export class Game {
     // Lights off once the last person has gone home, on again with the first one in.
     const anyone = state.runtime.members.some((m) => m.present) || !!state.runtime.player?.present;
     this.scene.setLit(!state.started || anyone, dt);
+    // Behind the start screen the room sways slowly; the doors open and it holds still.
+    this.scene.showcase(!state.started, dt);
     const over = this.scene.pick(this.pointer.x, this.pointer.y, this.view.pickables);
     if (over !== this.hovered) {
       this.hovered = over;
@@ -519,10 +517,6 @@ export class Game {
         const left = machine.current.hoursRequired - machine.current.progress;
         text = `${machine.current.partName} · ${span(left)}`;
         if (machine.risk > 0.3) tone = 'warn';
-      }
-      if (machine.consumableMax > 0 && machine.consumable <= 0) {
-        text = 'out of filament';
-        tone = 'bad';
       }
       if (!text) continue;
       const p = this.scene.project(world);

@@ -29,11 +29,6 @@ export interface RivalDef {
    */
   paceGrowth: number;
   /**
-   * How loud they are on the internet: a multiplier on the upvotes a build draws. Noisebridge
-   * and c-base get talked about; Konya is busy doing the work.
-   */
-  online: number;
-  /**
    * Overrides `RIVAL_STANDOUT` for a space whose builds are all-or-nothing. It spreads their
    * impact, never raises the average, so it buys a shot at Best Project and nothing else.
    */
@@ -69,7 +64,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 90,
     repPerMember: 340,
     paceGrowth: 4500,
-    online: 1.4,
     builds: ['Space Station Lighting Rig', 'Freifunk Mesh Node', 'Club-Mate Vending Hack'],
   },
   {
@@ -87,7 +81,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 170,
     repPerMember: 180,
     paceGrowth: 4500,
-    online: 0.9,
     builds: ['Laser Cutter Rebuild', 'Community Loom', 'Bike Workshop Jig'],
   },
   {
@@ -104,13 +97,14 @@ export const RIVALS: RivalDef[] = [
     // it does not become a wall by the second year. Measured with Garaj below over 8 seeds:
     // the player takes 6 of 40 first-night awards, none at all on 3 nights, and finishes
     // first in 7 — by as little as a hundred reputation.
-    shipPace: 0.95,
-    repPerProject: 75,
+    // Trimmed from 0.95 / 75 when the field started keeping pace with the player (§3c): it
+    // was tuned to race the autoplayer, and to a person it was a wall by the first night.
+    shipPace: 0.75,
+    repPerProject: 60,
     cashPerProject: 150,
     cashPerDay: 130,
     repPerMember: 250,
     paceGrowth: 60000,
-    online: 0.6,
     builds: ['Greenhouse Irrigation Controller', 'Bazaar Scale Retrofit', 'School Robotics Kit'],
   },
   {
@@ -128,7 +122,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 90,
     repPerMember: 200,
     paceGrowth: 4500,
-    online: 0.8,
     builds: ['Disaster Radio Kit', 'Earthquake Sensor Network', 'Neighbourhood Air Monitor'],
   },
   {
@@ -149,7 +142,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 150,
     repPerMember: 300,
     paceGrowth: 30000,
-    online: 1.1,
     builds: ['Desk Fan Mod', 'Printed Phone Stand', 'LED Name Badge'],
   },
   {
@@ -167,7 +159,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 25,
     repPerMember: 190,
     paceGrowth: 4500,
-    online: 1.5,
     builds: ['Open Source Synth', 'Door Access System', 'Circuit Hacking Kit'],
   },
   {
@@ -185,7 +176,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 180,
     repPerMember: 300,
     paceGrowth: 4500,
-    online: 1.2,
     builds: ['Interactive Light Sculpture', 'E-Textile Jacket', 'Laser-Cut Clock'],
   },
   {
@@ -203,7 +193,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 110,
     repPerMember: 260,
     paceGrowth: 4500,
-    online: 1.0,
     builds: ['Retro Game Cabinet', 'Wiki Server Rack', 'Soldering Workshop Kit'],
   },
   {
@@ -227,7 +216,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 150,
     repPerMember: 170,
     paceGrowth: 4500,
-    online: 0.7,
     builds: ['Electric Go-Kart', 'Forge Controller', 'CNC Plasma Table'],
   },
   {
@@ -245,7 +233,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 120,
     repPerMember: 280,
     paceGrowth: 4500,
-    online: 0.9,
     builds: ['Swarm Robot Kit', 'Open Hardware Drone', 'Dev Board Breakout'],
   },
   {
@@ -263,7 +250,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 140,
     repPerMember: 270,
     paceGrowth: 4500,
-    online: 0.8,
     builds: ['Satellite Ground Station', 'Ham Radio Transceiver', 'SDR Weather Receiver'],
   },
 
@@ -284,7 +270,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 140,
     repPerMember: 240,
     paceGrowth: 4500,
-    online: 1.1,
     builds: ['Street Cat Feeding Station', 'Ferry Timetable Display', 'Neighbourhood Air Quality Map'],
   },
   {
@@ -302,7 +287,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 120,
     repPerMember: 260,
     paceGrowth: 4500,
-    online: 0.9,
     builds: ['CTF Training Rig', 'Campus Weather Station', 'Open Data Transit Board'],
   },
   {
@@ -321,7 +305,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 120,
     repPerMember: 260,
     paceGrowth: 4500,
-    online: 1.0,
     builds: ['Olive Grove Soil Sensor', 'Kordon Bike Counter', 'Sea Breeze Wind Logger'],
   },
 
@@ -347,7 +330,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 40,
     repPerMember: 400,
     paceGrowth: 4500,
-    online: 4.5,
     // Rare and enormous, not frequent and large: `standoutNorm` divides by the *expected*
     // multiplier to keep the average flat, so raising `chance` alongside `boost` lowers the
     // ceiling it was meant to raise. At 0.3/[3.5,6] their best build peaked at 624 — below
@@ -372,7 +354,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 30,
     repPerMember: 500,
     paceGrowth: 4500,
-    online: 1.2,
     standout: { chance: 0.35, boost: [3, 5] },
     builds: ['Backyard Rocket Engine', 'Homemade Tokamak (Mostly)', 'Self-Driving Office Chair'],
   },
@@ -392,7 +373,6 @@ export const RIVALS: RivalDef[] = [
     cashPerDay: 220,
     repPerMember: 450,
     paceGrowth: 4500,
-    online: 0.5,
     builds: ['Pitch Deck Hologram', 'Blockchain Coffee Machine', 'Smart Bin (Beta)'],
   },
 ];
@@ -420,17 +400,10 @@ export interface AwardDef {
 export const RISING_FLOOR = 2000;
 
 /**
- * Upvotes a rival's build draws per point of reputation it earned, before their `online`
- * factor. Calibrated so the field's year lands where a player who posts sensibly does —
- * `npm run era-pace` prints both.
- */
-export const RIVAL_UPVOTES_PER_REP = 15;
-
-/**
  * Now and then a rival ships something that gets talked about for months. Without it every
  * rival build lands within ±30% of their average, and Best Project was a walkover: the
- * player's one big build scores three times the field's best. It moves a build's hype and
- * upvotes only, never the rival's reputation — see `tickRivals`.
+ * player's one big build scores three times the field's best. It moves a build's hype
+ * only, never the rival's reputation — see `tickRivals`.
  */
 export const RIVAL_STANDOUT = { chance: 0.12, boost: [2.5, 4.5] as const };
 

@@ -228,7 +228,10 @@ console.log('\n  Clicking the real UI while the sim runs\n');
 
 // The start screen gates everything: name the place and open the doors first.
 await check('start screen opens the game', async () => {
-  const hasStart = await evaluate(`document.querySelectorAll('#start .start-card').length === 1`);
+  // The start screen is a menu first; the new-run form is one press into it.
+  const menu = await evaluate(`!!document.querySelector('#start .start-list [data-action="start-new"]')`);
+  await click('#start [data-action="start-new"]');
+  const hasStart = menu && (await evaluate(`document.querySelectorAll('#start .start-card').length === 1`));
   await evaluate(`document.querySelector('#space-name').value = 'Test Alanı'`);
   await click('[data-action="logo"][data-value="2"]');
   await evaluate(`document.querySelector('#space-name').value = 'Test Alanı'`);
@@ -447,15 +450,12 @@ await check('work on a project (button inside a constantly redrawing panel)', as
   await click('[data-action="work"]');
   return Boolean(await evaluate(`__game.sim.player.project`));
 }, { live: true });
-await check('buy a spool (machines overlay redraws every snapshot)', async () => {
-  const before = await evaluate(`__store.getState().runtime.machines[0].consumable`);
-  await evaluate(`__game.sim.printer.consumable = 100; __game.sim.publish();`);
+await check('close the machines panel (it redraws every snapshot)', async () => {
   await openPanel('machines-open');
   const shown = await evaluate(`document.querySelectorAll('#modal .machine-table tbody tr').length > 0`);
-  await click('#modal [data-action="filament"]');
-  const after = await evaluate(`__store.getState().runtime.machines[0].consumable`);
   await click('#modal header [data-action="jobs-close"]');
-  return shown && after > 100 && before !== undefined;
+  const closed = await evaluate(`!document.querySelector('#modal .machine-table')`);
+  return shown && closed;
 }, { live: true });
 await check('player stays on the project across stage changes', async () =>
   evaluate(`
@@ -786,7 +786,7 @@ await check('Ranking: a row opens that space, and Escape comes back', async () =
   const backOnTable = await evaluate(
     `!document.querySelector('#modal .space-detail') && !!document.querySelector('#modal .standings-table')`,
   );
-  const ok = shape.open && shape.stats === 8 && shape.fits === 0 && shape.points === 2 &&
+  const ok = shape.open && shape.stats === 7 && shape.fits === 0 && shape.points === 2 &&
     shape.marks === 2 && shape.name.startsWith(shape.crumb) && backOnTable === true;
   if (!ok) console.log(`      ${JSON.stringify(shape)}, back on table ${backOnTable}`);
   return ok;
@@ -838,7 +838,7 @@ await check('Projects: opens on In progress, and the filter narrows one list', a
   return ok;
 });
 
-await check('a bigger build ships with a report, and a campaign can be run from it', async () => {
+await check('a bigger build ships with a report, and closing it gives the clock back', async () => {
   // A medium software build (nothing to print, nothing to wait for), pushed through by the
   // dev hook the console uses; the report must open over the room and stop the clock.
   const id = await evaluate(`(() => {
@@ -858,19 +858,13 @@ await check('a bigger build ships with a report, and a campaign can be run from 
     report: __store.getState().shipReport?.id ?? null,
     paused: __store.getState().paused,
     modal: !!document.querySelector('#modal .modal.report'),
-    cards: document.querySelectorAll('#modal .campaign-card').length,
   })`);
-  await click('#modal .campaign-card[data-value="flyers"]:not([disabled])');
-  await click('#modal [data-action="campaign-run"]');
-  const ran = await evaluate(`JSON.stringify(__store.getState().shipped.find((r) => r.id === ${JSON.stringify(id)})?.campaign ?? null)`);
   await click('#modal [data-action="report-close"]');
   const after = await evaluate(`JSON.stringify({ report: __store.getState().shipReport, paused: __store.getState().paused })`);
   const o = JSON.parse(opened);
-  const r = JSON.parse(ran);
   const a = JSON.parse(after);
-  const ok = !!id && o.report === id && o.paused === true && o.modal && o.cards === 4 &&
-    r?.id === 'flyers' && a.report === null && a.paused === false;
-  if (!ok) console.log(`      ${JSON.stringify({ id, o, r, a })}`);
+  const ok = !!id && o.report === id && o.paused === true && o.modal && a.report === null && a.paused === false;
+  if (!ok) console.log(`      ${JSON.stringify({ id, o, a })}`);
   return ok;
 });
 
@@ -916,7 +910,6 @@ await check('Build: buying a printer puts one on the floor', async () => {
   await enterBuild();
   await click('#buildpanel [data-action="build-shelf"][data-value="printers"]');
   const before = await evaluate(`__game.sim.machines.filter((m) => m.type === 'fdm').length`);
-  // The A1 is on the shelf too now; the P2S is the one that holds more than a kilo.
   await click('#buildpanel [data-action="build-pick"][data-value="printer:p2s"]:not([disabled])');
   const held = await evaluate(`JSON.stringify(__store.getState().placingBuy)`);
   const tile = await legalTile('printer', 'p2s');
@@ -928,12 +921,11 @@ await check('Build: buying a printer puts one on the floor', async () => {
   await leaveBuild();
   const after = JSON.parse(
     await evaluate(`(() => { const fdm = __game.sim.machines.filter((m) => m.type === 'fdm');
-      return JSON.stringify({ n: fdm.length, cap: Math.max(...fdm.map((m) => m.consumableMax)),
-                              full: fdm.every((m) => m.consumable > 0) }); })()`),
+      return JSON.stringify({ n: fdm.length, p2s: fdm.some((m) => m.speed > 1) }); })()`),
   );
-  // It arrives, it arrives full, and it holds a full four-spool load.
-  const ok = after.n === before + 1 && after.cap >= 4000 && after.full && heldAfter === 'null';
-  if (!ok) console.log(`      printers ${before} -> ${after.n}, capacity ${after.cap}, full ${after.full}, held ${held} then ${heldAfter}, tile ${JSON.stringify(tile)}, asked ${asked}`);
+  // It arrives, and it is the model that was bought.
+  const ok = after.n === before + 1 && after.p2s && heldAfter === 'null';
+  if (!ok) console.log(`      printers ${before} -> ${after.n}, p2s ${after.p2s}, held ${held} then ${heldAfter}, tile ${JSON.stringify(tile)}, asked ${asked}`);
   return ok;
 });
 
@@ -990,30 +982,6 @@ await check('the move strip sells what you are holding, and says what it fetches
   return ok;
 });
 
-await check('Reddit: a post lands and moves hype', async () => {
-  await ensureWorkInFlight();
-  await openPanel('reddit-open');
-  // Pick the sceptical room and the biggest claim on purpose: the post should still land,
-  // and whether it lands well or badly is the game's business, not this check's.
-  await click('#modal [data-action="reddit-sub"][data-value="electronics"]');
-  await click('#modal [data-action="reddit-claim"][data-value="bold"]');
-  const before = await evaluate(
-    `JSON.stringify({ posts: __store.getState().posts.length, hours: __game.sim.player.hoursLeft })`,
-  );
-  await click('#modal [data-action="reddit-post"]:not([disabled])');
-  const after = await evaluate(
-    `JSON.stringify({ posts: __store.getState().posts.length,
-                      hype: __store.getState().hype,
-                      hours: __game.sim.player.hoursLeft })`,
-  );
-  const a = JSON.parse(before);
-  const b = JSON.parse(after);
-  // The hour must actually be spent, or the verb is free and the whole trade is fake.
-  const ok = b.posts === a.posts + 1 && b.hours < a.hours;
-  if (!ok) console.log(`      posts ${a.posts} -> ${b.posts}, hours ${a.hours} -> ${b.hours}`);
-  return ok;
-});
-
 await check('the overdraft ends a run two ways, and not before', async () => {
   const rollDay = `(() => { const sim = window.__game.sim; const d = sim.day;
       while (sim.day === d) sim.tick(0.05, 4); return !!__store.getState().gameOver; })()`;
@@ -1042,6 +1010,10 @@ await check('a run survives a reload, and a new one can be started beside it', a
   await evaluate(`
     (() => {
       const sim = window.__game.sim;
+      // A piece of the starting kit traded in for a bench must stay gone after the load —
+      // the kit is rebuilt from the layout, and it used to come back beside its bench.
+      __store.getState().earn(10000);
+      sim.upgradePiece('desk-2', 'long-bench');
       const day = sim.day;
       while (sim.day === day) sim.tick(0.05, 4);
       __store.setState({ paused: false });
@@ -1053,6 +1025,7 @@ await check('a run survives a reload, and a new one can be started beside it', a
     cash: __store.getState().cash,
     members: __game.sim.members.map((m) => m.id + ':' + m.employment).sort(),
     projects: __game.sim.projects.map((p) => p.defId + ':' + p.stage).sort(),
+    kit: __game.sim.upgradeOptions('desk-2').length,
   })`);
   const saved = await evaluate(`(localStorage.getItem('hackerspace-tycoon-save-v1') || '').length > 0`);
   // Which day the file on disk is from, so a failure says whether the autosave ran at all.
@@ -1062,17 +1035,20 @@ await check('a run survives a reload, and a new one can be started beside it', a
     catch (e) { return 'unreadable ' + raw.length; } })()`);
   await send('Page.reload', { ignoreCache: true });
   await sleep(2500);
-  const offered = await evaluate(`document.querySelectorAll('#start .start-card.resume').length === 1`);
+  const offered = await evaluate(`!!document.querySelector('#start .start-list [data-action="continue"]')`);
   // With a run on the table, "start a new hackerspace" unfolds the form — it once shared its
   // action with + New Project and opened the project wizard behind the start screen instead.
   await click('#start [data-action="start-new"]');
   const unfolded = await evaluate(`!!document.querySelector('#start #space-name') && !document.querySelector('#modal .modal')`);
+  // Back to the menu, and on with the saved run.
+  await click('#start [data-action="start-back"]');
   await click('[data-action="continue"]');
   const after = await evaluate(`JSON.stringify({
     day: __store.getState().day,
     cash: __store.getState().cash,
     members: __game.sim.members.map((m) => m.id + ':' + m.employment).sort(),
     projects: __game.sim.projects.map((p) => p.defId + ':' + p.stage).sort(),
+    kit: __game.sim.upgradeOptions('desk-2').length,
   })`);
   if (!(saved && offered && unfolded && before === after)) {
     console.log(`      saved=${saved} offered=${offered} new form unfolded=${unfolded} on disk: ${onDisk}\n      before ${before}\n      after  ${after}`);

@@ -21,8 +21,6 @@ export interface PrinterModel {
    * button — so the "trade the A1 in" decision the resale rules exist for was impossible.
    */
   worth?: number;
-  /** Grams it holds. The bigger ones take a stack of spools rather than one. */
-  capacity: number;
   /** Multiplier on how fast a job advances. */
   speed: number;
   /** Multiplier on failure odds — below one is better. */
@@ -37,9 +35,6 @@ export const PRINTERS: PrinterModel[] = [
     name: 'A1 Mini Combo',
     blurb: 'Small bed, four spools on the AMS Lite, endlessly patient. It got the space started.',
     price: 4500,
-    // A Combo is four spools on the AMS Lite — four kilos, the same as the P2S. It held
-    // one for a while, which no owner of one would recognise.
-    capacity: 4000,
     speed: 1,
     reliability: 1,
     era: 1,
@@ -49,7 +44,6 @@ export const PRINTERS: PrinterModel[] = [
     name: 'P2S',
     blurb: 'The workhorse. Nothing clever, nothing temperamental, prints all night.',
     price: 9000,
-    capacity: 4000,
     speed: 1.35,
     reliability: 0.85,
     era: 1,
@@ -59,7 +53,6 @@ export const PRINTERS: PrinterModel[] = [
     name: 'X1C',
     blurb: 'Carbon frame, a lidar that actually spots a failed first layer. Quick and sure.',
     price: 19000,
-    capacity: 4000,
     speed: 1.6,
     reliability: 0.62,
     era: 2,
@@ -69,7 +62,6 @@ export const PRINTERS: PrinterModel[] = [
     name: 'H2S',
     blurb: 'Big bed, heated chamber, a stack of spools. Prints the parts nothing else can.',
     price: 33000,
-    capacity: 8000,
     speed: 1.85,
     reliability: 0.55,
     era: 3,
@@ -91,9 +83,4 @@ export const RESALE = 0.55;
 
 export function resaleValue(model: PrinterModel): number {
   return Math.round((model.worth ?? model.price) * RESALE);
-}
-
-/** What a model costs to fill from empty, at the going rate for a spool. */
-export function fillCost(model: PrinterModel, spoolCost: number, spoolGrams: number): number {
-  return Math.round((model.capacity / spoolGrams) * spoolCost);
 }

@@ -1183,6 +1183,16 @@ export function installedStations(): {
 }
 
 /** Test hooks need the space back at its starting state between headless runs. */
+/**
+ * The starting kit that is no longer in the room — traded in for a bench, or the first
+ * printer sold. A load rebuilds the kit from `STARTING_STATIONS`, so without this list what
+ * was gone came back beside whatever replaced it.
+ */
+export function removedStartingStations(): string[] {
+  const here = new Set(STATIONS.map((s) => s.id));
+  return STARTING_STATIONS.filter((s) => !here.has(s.id)).map((s) => s.id);
+}
+
 export function resetStations() {
   STATIONS.length = 0;
   // Copies, not the originals: stations are moved in place, and a headless harness that

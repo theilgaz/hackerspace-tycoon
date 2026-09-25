@@ -38,10 +38,6 @@ export function coolMarket(market: Market, category: ProjectCategory): Market {
   return { ...market, [category]: Number(clamp((market[category] ?? 1) * MARKET.shipDip).toFixed(3)) };
 }
 
-export function warmMarket(market: Market, category: ProjectCategory): Market {
-  return { ...market, [category]: Number(clamp((market[category] ?? 1) + MARKET.trendBump).toFixed(3)) };
-}
-
 /** How the demand reads, for a badge. */
 export function demandLabel(value: number): { label: string; tone: 'hot' | 'warm' | 'flat' | 'cold' } {
   if (value >= 1.25) return { label: 'hot', tone: 'hot' };

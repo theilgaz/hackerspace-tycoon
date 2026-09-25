@@ -18,15 +18,12 @@ export const build: typeof en = {
   'build.bar.rankingHint': 'Öteki mekânlar ne durumda',
   'build.bar.machines': 'Atölye',
   'build.bar.machinesHint': 'Makineler ve kuyrukları',
-  'build.bar.machinesAlert': 'Bir makine kalibrasyon ya da filament bekliyor',
   'build.bar.people': 'Ekip',
   'build.bar.peopleHint': 'Kim burada, kimi alabilirsin',
   'build.bar.peopleWaiting': (p) => `${num(p.count)} kişi cevap bekliyor`,
   'build.bar.build': 'İnşa',
   'build.bar.buildHint': 'Masalar, iş istasyonları, konfor ve dekor',
   'build.bar.buildQueue': (p) => `${num(p.count)} kişi yer bulamayıp ayakta bekliyor`,
-  'build.bar.socials': 'Sosyal',
-  'build.bar.socialsHint': 'Yaptığını göster — ilgi kendiliğinden söner',
 
   'build.people': (p) => `${num(p.count)} kişi`,
   'build.days': (p) => `${num(p.days)} gün`,
@@ -92,13 +89,14 @@ export const build: typeof en = {
   'build.card.owned': 'Mekânda',
 
   'build.sell.notOwned': 'Bu mekânın malı değil, satamazsın.',
-  'build.sell.fixture': 'Binayla birlikte geldi, yerinde kalır.',
+  'build.sell.fixture': 'Garajla geldi — satılamaz, ama yükseltilebilir.',
+  'build.upgrade.button': (p) => `${p.item} olarak yükselt · ${money(p.cost)}`,
+  'build.upgrade.hint': 'Eski parça yarı fiyatına takas edilir; yenisi sığıyorsa aynı yere konur.',
+  'build.upgrade.later': 'Bu kirada henüz yok.',
   'build.sell.inUse': 'Bu masada bir ekip plan yapıyor. Açılış toplantısı bitince satabilirsin.',
   'build.sell.button': (p) => `Sat · ${money(p.value)}`,
   'build.log.sold': (p) => `${p.item} ${money(p.value)} karşılığında satıldı.`,
 
-  'build.social.best': 'en iyi',
-  'build.social.post': 'Paylaş',
 
   // --- The wizard ------------------------------------------------------------
   'build.np.step.genre': 'Tür',
@@ -115,7 +113,7 @@ export const build: typeof en = {
   'build.np.pickBrief': 'Önce bir brif seç.',
 
   'build.np.offers': 'Teklifler',
-  'build.np.offersHint': "Öneriler, sponsorlar ve Reddit'in şu an heyecanlandığı her şey",
+  'build.np.offersHint': 'Ekibinden gelen öneriler ve parasıyla gelen sponsorlar',
   'build.np.offersWaiting': (p) => `${num(p.count)} bekliyor`,
   'build.np.asking': 'Piyasa ne istiyor',
   'build.np.nothingInGenre': 'Bu türde şu an bir şey yok.',
@@ -139,7 +137,6 @@ export const build: typeof en = {
   'build.fx.parts': (p) => `parçalar ${p.value}`,
   'build.fx.printing': (p) => `baskı ${p.value}`,
   'build.fx.delivery': (p) => `teslimat +${num(p.days)} gün`,
-  'build.fx.perSeat': (p) => `${money(p.cost)} · kişi başı ${money(p.each)}`,
   'build.fx.cost': (p) => money(p.cost),
   'build.fx.costHint': 'proje başlarken ödenir',
   'build.fx.noSim': 'simülasyon aşaması yok',
@@ -184,7 +181,7 @@ export const build: typeof en = {
   'build.review.handWork': 'El emeği',
   'build.review.machineTime': 'Makine süresi',
   'build.review.parts': 'Parçalar',
-  'build.review.licences': 'Lisanslar',
+  'build.review.licences': 'Tasarım bütçesi',
   'build.review.testRisk': 'Test riski',
   'build.review.noSim': 'simülasyonsuz',
   'build.review.tableFree': (p) => `${p.table} — boş`,
@@ -199,7 +196,6 @@ export const build: typeof en = {
 
   'build.offer.proposer': (p) => `${p.member} katılacak`,
   'build.offer.upFront': (p) => `${money(p.cash)} peşin`,
-  'build.offer.hype': (p) => `×${num(p.multiplier)} ilgi`,
   'build.offer.daysLeft': (p) => `${num(p.days)} gün kaldı`,
 
   'build.demand.hot': 'sıcak',
@@ -214,7 +210,6 @@ export const build: typeof en = {
   'build.kick.noTable': 'açılış: boş masa yok',
   'build.kick.at': (p) => `açılış ${ek(p.table, 'loc')}`,
   'build.kick.theTable': 'masa',
-  'build.kick.hintBounty': 'bir prim, yarı zamanlıyı bütün gün tutar',
   'build.kick.hintEveryone': 'herkes aynı anda',
 
   // --- The Build panel -------------------------------------------------------
@@ -262,6 +257,7 @@ export const build: typeof en = {
 
   // --- What the Simulation says ---------------------------------------------
   'build.log.noRoom': (p) => `Zeminde ${p.item} için yer kalmadı.`,
+  'build.log.upgraded': (p) => `${p.from} takas edildi, yerine ${p.to} geldi — ${money(p.cost)}.`,
   'build.log.installed': (p) => `${p.item} yerleşti. Taşımak için odada üstüne tıkla.`,
   'build.log.noFloor': (p) => `${p.item} için zeminde yer kalmadı. Daha büyük bir yerde olurdu.`,
   'build.log.wentAhead': (p) =>
@@ -269,7 +265,7 @@ export const build: typeof en = {
   'build.log.noTable': 'Planı yapacak bir proje masası yok. Önce bir tane al.',
   'build.log.crewTooBig': (p) => `${num(p.count)} kişilik ekip, mekândakinden büyük bir proje masası istiyor.`,
   'build.log.designNeeds': (p) => `Bu tasarım için ${p.machines} gerekiyor.`,
-  'build.log.licencesOut': (p) => `Eksi bakiyeyle bile ${p.item} lisanslarına para yetmiyor.`,
+  'build.log.licencesOut': (p) => `Eksi bakiyeyle bile ${p.item} tasarım bütçesine para yetmiyor.`,
   'build.log.kickoffDone': (p) =>
     `${p.project}: açılış toplantısı bitti — masada ${num(p.crew)} kişi, ${p.fit}. ` +
     `Planlanan kalite %${Math.round(p.quality * 100)}.`,
@@ -350,7 +346,7 @@ export const build: typeof en = {
   'build.log.treatSent': (p) => `${p.member}, ${ek(p.item, 'dat')} doğru yollandı.`,
   'build.log.treatDone': (p) => `${p.member} elinde bardakla döndü, morali yerinde.`,
   'build.log.treatDoneBreak': (p) => `${p.member} moladan dinlenmiş ve keyifli döndü.`,
-  'build.log.treatAgain': (p) => `${p.member} bugün zaten bir tane içti.`,
+  'build.log.treatAgain': (p) => `${p.member} bugün buna zaten gitti.`,
   'build.log.treatBusy': (p) => `${p.item} başında zaten biri var.`,
   'build.log.treatNoRoom': (p) => `${p.item} için bir uçta durulacak yer yok — döndür ya da boşluğa taşı.`,
   'build.treat.title.drink': (p) => `Kim içecek? · ${p.item}`,
@@ -358,8 +354,8 @@ export const build: typeof en = {
   'build.treat.title.many': (p) => `Kim mola verecek? (en fazla ${p.n}) · ${p.item}`,
   'build.treat.title.pair': (p) => `Kim oynayacak? (${p.n} kişi seç) · ${p.item}`,
   'build.treat.send': (p) => (p.picked < p.need ? `${p.need - p.picked} kişi daha seç` : `${p.picked} kişiyi gönder`),
-  'build.treat.hint': 'Elindeki işi bırakıp dinlenmiş ve keyfi yerine gelmiş olarak döner. Kişi başı günde bir kez.',
-  'build.treat.had': 'bugün mola verdi',
+  'build.treat.hint': 'Elindeki işi bırakıp dinlenmiş ve keyfi yerine gelmiş olarak döner. Her eşya için kişi başı günde bir kez.',
+  'build.treat.had': 'bugün bunu yaptı',
   'build.toast.needSeat': (p) => `${num(p.count)} kişi boş ${p.station} bekliyor — İnşa'dan ekle`,
   'build.np.wingBriefs': (p) => `${num(p.count)} brif`,
   'build.np.wingNobody': 'henüz eğitimli kimse yok',
@@ -378,10 +374,8 @@ export const build: typeof en = {
   'build.np.fDaysFail': (p) => `%${p.pct} testten kalır · +${p.retry}`,
   'build.np.fQuality': 'Kalite',
   'build.np.fQualityHint': 'Bu planın ulaşması beklenen kalite — ekibin en ustasının koyduğu tavanı asla geçmez.',
-  'build.np.fCeiling': (p) => `tavan ${num(p.stars)}★`,
   'build.np.fPays': 'Kazanç',
   'build.np.fHype': 'Hype',
-  'build.np.wishes': 'Müşteri istiyor',
   'build.np.preset.fast': 'En hızlı',
   'build.np.preset.best': 'En iyi',
   'build.np.preset.profit': 'En kârlı',
@@ -395,12 +389,6 @@ export const build: typeof en = {
   'build.np.techNobody': 'ekipte henüz kimse yok',
   'build.np.rankNone': 'eğitimsiz',
   'build.np.webAlways': 'Web — her zaman',
-  'build.np.reach': (p) => `Ekip ${p.have}, bu ${p.need} işi: süre +%${p.work}, test riski ×${p.risk}`,
-  'build.wish.stars': (p) => `en az ${num(p.min)}★`,
-  'build.wish.platform': (p) => `${p.name} da`,
-  'build.wish.scope': (p) => p.name,
-  'build.wish.days': (p) => `${num(p.days)} gün içinde`,
-  'build.wish.hint': 'Teslimde karşılanan her istek ödemeye ve hype\'a eklenir. Kaçırmanın bedeli yok.',
   'build.np.pickCrew': (p) => `Ekibe ${num(p.count)} kişi daha seç`,
   'build.np.seatNoPeople': (p) => `${num(p.count)} kişi — boşta yalnızca ${num(p.free)} kişi var`,
   'build.mode.shelf.work': 'Çalışma',
@@ -432,7 +420,7 @@ export const build: typeof en = {
   'build.mode.leaves': (p) => `geriye ${money(p.cash)} kalır`,
   'build.mode.yes': (p) => `Satın al · ${money(p.price)}`,
   'build.mode.no': 'Şimdi değil',
-  // --- Baskı siparişleri ve filament alımı (§5) --------------------------------
+  // --- Baskı siparişleri (§5) -------------------------------------------------
   'build.orders.title': 'Baskı siparişleri',
   'build.orders.count': (p) => `${num(p.n)} teklif`,
   'build.orders.blurb':
@@ -447,24 +435,10 @@ export const build: typeof en = {
   'build.orders.declineHint': (p) => `Reddet. Teklif ${num(p.days)} gün daha duracaktı.`,
   'build.orders.dueIn': (p) => `${num(p.days)} gün kaldı`,
   'build.orders.dueToday': 'bugün teslim',
-  'build.orders.fillAll': (p) => `Tümünü doldur · ${money(p.cost)}`,
-  'build.orders.fillFromShelf': 'Tümünü raftan doldur',
   'build.orders.series': 'STL hazır',
   'build.orders.seriesHint': 'Seri baskı: dosyayı müşteri gönderir, işi yazıcılar yapar. Kimsenin üzerinde çalışması gerekmez.',
-  'build.orders.maintain': (p) => (p.count ? `Tümünü ayarla (${num(p.count)})` : 'Hepsi ayarlı'),
-  'build.orders.maintainHint': 'Bir bakım turu: bütün tablalar ayarlanır, bütün nozullar temizlenir — kaç tane olursa olsun günden bir saat.',
-  'build.shelf.title': 'Filament rafı',
-  'build.shelf.count': (p) => `${num(p.count)}/${num(p.max)} makara`,
-  'build.shelf.fill': (p) => `Rafı doldur · ${money(p.cost)}`,
-  'build.shelf.none': (p) => `Yedek filament için raf yok — ${p.build} menüsündeki Filament Rafı ile önceden alabilirsin.`,
-  'build.orders.allFull': 'Tüm yazıcılar dolu',
-  'build.orders.fillAllHint': 'Tüm yazıcıları tek seferde doldurur — kaç tane olursa olsun gününden yarım saat gider.',
-  'build.log.maintained': (p) => `${num(p.count)} yazıcının tablası ayarlandı, nozulu temizlendi.`,
-  'build.log.spoolsStocked': (p) => `Rafa ${num(p.count)} makara — ${money(p.cost)}.`,
-  'build.log.wishes': (p) => `${p.project}: müşterinin ${num(p.total)} isteğinden ${num(p.met)} tanesi karşılandı${p.met ? ' — ve ödendi' : ''}.`,
-  'build.log.filamentAll': (p) => `${num(p.count)} yazıcıya filament — ${money(p.cost)}.`,
-  'build.log.filamentAllCantAfford': (p) => `Tüm yazıcıları doldurmak ${money(p.cost)} tutuyor; eksi bakiye bile yetmiyor.`,
   'build.log.orderIn': (p) => `Bir baskı siparişi geldi: ${p.item} (${p.client}).`,
+  'build.log.orderStaffed': (p) => `${p.member} baskı siparişini üstlendi: ${p.item}.`,
   'build.log.orderAccepted': (p) => `${p.item} kabul edildi: teslimde ${money(p.pay)}, en geç ${num(p.day)}. gün.`,
   'build.log.orderMissed': (p) =>
     `${p.item} teslim tarihini kaçırdı. ${p.client} başka yere gitti, yazıcıdaki baskı da çöpe.${p.rep ? ` −${p.rep} itibar.` : ''}`,
@@ -473,6 +447,7 @@ export const build: typeof en = {
     `İlk ödül gecesi ${p.date} tarihinde — ${p.days} gün sonra. ${num(p.count)} kupa, o yılki performansa göre dağıtılır.`,
   'build.trophy.repHint': 'Kazananın aldığı itibar',
   'build.np.cantAfford': (p) => `${money(p.cost)} tasarım bütçesi — eksi bakiye sınırını aşar`,
+  'build.np.needsLevel': (p) => `Ekipte ${p.need} gerekir — en iyisi ${p.have}. Birini eğit.`,
   'build.review.cantStart': (p) =>
     `Tasarım bütçesi ${money(p.cost)}; mekân −${money(p.floor)} sınırının altına inemez. Önce para kazan ya da daha ucuz seçenekler seç.`,
   'build.log.ownerPicksUp': (p) => `Elin boştu — ${ek(p.project, 'dat')} el atıyorsun.`,
@@ -510,7 +485,7 @@ export const build: typeof en = {
   'tour.you.title': () => 'Senin günün',
   'tour.you.body': () =>
     'Saatin altındaki ince çubuk, gününden kalan zaman. Her gün gelen tek kişi sensin: elin boşsa en eski ' +
-    'projeye kendin girişirsin. Prim koymak, sipariş vermek, birini almak — hepsi aynı saatlerden gider.',
+    'projeye kendin girişirsin. Ekipteki altın yıldız sensin — basınca ayrılırsın, kesik çizgili yıldızla katılırsın. Sipariş vermek, birini almak aynı saatlerden gider.',
   'tour.calendar.title': () => 'Yaklaşanlar',
   'tour.calendar.body': () =>
     'Bugünün tarihi, <b>ödül gecesine</b> kadar yıl — sondaki altın nokta — ve tarihi olan her şey için ' +
@@ -520,25 +495,21 @@ export const build: typeof en = {
   'tour.log.body': () =>
     'Ekibindekilerin <b>huyları</b> var — baştan savma işi onaylamayan bir Perfectionist, hep bir fikri ' +
     'daha olan bir Scope Creeper, bir Mentor, bir Night Owl. Biri bir şey yaptığında tezgâhın yanında ' +
-    'belirir; olan her şey de bu kayda düşer.',
+    'belirir; olan her şey de bu kayda düşer — son iki satır görünür, tıklayınca gerisi açılır.',
   'tour.menu.title': () => 'Gerisi',
   'tour.menu.body': () =>
     '<b>İnşa</b>\'dan masa, istasyon, yazıcı ve keyif eşyası alırsın — <b>İnşa modundan çık</b> seni geri ' +
     'getirir. <b>Ekip</b>\'te yeni üye alır, huylarını görür, eğitime gönderirsin. <b>Atölye</b> yazıcıları ' +
-    've ücretli baskı siparişlerini yönetir. <b>Sosyal</b> emeği ilgiye çevirir — ama ilgi her gün biraz söner.',
+    've ücretli baskı siparişlerini yönetir. <b>Projeler</b> sürenleri ve bitenleri gösterir. ' +
+    'Her birinin bir tuşu var: <b>N</b> yeni proje, <b>B</b> İnşa, <b>M</b> Atölye, <b>R</b> Sıralama, <b>P</b> Ekip.',
   'tour.money.title': () => 'Hesap kitap',
   'tour.money.body': () =>
     'Her 30 günde bir hesap kapanır: üyeler aidatını öder, ev sahibi kirasını alır. Eksiye düşmek ' +
-    'serbest, −₺30.000\'e kadar. Ama 60 gün içinde artıya dönemezsen anahtarları teslim edersin.',
+    `serbest, −${money(30000)}'e kadar. Ama 60 gün içinde artıya dönemezsen anahtarları teslim edersin.`,
   'tour.done.title': () => 'Hepsi bu kadar',
   'tour.done.body': () =>
     'Küçük bir şeyi bitir, paylaş, ekibi büyüt, daha büyük bir yere taşın. Turu tekrar görmek istersen ' +
     'üst bardaki ampule bas.',
-  'build.fx.licensed': (p) => `${money(p.cost)} · ×${num(p.seats)} lisanslı`,
-  'build.log.licenceBought': (p) => `${p.item}: ${num(p.seats)} koltuk lisansı ${money(p.cost)} — artık mekânın.`,
-  'build.fx.setUp': (p) => `${money(p.cost)} · bir kez kurulur`,
-  'build.fx.inPlace': (p) => `${money(p.cost)} · zaten kurulu`,
-  'build.log.infraBuilt': (p) => `${p.item} ${money(p.cost)} ile kuruldu — bundan sonraki her projede hazır.`,
   'build.moving.howWall': 'Asmak için arka duvarın altındaki yanan yerlerden birine tıkla. Esc geri koyar.',
 
   'report.title': (p) => `${p.project} tamamlandı`,
@@ -552,39 +523,6 @@ export const build: typeof en = {
   'report.reputation': 'İtibar',
   'report.took': 'Süre',
   'report.profit': (p) => `kâr ${p.amount}`,
-  'report.wishes': (p) => `Müşterinin istekleri · ${p.total} istekten ${p.met} tanesi karşılandı`,
-  'report.noWishes': 'Kimse bir şey istemedi: tamamen senin projendi.',
   'report.madeBy': 'Yapanlar',
-  'report.campaign.title': 'Reklamını yap',
-  'report.campaign.hint': (p) =>
-    `Kampanya bu projenin kendi itibarını katlar, ilgi de satışa döner: ${p.week} gün boyunca satış olarak geri gelir. ` +
-    `İyi ve yeni bir proje kampanyasını geri öder; zayıf ya da tekrar bir proje ödemez. Proje başına bir kez, ` +
-    `gününden bir saat, çıkıştan sonraki ${p.days} gün içinde.`,
-  'report.campaign.expect': (p) => (p.gain >= 0 ? `+${num(p.gain)} itibar` : `−${num(-p.gain)} itibar`),
-  'report.campaign.judged': 'kaliteye bağlı',
-  'report.campaign.range': (p) =>
-    `${p.min >= 0 ? '+' : '−'}${num(Math.abs(p.min))} … ${p.max >= 0 ? '+' : '−'}${num(Math.abs(p.max))}`,
-  'report.campaign.back': (p) => (p.sales > 0 ? `≈ ${money(p.sales)} satış olarak döner` : 'geri dönüşü yok'),
-  'report.campaign.backRange': (p) => (p.max > 0 ? `en fazla ${money(p.max)} satış olarak döner` : 'geri dönüşü yok'),
-  'report.campaign.sales': (p) => `şimdiye kadar ${money(p.total)} satışın ${money(p.paid)} kadarı geldi`,
-  'report.campaign.launch': (p) => `${p.campaign} · ${money(p.cost)}`,
-  'report.campaign.pick': 'Bir kampanya seç',
-  'report.campaign.done': (p) =>
-    p.gain >= 0 ? `${p.campaign} yapıldı: +${num(p.gain)} itibar.` : `${p.campaign} ters tepti: −${num(-p.gain)} itibar.`,
-  'report.campaign.closed': 'Reklam için geç — artık eski haber.',
-  'report.campaign.order': 'Bir baskı siparişi: müşteri ödedi, reklamı yapılacak bir şey yok.',
-  'report.campaign.noHours': 'Gününden bunun için yeterli saat kalmadı.',
-  'report.campaign.flyers.name': 'El ilanı ve meetup sunumu',
-  'report.campaign.flyers.blurb': 'Bir deste el ilanı ve bir sonraki meetup\'ta on dakika. Ucuz ve risksiz.',
-  'report.campaign.social.name': 'Sponsorlu gönderiler',
-  'report.campaign.social.blurb': 'Akışlarda ücretli erişim. Daha çok kişi görür; kimse yargılamaz.',
-  'report.campaign.review.name': 'YouTube incelemesi',
-  'report.campaign.review.blurb': 'Bir maker inceler — dürüstçe. İyi iş parlar; zayıf iş herkesin önünde yerden yere vurulur.',
-  'report.campaign.launch.name': 'Lansman gecesi',
-  'report.campaign.launch.blurb': 'Basın, demo masası ve içecekler. En büyük ses, ama pahalı.',
   'report.close': 'İşe dön',
-  'report.log.ran': (p) => `${p.project} için ${p.campaign}: +${num(p.gain)} itibar.`,
-  'report.log.backfired': (p) => `${p.project} için ${p.campaign} ters tepti: −${num(p.gain)} itibar.`,
-  'report.log.tooLate': (p) => `${p.project} artık eski haber — reklam için geç.`,
-  'report.log.cantAfford': (p) => `${p.project} için ${money(p.cost)} reklamı eksi bakiye bile karşılamıyor.`,
 };

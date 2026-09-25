@@ -39,7 +39,6 @@ export const log = {
     `${p.member}: "we should build a ${p.item}. I'll take a stage myself."`,
   'log.offer.sponsor': (p: { item: string; cash: number }) =>
     `A sponsor will pay ${money(p.cash)} for a ${p.item}.`,
-  'log.offer.trending': (p: { item: string }) => `r/DIY is full of ${p.item} builds this week.`,
 
   'log.drifted': (p: { member: string; project: string }) => `${p.member} drifted off ${p.project}.`,
   'log.requeued': (p: { member: string; part: string; project: string }) =>
@@ -58,7 +57,6 @@ export const log = {
   }) =>
     `${p.part}${p.project ? ` (${p.project})` : ''} ${p.reason} at hour ${num(p.atHour, 1)} of ${p.hours}.` +
     (p.wasted > 0 ? ` ${p.wasted}g wasted.` : ''),
-  'fail.noFilament': 'ran out of filament',
   'fail.adhesion': 'bed adhesion let go',
   'fail.firstLayer': 'first layer lifted',
   'fail.nozzle': 'nozzle jammed',
@@ -94,7 +92,7 @@ export const log = {
   'log.printer.needsEra': (p: { model: string }) => `Nobody will ship a ${p.model} to a garage.`,
   'log.printer.cantAfford': (p: { model: string }) => `Even on the overdraft, a ${p.model} is out of reach.`,
   'log.printer.noRoom': 'No room on the floor for another printer.',
-  'log.printer.arrived': (p: { model: string }) => `${p.model} is on the bench and levelled. It arrived full.`,
+  'log.printer.arrived': (p: { model: string }) => `${p.model} is on the bench and ready to print.`,
   'log.lease.cantAfford': (p: { space: string }) => `Even on the overdraft, moving to ${p.space} is out of reach.`,
   'log.lease.signed': (p: { space: string; cost: number }) =>
     `You signed for ${p.space}. ${money(p.cost)} to move, and the rent goes up.`,
@@ -151,19 +149,7 @@ export const log = {
   'log.hired.full': (p: { name: string; hours: number }) => `${p.name} joined full-time — ${p.hours}h a week.`,
   'log.member.offBooks': (p: { member: string }) => `${p.member} is off the books.`,
 
-  'log.post.alreadyProject': (p: { project: string }) => `${p.project} has already been posted today.`,
-  'log.post.alreadySpace': 'The space was posted today.',
-  'log.post.burned': (p: { room: string; name: string; upvotes: number }) =>
-    `${p.room} turned on the ${p.name} post — ${p.upvotes} and a pile-on.`,
-  'log.post.did': (p: { room: string; name: string; upvotes: number }) =>
-    `${p.name} did ${p.upvotes} on ${p.room}.`,
-  'word.theSpace': 'the space',
 
-  'log.role.set': (p: { member: string; role: string }) => `${p.member} is looking after ${p.role} now.`,
-  'log.role.cleared': (p: { member: string }) => `${p.member} has handed the job back.`,
-  'log.role.loaded': (p: { member: string; machine: string }) => `${p.member} loaded the ${p.machine} back up.`,
-  'log.role.ordered': (p: { member: string; project: string }) =>
-    `${p.member} got the ${p.project} parts on order.`,
   'log.pitch.cantBuild': "The space can't build that yet.",
   'log.pitch.sponsorPaid': (p: { item: string; cash: number }) =>
     `Sponsor paid ${money(p.cash)} up front for ${p.item}.`,
@@ -174,22 +160,12 @@ export const log = {
     `Pitched ${p.item}, but there is no cash for the ${money(p.cost)} bill of materials. ` +
     `Nothing can be assembled until it is ordered.`,
   'log.pitch.plain': (p: { item: string; blurb: string }) => `Pitched ${p.item}. ${p.blurb}`,
-  'log.repitch.took': (p: { project: string; count: number }) => `Re-pitched ${p.project}: ${p.count} joined.`,
-  'log.repitch.none': (p: { project: string }) => `Re-pitched ${p.project}. Nobody bit.`,
 
-  'log.bounty.cantAfford': 'Even on the overdraft, that bounty is out of reach.',
-  'log.bounty.posted': (p: { project: string; stage: string }) =>
-    `Bounty on ${p.project} · ${p.stage}. Pizza is on the way.`,
   'log.parts.cantAfford': (p: { project: string }) => `Even on the overdraft, the ${p.project} parts are out of reach.`,
   'log.parts.ordered': (p: { project: string; days: number }) => `Ordered parts for ${p.project}. ${p.days} days out.`,
-  'log.parts.expediteCantAfford': 'Even on the overdraft, expediting is out of reach.',
-  'log.parts.expedited': (p: { project: string }) => `Paid to expedite the ${p.project} order.`,
   'log.parts.noMachine': (p: { machine: string; part: string }) => `No ${p.machine} in the space for ${p.part}.`,
   'log.parts.queued': (p: { count: number; project: string }) =>
     `${p.count} ${plural(p.count, 'part', 'parts')} queued (${p.project}).`,
-  'log.filament.cantAfford': (p: { machine: string }) =>
-    `Even on the overdraft, filament for the ${p.machine} is out of reach.`,
-  'log.filament.loaded': (p: { machine: string }) => `${p.machine} loaded up.`,
 
   // --- What somebody is doing (the roster's italic line) ----------------------
   'note.atHome': 'at home',
@@ -202,7 +178,6 @@ export const log = {
   'note.joined': (p: { project: string }) => `joined ${p.project}`,
   'note.working': (p: { project: string; stage: string }) => `${p.project}: ${p.stage}`,
   'note.waiting': (p: { project: string }) => `${p.project}: waiting`,
-  'note.levelling': 'levelling the bed',
   'note.watchingPrint': 'watching the print',
   'note.hangingAround': 'hanging around',
   'note.notSigningOff': 'not signing off on this',
@@ -211,7 +186,6 @@ export const log = {
   'note.outOfHours': 'out of hours',
   'note.inTheSpace': 'in the space',
   'note.lookingForWork': 'looking for something to do',
-  'note.bedFlat': 'bed is flat again',
   'note.nothingByHand': (p: { project: string }) => `${p.project}: nothing to do by hand`,
   'note.free': 'free — pick something',
   // --- The monthly statement (saved with the run, so messages) ------------------
@@ -220,27 +194,25 @@ export const log = {
   'bill.sponsor': 'Sponsors',
   'bill.sponsorDetail': 'paid up front on a pitch',
   'bill.sales': 'Sold',
-  'bill.adSales': 'Sales from advertising',
-  'bill.adSalesDetail': 'what the campaigns brought in',
   'bill.salesDetail': 'kit and furniture sold back',
   'bill.parts': 'Parts',
-  'bill.partsDetail': 'bills of materials and expediting',
+  'bill.partsDetail': 'bills of materials',
   'bill.design': 'Design budgets',
   'bill.designDetail': 'tools and technology chosen at the pitch',
   'bill.kit': 'Kit and furniture',
   'bill.kitDetail': 'printers, tables, stations, comforts',
   'bill.filament': 'Filament',
-  'bill.filamentDetail': 'spools loaded into the printers',
+  'bill.filamentDetail': (p: { kilos: number }) => `${num(p.kilos, 1)} kg drawn by the printers`,
   'bill.hiring': 'Joining fees',
   'bill.hiringDetail': 'one-off, for everybody taken on',
   'bill.training': 'Training',
   'bill.trainingDetail': 'courses at the learning station',
-  'bill.bounties': 'Bounties',
-  'bill.marketing': 'Advertising',
-  'bill.marketingDetail': 'campaigns for builds after release',
-  'bill.bountiesDetail': 'pizza, cash and prints for the boring jobs',
   'bill.lease': 'Moving',
   'bill.leaseDetail': 'the van, and signing the new lease',
+  'bill.marketing': 'Promotion',
+  'bill.marketingDetail': 'getting the word out about what shipped',
+  'bill.events': 'Decisions',
+  'bill.eventsDetail': 'what the month\'s dilemmas cost or brought in',
   'bill.other': 'Other',
   'bill.otherDetail': 'not itemised',
   'bill.crewDues': 'Crew dues',
@@ -253,7 +225,6 @@ export const log = {
   'bill.powerDetail': (p: { hours: number }) => `${p.hours} machine-hours`,
   'bill.comforts': 'Comforts',
   'bill.comfortsDetail': (p: { count: number }) => `${p.count} in the space · running costs`,
-  'log.role.levelled': (p: { member: string; machine: string }) => `${p.member} levelled the bed on the ${p.machine} between prints.`,
 
   // Traits (§3): each one tells you when it happens.
   'trait.perfectionist.hold': (p: { member: string; project: string; stage: string; quality: number; gate: number }) =>
