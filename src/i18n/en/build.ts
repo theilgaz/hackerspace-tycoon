@@ -439,6 +439,8 @@ export const build = {
   'build.mode.about.decor': 'Cheap, mostly free to run, and all of it through the same mood curve.',
   'build.mode.placeHint': 'Click a lit tile to put it there — you are asked before anything is paid. R turns it, right-click or Esc puts it back.',
   'build.mode.exit': 'Exit Build',
+  'build.mode.scrollLeft': 'Back along the shelf',
+  'build.mode.scrollRight': 'Further along the shelf',
   'build.mode.endBlocked': 'one end is blocked — turn it or move it',
   'build.mode.exitHint': 'Back to the room — the clock starts again',
   'build.mode.pickHint': 'Click it to pick it up, then choose a tile — nothing is paid until you say yes.',

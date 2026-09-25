@@ -419,6 +419,8 @@ export const build: typeof en = {
   'build.mode.about.decor': 'Ucuz, çoğunun aylık gideri yok ve hepsi aynı moral eğrisine tabi.',
   'build.mode.placeHint': 'Yanan bir kareye tıkla — ödemeden önce sorulur. R döndürür, sağ tık ya da Esc geri koyar.',
   'build.mode.exit': 'İnşa modundan çık',
+  'build.mode.scrollLeft': 'Rafta geri',
+  'build.mode.scrollRight': 'Rafta ileri',
   'build.mode.endBlocked': 'bir ucu kapalı — döndür ya da taşı',
   'build.mode.exitHint': 'Odaya dön — saat yeniden işler',
   'build.mode.pickHint': 'Tıklayıp eline al, sonra bir kare seç — sen evet demeden para çekilmez.',

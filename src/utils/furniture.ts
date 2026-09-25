@@ -18,7 +18,7 @@ export interface FurnitureDef {
   icon: IconName;
   era: number;
   price: number;
-  /** Tiles it covers — the large table is the only thing that takes two. */
+  /** Tiles it covers, in a row: one for most things, two for the long benches, three for the Assembly Bench. */
   span: number;
   /** What it is for, in a word, for the card's badge. */
   use: string;
@@ -113,6 +113,22 @@ export const FURNITURE: FurnitureDef[] = [
     price: 1500,
     span: 1,
     use: 'mechanical assembly',
+    corner: 'maker',
+  },
+  // After the plain table on purpose: the first entry of a kind is what a save naming a
+  // piece that is gone falls back to, and what the harnesses buy when people queue.
+  {
+    id: 'assembly-bench',
+    type: 'assembly',
+    name: 'Assembly Bench',
+    blurb: 'Three tiles of butcher block, a vise at each end, room for twelve on their feet. The motorcycle gets built here.',
+    icon: 'users',
+    era: 1,
+    price: 6800,
+    span: 3,
+    use: 'mechanical assembly · 12 places',
+    seats: 12,
+    rate: 0.92,
     corner: 'maker',
   },
   // A machine, not a seat: it cuts parts on the clock like a printer. The CNC Router project

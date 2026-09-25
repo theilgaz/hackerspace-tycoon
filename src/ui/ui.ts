@@ -1293,7 +1293,15 @@ export class UI {
         case 'build-shelf':
           this.buildShelf = (value as BuildShelf) ?? 'work';
           this.rerender();
+          // A new shelf starts at its beginning, not wherever the last one was scrolled to.
+          this.buildEl.querySelector('.build-tiles')?.scrollTo({ left: 0 });
+          this.updateBuildArrows();
           break;
+        case 'build-scroll': {
+          const tiles = this.buildEl.querySelector<HTMLElement>('.build-tiles');
+          if (tiles) tiles.scrollBy({ left: Number(value) * tiles.clientWidth * 0.8, behavior: 'smooth' });
+          break;
+        }
         case 'build-pick': {
           const [kind, pick] = (value ?? '').split(':');
           const held = this.lastState?.placingBuy;
@@ -1551,8 +1559,29 @@ export class UI {
     // nothing else: rebuilding the whole panel on every hover replaced the tile under the
     // cursor between press and release, which is the bug §13 says killed every button once.
     if (!this.buildEl.querySelector('.build-tiles')) {
-      this.buildEl.innerHTML = '<div class="build-shelves"></div><div class="build-info"></div><div class="build-tiles"></div>';
+      // **One row that scrolls sideways**, like the Sims' catalogue. The corners used to wrap
+      // onto rows of their own inside a fixed-height panel, and the Meeting corner — the
+      // tables every build starts at — was below the fold, where some players never found
+      // it. The arrows appear only when there is more that way, and are as tall as a card.
+      this.buildEl.innerHTML = `<div class="build-shelves"></div><div class="build-info"></div>
+        <div class="build-scroll">
+          <button class="build-arrow build-arrow--left" data-action="build-scroll" data-value="-1" aria-label="${esc(t('build.mode.scrollLeft'))}">${icon('chevronRight')}</button>
+          <div class="build-tiles"></div>
+          <button class="build-arrow build-arrow--right" data-action="build-scroll" data-value="1" aria-label="${esc(t('build.mode.scrollRight'))}">${icon('chevronRight')}</button>
+        </div>`;
       for (const part of ['shelves', 'info', 'tiles']) this.htmlCache.delete(`build-${part}`);
+      const strip = this.buildEl.querySelector<HTMLElement>('.build-tiles')!;
+      strip.addEventListener('scroll', () => this.updateBuildArrows(), { passive: true });
+      // A mouse wheel turns the strip: most mice have no sideways wheel.
+      strip.addEventListener(
+        'wheel',
+        (event) => {
+          if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || strip.scrollWidth <= strip.clientWidth) return;
+          event.preventDefault();
+          strip.scrollBy({ left: event.deltaY });
+        },
+        { passive: false },
+      );
     }
     this.setHTML(
       this.buildEl.querySelector<HTMLElement>('.build-shelves')!,
@@ -1566,6 +1595,16 @@ export class UI {
     const tilesEl = this.buildEl.querySelector<HTMLElement>('.build-tiles')!;
     tilesEl.classList.toggle('build-tiles--grouped', grouped);
     this.setHTML(tilesEl, 'build-tiles', tiles);
+    this.updateBuildArrows();
+  }
+
+  /** Show an arrow only when there is more of the shelf that way. */
+  private updateBuildArrows() {
+    const strip = this.buildEl.querySelector<HTMLElement>('.build-tiles');
+    if (!strip) return;
+    const more = strip.scrollWidth - strip.clientWidth;
+    this.buildEl.querySelector('.build-arrow--left')?.classList.toggle('on', more > 2 && strip.scrollLeft > 2);
+    this.buildEl.querySelector('.build-arrow--right')?.classList.toggle('on', more > 2 && strip.scrollLeft < more - 2);
   }
 
   /** Seats per kind of workstation, and how many people are queueing for one. */

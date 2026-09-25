@@ -2800,18 +2800,44 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   color: var(--muted-foreground);
 }
 .build-info__hint .ui-icon { flex: none; width: 13px; height: 13px; margin-top: 1px; }
+.build-scroll { position: relative; min-width: 0; min-height: 0; }
+/* One row, scrolled sideways; the cards sit on the bottom edge so the arrows can match them. */
 .build-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, 92px);
-  grid-auto-rows: auto;
+  display: flex;
+  align-items: flex-end;
   gap: 8px;
-  align-content: start;
-  overflow-y: auto;
-  padding-right: 4px;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
+.build-tiles::-webkit-scrollbar { display: none; }
+.build-tiles > .build-tile { flex: none; width: 84px; }
+.build-arrow {
+  position: absolute;
+  bottom: 0;
+  z-index: 1;
+  display: none;
+  place-items: center;
+  width: 30px;
+  height: 108px;
+  padding: 0;
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--popover) 88%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 0 18px 10px var(--popover);
+  cursor: pointer;
+}
+.build-arrow.on { display: grid; }
+.build-arrow:hover { background: var(--muted); }
+.build-arrow svg { width: 16px; height: 16px; }
+.build-arrow--left { left: 0; }
+.build-arrow--left svg { transform: rotate(180deg); }
+.build-arrow--right { right: 0; }
 .build-tile {
   position: relative;
-  height: 122px;
+  height: 108px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -2835,19 +2861,19 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   color: var(--muted-foreground);
 }
 .build-group::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-.build-tiles--grouped { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px 22px; }
-.build-corner { display: flex; flex-direction: column; gap: 6px; }
+.build-tiles--grouped { gap: 22px; }
+.build-corner { flex: none; display: flex; flex-direction: column; gap: 6px; }
 .build-corner .build-group { margin: 0; }
 .build-corner__tiles { display: flex; gap: 8px; }
-.build-corner__tiles .build-tile { width: 92px; }
+.build-corner__tiles .build-tile { width: 84px; }
 .build-tile:hover:not(:disabled) { border-color: var(--border-strong); background: var(--card-hover); }
 .build-tile.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
 .build-tile.owned { border-color: color-mix(in srgb, var(--success) 45%, var(--border)); }
 .build-tile:disabled { opacity: 0.45; }
 /* Owned and therefore not for sale again is not the same as unavailable: it keeps its green edge at full strength. */
 .build-tile.owned:disabled { opacity: 1; }
-.build-tile .build-thumb { height: 60px; }
-.build-tile .build-thumb img { width: 60px; height: 60px; }
+.build-tile .build-thumb { height: 52px; }
+.build-tile .build-thumb img { width: 52px; height: 52px; }
 .build-tile__name {
   display: -webkit-box;
   -webkit-box-orient: vertical;

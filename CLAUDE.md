@@ -314,10 +314,16 @@ shelf — what a piece is *for*, not what kind of seat it is:
 | **Maker** | Maker Station | 1 | 3,400 | assembles 20% faster; owning one cuts electronics test failures by a quarter |
 | | Long Maker Bench (two tiles) | 3 | 5,200 | 92% pace |
 | | Assembly Table | 2 | 1,500 | the plain one |
+| | Assembly Bench (three tiles) | 12 | 6,800 | 92% pace, standing |
 | | CNC Router | — | 26,000 | a machine, one per space, Era 2 |
 | **Meeting** | Small / Large Project Table | 4 / 10 | 900 / 4,800 | |
 | | Meeting Corner (two tiles) | 6 | 3,600 | kicks off 35% faster |
-| | Learning Station | 2 | 3,200 | courses |
+| | Learning Station | 2 | 3,200 | courses — a screen playing a lesson (`courseTexture`, one canvas shared by every station), headphones at each seat |
+
+**The Assembly Bench is the one three-tile piece**: twelve on their feet, two to a tile down
+each long side — or, against a wall, four to a tile down the open one, because six of them
+were otherwise drawn standing in it. It sits after the plain table on the shelf, so it is
+never the fallback for a missing piece and the harnesses never buy it.
 
 **The Maker Station replaced the Hardware Station**, and Pro Workstation and Pair Programming
 Desk went. The Maker Station keeps the old soldering bench's id (`solder-bench`) so saved rooms
@@ -1537,6 +1543,14 @@ Monstera, an olive tree, a lava lamp, a giant rubber duck, a Tux statue, a shelf
 bean bags, a server rack, a neon `</>`, a whiteboard wall, a circuit-art print and, from Unit
 4B, a retro terminal. Decor runs through the same mood curve as the comforts, so a room full
 of it is nicer rather than faster, and the harnesses do not buy it.
+
+**The shelf is one row that scrolls sideways**, like the Sims' catalogue, with an arrow at
+either end only when there is more that way — as tall as a card — and the mouse wheel turning
+it. The corners used to wrap onto rows of their own inside a fixed-height panel, and on a
+laptop the Meeting corner — the tables every build starts at — was below the fold, where
+some players never found it. Cards are 84×108 now, a little smaller. **A bought thing is let
+go of once it is down**: a desk used to stay in hand for the next one, which read as the
+game still being mid-purchase; buying another is one more press.
 
 **Every card carries a picture of the thing**, rendered once from the same model that stands
 in the room (`render/Thumbnails.ts`) and cached as a data URL — a card with a name is a

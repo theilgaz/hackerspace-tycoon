@@ -923,6 +923,8 @@ await check('Build: buying a printer puts one on the floor', async () => {
   if (tile) await clickTile(tile.x, tile.y);
   const asked = await evaluate(`!!document.querySelector('#buyconfirm [data-action="buy-yes"]')`);
   await click('#buyconfirm [data-action="buy-yes"]');
+  // Bought and put down is the end of it: nothing stays in hand.
+  const heldAfter = await evaluate(`JSON.stringify(__store.getState().placingBuy)`);
   await leaveBuild();
   const after = JSON.parse(
     await evaluate(`(() => { const fdm = __game.sim.machines.filter((m) => m.type === 'fdm');
@@ -930,8 +932,30 @@ await check('Build: buying a printer puts one on the floor', async () => {
                               full: fdm.every((m) => m.consumable > 0) }); })()`),
   );
   // It arrives, it arrives full, and it holds a full four-spool load.
-  const ok = after.n === before + 1 && after.cap >= 4000 && after.full;
-  if (!ok) console.log(`      printers ${before} -> ${after.n}, capacity ${after.cap}, full ${after.full}, held ${held}, tile ${JSON.stringify(tile)}, asked ${asked}`);
+  const ok = after.n === before + 1 && after.cap >= 4000 && after.full && heldAfter === 'null';
+  if (!ok) console.log(`      printers ${before} -> ${after.n}, capacity ${after.cap}, full ${after.full}, held ${held} then ${heldAfter}, tile ${JSON.stringify(tile)}, asked ${asked}`);
+  return ok;
+});
+
+await check('Build: the shelf scrolls sideways, with an arrow only where there is more', async () => {
+  await enterBuild();
+  await click('#buildpanel [data-action="build-shelf"][data-value="work"]');
+  // A narrow window is where the Meeting corner went missing; make the strip overflow.
+  await evaluate(`(() => { const p = document.querySelector('#buildpanel'); p.style.width = '760px'; })()`);
+  await sleep(200);
+  await evaluate(`document.querySelector('.build-tiles').dispatchEvent(new Event('scroll'))`);
+  await sleep(100);
+  const arrows = () => evaluate(`JSON.stringify({ l: document.querySelector('.build-arrow--left').classList.contains('on'),
+    r: document.querySelector('.build-arrow--right').classList.contains('on'),
+    x: Math.round(document.querySelector('.build-tiles').scrollLeft) })`);
+  const start = JSON.parse(await arrows());
+  await click('#buildpanel .build-arrow--right.on');
+  await sleep(700);
+  const moved = JSON.parse(await arrows());
+  await evaluate(`document.querySelector('#buildpanel').style.width = ''`);
+  await leaveBuild();
+  const ok = !start.l && start.r && start.x === 0 && moved.x > 0 && moved.l;
+  if (!ok) console.log(`      start ${JSON.stringify(start)}, after the arrow ${JSON.stringify(moved)}`);
   return ok;
 });
 

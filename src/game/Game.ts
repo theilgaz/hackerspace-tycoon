@@ -113,16 +113,17 @@ export class Game {
         store.getState().setPlacingBuy(item);
       },
       buyQuote: (item) => sim.buyQuote(item),
-      // Yes: pay and put it down. A comfort is one of a kind, so the shelf lets go of it;
-      // a desk or a printer stays in hand for the next one.
+      // Yes: pay and put it down, and let go of it. A desk used to stay in hand for the next
+      // one, which read as the game still being mid-purchase; buying another is one more
+      // press on the shelf.
       confirmBuy: () =>
         act(() => {
           const ask = store.getState().buyConfirm;
           if (!ask) return;
           const item = { kind: ask.kind, id: ask.id };
-          const ok = sim.buyAt(item, ask.x, ask.y, ask.yaw);
+          sim.buyAt(item, ask.x, ask.y, ask.yaw);
           store.getState().setBuyConfirm(null);
-          if (!ok || item.kind === 'amenity') store.getState().setPlacingBuy(null);
+          store.getState().setPlacingBuy(null);
         }),
       cancelBuy: () => store.getState().setBuyConfirm(null),
       treat: (memberIds, amenityId) => act(() => sim.treat(memberIds, amenityId)),

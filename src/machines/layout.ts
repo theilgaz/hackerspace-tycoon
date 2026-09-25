@@ -495,6 +495,29 @@ export function seatPosition(def: StationDef, index: number): Seat {
     const side = order[index % order.length];
     return at(def.tile.x + side.x * 0.6, def.tile.y + side.y * 0.6);
   }
+  if (def.model === 'assembly-bench') {
+    // Twelve on their feet: two to a tile down the front, then two to a tile down the back,
+    // each looking across the top at the work. **Against a wall there is no back**, and six
+    // of them were drawn standing in it — so then all twelve line the front, four to a tile.
+    const behind = (tile: Tile) => ({ x: tile.x - front.x, y: tile.y - front.y });
+    const backOpen = tiles.every((tile) => {
+      const b = behind(tile);
+      return inBounds(b) && !BLOCKED.has(`${b.x},${b.y}`) && !PROPS.has(`${b.x},${b.y}`);
+    });
+    const sides = backOpen ? [1, -1] : [1];
+    const shifts = backOpen ? [-0.24, 0.24] : [-0.36, -0.12, 0.12, 0.36];
+    const places: Seat[] = [];
+    for (const side of sides) {
+      for (const tile of tiles) {
+        for (const shift of shifts) {
+          const x = tile.x + front.x * side * 0.72 + across.x * shift;
+          const y = tile.y + front.y * side * 0.72 + across.y * shift;
+          places.push({ x, y, look: { x: tile.x + across.x * shift, y: tile.y + across.y * shift }, stand: true });
+        }
+      }
+    }
+    return places[index % places.length];
+  }
   if (def.type === 'table-large') {
     // Four down each long side, one at each end.
     const places: Seat[] = [];
