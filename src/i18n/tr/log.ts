@@ -14,7 +14,7 @@ import { ek } from '../turkish';
 export const log: typeof en = {
   // --- The log ---------------------------------------------------------------
   'log.day1': '1. gün. Garaj PLA ve neskafe kokuyor.',
-  'log.pickSomething': "Bir iş seç — + Yeni Proje'ye bas.",
+  'log.pickSomething': "Bir iş seç — + Proje'ye bas.",
   'log.noHours': 'Bugün buna vaktin kalmadı.',
 
   'log.amenity.needsEra': (p) => `${p.item} için ${p.era} gerekiyor.`,

@@ -13,7 +13,7 @@ const plural = (count: number, one: string, many: string) => (count === 1 ? one 
 
 export const build = {
   // --- The build menu --------------------------------------------------------
-  'build.bar.new': 'New Project',
+  'build.bar.new': 'Project',
   'build.bar.newHint': 'Design a new project and pick its crew',
   'build.bar.projects': 'Projects',
   'build.bar.projectsHint': 'Everything on, waiting and done',
@@ -519,7 +519,7 @@ export const build = {
     'when it does, a button to move appears here, and the move is yours to make.',
   'tour.new.title': (_p: { name: string }) => 'Start something',
   'tour.new.body': (_p: { name: string }) =>
-    'Everything begins with <b>+ New Project</b>. Press it now — the tour will wait.',
+    'Everything begins with <b>+ Project</b>. Press it now — the tour will wait.',
   'tour.wizard.title': (_p: { name: string }) => 'Crew it, then design it',
   'tour.wizard.body': (_p: { name: string }) =>
     'Pick a genre and a brief, then the crew: the build arrives with its brief\'s name, which you can ' +

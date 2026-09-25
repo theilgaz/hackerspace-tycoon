@@ -624,6 +624,40 @@ on this one.
 | **Hard** | 2 | every 40 days | x1.00 | 10,000 |
 | **Now** | 2 | every 35 days | x1.00, ramp 0.13 | 50,000 |
 
+**The one setting, measured — the rivals were behind** (`rivalPace` / `rivalRep` 1.2). With
+the rivals left at ×1.00 the player was 3.4× the best rival on day 30 and 2.6× on day 210,
+reputation almost all from shipped builds: the player's own pipeline had got a great deal
+quicker since the field was tuned (shorter tiers, no project cap, the owner's seventeen
+hours, traits) and the field had not moved. Sweep over 8 seeds, you ÷ best rival on day 90 /
+day 210, and places: ×1.15 → 2.17 / 1.54, first 8/8; **×1.2 → 2.21 / 1.39, first 8/8**; ×1.25 →
+1.83 / 1.22, first 8/8; ×1.4 → 1.30 / 0.85, places 1st-11th; ×1.7 → 15th in every seed. Pace
+and reputation compound together, so the curve is steep — tune it in steps of 0.05. That
+left the first awards night going about two in five to the player (17-18 of 40): Most
+Projects and Space of the Year were decided by early volume, which a multiplier on the field
+barely touches — see below.
+
+**The first night is a race, and you can lose all of it.** "Win an award and you earned it"
+is the setting's promise, and a night where two of five were decided before it started kept
+none of it. Two rivals were given the jobs their blurbs already described, rather than
+pushing the whole field again (§3c's rule about the right lever):
+
+- **Konya is the real rival**: 0.95 builds a day at 75 reputation from the first week, and
+  slow to compound (`paceGrowth` 60,000), so it races the player for Space of the Year and
+  Most Projects on the first night without becoming a wall by the second year.
+- **Garaj is the volume machine**: 1.45 small builds a day at 12 reputation each — Most
+  Projects without a place near the top of the table — with its cash per build cut to match.
+- **Print orders no longer count as projects** (`projectsShipped`): a client's file on the
+  printer was handing the player Most Projects on volume alone.
+
+Measured (`era-pace`, 8 seeds, 60-day year, awards on day 55): the player takes **6 of 40**
+first-night awards and **none at all on 3 nights of 8** (Space of the Year 4, Most Projects 1,
+Best Project 1), and finishes first in 7 of 8, third in the other — by as little as a hundred
+reputation. The sweep that found it: Konya at 1.0 / 75 with the old 30,000 growth took first
+place in every seed (a wall); with no compounding at all the first night got *easier* again
+(10 of 40), because Konya's early strength partly is its compounding. `era-pace` now prints
+the first night per award and the nights with none, and the ships and reputation behind the
+two that were locked — tune from those, not from the total.
+
 **Opening cash went up tenfold on easy and sevenfold on normal** (from 10,000 / 7,000 /
 5,000). Measured, 8 seeds: normal first 8/8 at about 1.6× the field and 17 of 40 first-night
 awards; hard first 5/8, worst sixth, 13 of 40; easy first 8/8 with 26 of 40 and nearly twice
@@ -723,10 +757,15 @@ usually second.
 Their pace **compounds with their reputation**, as the player's does. Without that they grow
 linearly while the player's roster snowballs, and by day 200 the table is a formality.
 
-**The run keeps a date.** The space opens on **1 January 2026**; **a year is 100 days**,
-spread over twelve months, and the **awards are held on day 90 of every year** — the first on
-day 90 of the run, then day 190, 290. It was briefly 365 days with the night on 1 December,
+**The run keeps a date.** The space opens on **1 January 2026**; **a year is 60 days**,
+spread over twelve months, and the **awards are held on day 55 of every year** — the first on
+day 55 of the run, then day 115, 175. It was briefly 365 days with the night on 1 December,
 which put the first awards night on day 335: a set piece almost nobody would ever play to.
+Then it was 100 days with the night on day 90, and at a couple of real minutes a day that is
+still three and a half hours to the first night and over seven to the second — a player
+decides whether to keep going long before that. Sixty days puts the first night about two
+hours in and the second about four and a half. The yearly rival ramp (`yearRamp`) now comes
+round every sixty days, so the field tightens faster over a long game; that is intended.
 
 **What the calendar changes left behind** (measured at 220 days, 8 seeds):
 
@@ -874,10 +913,13 @@ Winning pays reputation. Two tuning notes worth keeping:
   when the roster was you plus fourteen, now at 22 against a cast of twenty-five (see above).
   It was capped at 40 once, which made one of the awards decoration.
 - `npm run era-pace [seeds]` prints the first awards night, the day each era arrives, and the
-  final standings. Targets: an engaged player takes **one or two of five** on the first night
-  (currently 2.0 on normal, 1.5 on hard, 3.25 on easy), finishes **first overall** by day 220
-  without finishing at twice the field (currently ~1.6× on normal), and no single rival wins
-  two categories every time. Measured with a player who uses every verb, Reddit included.
+  final standings. Targets (v0.3.0, the one setting): an engaged player takes **about one of
+  five** on the first night and **none at all on some nights** (currently 6 of 40, none on 3
+  nights of 8), usually finishes **first overall** by day 220 but not every time and never
+  buried (currently first in 7 of 8, third in the other, often by a few hundred reputation),
+  and no single rival wins two categories every time. The autoplayer is an engaged player;
+  a human who does less should expect to lose the first night. It used to be one or two of
+  five, and a night decided before it started was no fun to win.
 - **Reddit softened hard, and that is left standing on purpose.** Before Phase 2 a hard run
   came first in six seeds of eight; with posting it comes first in all eight, though by as
   little as 1.02×. A new verb making the game easier is expected, and the honest fix is to see
@@ -987,6 +1029,13 @@ Winning pays reputation. Two tuning notes worth keeping:
   the bottom-right while hover and name labels stayed on the window. `#scene` is sized
   outright, and `SceneManager` measures the canvas, never `window.inner*`. It looked right
   on every screen at ratio 1, so `click-check` emulates ratio 2 to catch it.
+
+- **Two cases with one label: the first wins, silently.** The start screen's "start a new
+  hackerspace" and the build menu's + New Project both used `data-action="new-open"`, in one
+  delegated `switch`. JavaScript runs the first matching case, TypeScript does not flag the
+  second, and the start button opened the project wizard behind the start screen — so with a
+  saved run there was no way to begin another. An action name belongs to one button; before
+  adding one, grep for it. `click-check` now starts a new run beside a saved one.
 
 - **A counter that restarts with the page is not an id.** `uid()` counted from zero on
   every load, so after a reload the next build could be handed the id of a saved one — and

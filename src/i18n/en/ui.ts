@@ -73,7 +73,7 @@ export const ui = {
   'ui.top.allocated': 'allocated',
   'ui.top.allocatedHint': 'somebody can only be on one project at a time',
   'ui.top.reputationHint': "cumulative hype from everything you've shipped",
-  'ui.top.seasonHint': (p: { year: number; days: number }) => `${p.year} · ${p.days} days to the awards (day 90 of the year)`,
+  'ui.top.seasonHint': (p: { year: number; days: number }) => `${p.year} · ${p.days} days to the awards`,
   'ui.top.mySpaceHint': 'Your space: rank, reputation, crew and trophies',
   'ui.start.versionHint': 'The version you are playing — worth mentioning in a bug report',
   'ui.cal.hint': 'Today, the year up to its awards night, and what is coming. Click for the list.',
@@ -184,7 +184,7 @@ export const ui = {
   'ui.chart.noTable': (p: { when: string }) =>
     `The nights before this one kept no table of the field, so the line starts at this year's awards — ${p.when}.`,
   'ui.chart.empty': (p: { when: string }) =>
-    `Nothing to plot yet. The first awards night is on day 90, ${p.when}, and every one after it adds a point.`,
+    `Nothing to plot yet. The first awards night is ${p.when}, and every one after it adds a point.`,
   'ui.chart.point': (p: { year: number; place: string; field: number; reputation: string }) =>
     `${p.year} — ${p.place} of ${p.field}, ${p.reputation} reputation`,
   'ui.space.allTime': 'all time',
@@ -271,7 +271,7 @@ export const ui = {
 
   // --- On the bench -------------------------------------------------------------------
   'ui.bench.empty': 'Nothing on the bench.',
-  'ui.bench.emptyHint': (p: { jobs: string }) => `Open ${p.jobs} at the bottom of the screen and design something.`,
+  'ui.bench.emptyHint': (p: { jobs: string }) => `Press ${p.jobs} at the bottom of the screen and design something.`,
   'ui.bench.partsMade': (p: { made: number; total: number }) => `${p.made}/${p.total} parts`,
   'ui.bench.waitingOnParts': 'waiting on parts',
   'ui.bench.resolving': 'resolving',

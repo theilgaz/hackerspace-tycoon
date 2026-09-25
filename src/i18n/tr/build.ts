@@ -10,7 +10,7 @@ import { ek } from '../turkish';
  */
 export const build: typeof en = {
   // --- The build menu --------------------------------------------------------
-  'build.bar.new': 'Yeni Proje',
+  'build.bar.new': 'Proje',
   'build.bar.newHint': 'Yeni bir proje tasarla ve ekibini seç',
   'build.bar.projects': 'Projeler',
   'build.bar.projectsHint': 'Süren, bekleyen ve biten her şey',
@@ -496,7 +496,7 @@ export const build: typeof en = {
     'Kasa, itibar ve süren işler burada. Daha büyük bir yerin kapısını itibar açar — açıldığında burada ' +
     'bir taşınma butonu çıkar, taşınıp taşınmamak senin kararın.',
   'tour.new.title': () => 'İlk işi başlat',
-  'tour.new.body': () => 'Her şey <b>+ Yeni Proje</b> ile başlar. Hadi bas, bekliyorum.',
+  'tour.new.body': () => 'Her şey <b>+ Proje</b> ile başlar. Hadi bas, bekliyorum.',
   'tour.wizard.title': () => 'Önce ekip, sonra tasarım',
   'tour.wizard.body': () =>
     'Bir tür ve bir iş seç, sonra ekibi: proje işin adıyla gelir, istersen değiştirirsin; işaretlediğin ' +

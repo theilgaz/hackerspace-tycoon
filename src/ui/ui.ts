@@ -982,7 +982,10 @@ export class UI {
           this.start.confirmDiscard = false;
           h.discardSave();
           break;
-        case 'new-open':
+        // Its own name: it used to share `new-open` with + New Project, and the first case
+        // in the switch won — the start screen's button opened the project wizard, hidden
+        // behind the start screen, and the new-run form never appeared.
+        case 'start-new':
           this.start.newOpen = true;
           this.startFocused = false; // the name box has just appeared — give it the caret
           this.rerender();
@@ -1959,7 +1962,7 @@ export class UI {
               : ''
           }
         </div>`
-            : `<button class="start-card start-new" data-action="new-open">
+            : `<button class="start-card start-new" data-action="start-new">
                 <span class="icon-chip" style="--tone:var(--primary)">${icon('plus')}</span>
                 <span class="start-new__text">
                   <span class="ui-title">${t('ui.start.new')}</span>
@@ -4618,7 +4621,7 @@ export class UI {
     if (!projects.length) {
       this.setHTML(this.left, 'left', `
         <p class="empty">${t('ui.bench.empty')}</p>
-        <p class="blurb">${t('ui.bench.emptyHint', { jobs: `<b>${t('build.bar.new')}</b>` })}</p>
+        <p class="blurb">${t('ui.bench.emptyHint', { jobs: `<b>+ ${t('build.bar.new')}</b>` })}</p>
         ${training}
       `);
       return;

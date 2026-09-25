@@ -99,14 +99,17 @@ export const RIVALS: RivalDef[] = [
     startMembers: 6,
     maxMembers: 14,
     startCash: 9000,
-    // Trimmed a touch (0.4 → 0.38, 68 → 65): about 9% less reputation over a run. Still the
-    // busiest space in the field and still the usual second place — just not a wall.
-    shipPace: 0.38,
-    repPerProject: 65,
-    cashPerProject: 350,
+    // **The real rival** (§3c): quick from the first week, so Space of the Year and Most
+    // Projects are a race on the first night, but slow to compound (`paceGrowth` 60,000), so
+    // it does not become a wall by the second year. Measured with Garaj below over 8 seeds:
+    // the player takes 6 of 40 first-night awards, none at all on 3 nights, and finishes
+    // first in 7 — by as little as a hundred reputation.
+    shipPace: 0.95,
+    repPerProject: 75,
+    cashPerProject: 150,
     cashPerDay: 130,
     repPerMember: 250,
-    paceGrowth: 4500,
+    paceGrowth: 60000,
     online: 0.6,
     builds: ['Greenhouse Irrigation Controller', 'Bazaar Scale Retrofit', 'School Robotics Kit'],
   },
@@ -131,18 +134,21 @@ export const RIVALS: RivalDef[] = [
   {
     id: 'garaj',
     name: 'Garaj',
-    blurb: 'A garage, a printer and a lot of enthusiasm. Ships something most weeks.',
+    blurb: 'A garage, a printer and a lot of enthusiasm. Ships something nearly every day, most of it small.',
     icon: 'printer',
     colour: '#c58ef0',
     startMembers: 5,
     maxMembers: 11,
     startCash: 11000,
-    shipPace: 0.38,
-    repPerProject: 54,
-    cashPerProject: 800,
+    // **The volume machine**: nearly two small builds a day for little name each, so Most
+    // Projects is contested without Garaj climbing the reputation table. Its cash per build is
+    // cut to match, or four times the builds would have made Deepest Pockets a formality.
+    shipPace: 1.45,
+    repPerProject: 12,
+    cashPerProject: 200,
     cashPerDay: 150,
     repPerMember: 300,
-    paceGrowth: 4500,
+    paceGrowth: 30000,
     online: 1.1,
     builds: ['Desk Fan Mod', 'Printed Phone Stand', 'LED Name Badge'],
   },

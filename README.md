@@ -19,7 +19,7 @@ that run overnight, burn through filament and fail at hour 19 of 22. Half of any
 a box, and assembly waits for it. Build a CNC router, and now you own a CNC.
 
 Runs in the browser, in English and Turkish. The version you are playing is on the start
-screen; the latest is **v0.2.0** ([devlog](./docs/itch/devlog/v0.2.0.md)).
+screen; the latest is **v0.3.0** ([devlog](./docs/itch/devlog/v0.3.0.md)).
 
 ## What a run looks like
 
@@ -50,7 +50,7 @@ screen; the latest is **v0.2.0** ([devlog](./docs/itch/devlog/v0.2.0.md)).
 - **The calendar under the clock** shows today, the monthly bill, a client's deadline, parts
   arriving, and the awards night at the end of the year.
 - **Seventeen other hackerspaces** — fourteen real ones, three invented underdogs — are getting
-  on with it. A year is 100 days, and on day 90 there is an awards night: most projects, biggest
+  on with it. A year is 60 days, and on day 55 there is an awards night: most projects, biggest
   crew, deepest pockets, space of the year and best project.
 - **Four leases**: the Garage, Unit 4B, the Warehouse, the Old Factory. Reputation unlocks the
   next one; signing it is your call, and the room you arranged comes with you. You may run an overdraft down to −₺30,000 — get back above

@@ -45,7 +45,7 @@ Move to a bigger space when your reputation opens the door, and take your layout
 
 - Four kinds of work (Software, Electronics, Communications, Mechanical) and fifty-two
   briefs, from a phone stand to a 3D-printed motorcycle, plus projects of your own
-- Seventeen rival hackerspaces and a yearly awards night with five trophies
+- Seventeen rival hackerspaces, and an awards night every sixty days with five trophies to fight for
 - A calendar with every deadline, bill and delivery
 - Four spaces to move through: the Garage, Unit 4B, the Warehouse and the Old Factory
 - English and Turkish
@@ -90,7 +90,7 @@ kapıyı açınca daha büyük bir yere taşın, düzenini de yanında götür.
 
 - Dört iş kolu (Yazılım, Elektronik, İletişim, Mekanik) ve bir telefon standından 3D baskı
   bir motosiklete kadar elli iki proje, artı kendi projelerin
-- On yedi rakip hackerspace ve beş kupalı yıllık ödül gecesi
+- On yedi rakip hackerspace ve her altmış günde bir, uğruna yarışılan beş kupalı ödül gecesi
 - Her teslim tarihini, faturayı ve teslimatı gösteren bir takvim
 - Dört mekân: Garaj, Unit 4B, Depo ve Eski Fabrika
 - İngilizce ve Türkçe

@@ -59,8 +59,13 @@ export const DIFFICULTIES: DifficultyDef[] = [
     intro: 'Two of you, one printer, and a landlord who wants rent on the first. Every new face is one you earned.',
     pressure: 3,
     accent: '#e2725b',
-    rivalPace: 1.0,
-    rivalRep: 1.0,
+    // The field had fallen behind a player whose own pipeline kept getting quicker — shorter
+    // builds, no project cap, a seventeen-hour owner, traits — and sat at 3.4× the best rival
+    // by day 30. Measured (`era-pace`, 8 seeds): ×1.2 is 2.2× on day 90 and 1.4× on day 210,
+    // first in 8 of 8. ×1.4 already put the player 1st-11th: pace and reputation compound
+    // together, so a small step here is a big one by day 200.
+    rivalPace: 1.2,
+    rivalRep: 1.2,
     startCash: 50000,
     startMembers: 2,
     recruitEvery: 35,

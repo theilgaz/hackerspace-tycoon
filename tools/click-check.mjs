@@ -1037,7 +1037,7 @@ await check('the overdraft ends a run two ways, and not before', async () => {
   return ok;
 });
 
-await check('a run survives a reload', async () => {
+await check('a run survives a reload, and a new one can be started beside it', async () => {
   // Roll a day so the autosave fires, then reload and carry on.
   await evaluate(`
     (() => {
@@ -1063,6 +1063,10 @@ await check('a run survives a reload', async () => {
   await send('Page.reload', { ignoreCache: true });
   await sleep(2500);
   const offered = await evaluate(`document.querySelectorAll('#start .start-card.resume').length === 1`);
+  // With a run on the table, "start a new hackerspace" unfolds the form — it once shared its
+  // action with + New Project and opened the project wizard behind the start screen instead.
+  await click('#start [data-action="start-new"]');
+  const unfolded = await evaluate(`!!document.querySelector('#start #space-name') && !document.querySelector('#modal .modal')`);
   await click('[data-action="continue"]');
   const after = await evaluate(`JSON.stringify({
     day: __store.getState().day,
@@ -1070,10 +1074,10 @@ await check('a run survives a reload', async () => {
     members: __game.sim.members.map((m) => m.id + ':' + m.employment).sort(),
     projects: __game.sim.projects.map((p) => p.defId + ':' + p.stage).sort(),
   })`);
-  if (!(saved && offered && before === after)) {
-    console.log(`      saved=${saved} offered=${offered} on disk: ${onDisk}\n      before ${before}\n      after  ${after}`);
+  if (!(saved && offered && unfolded && before === after)) {
+    console.log(`      saved=${saved} offered=${offered} new form unfolded=${unfolded} on disk: ${onDisk}\n      before ${before}\n      after  ${after}`);
   }
-  return saved && offered && before === after;
+  return saved && offered && unfolded && before === after;
 });
 
 await check('unchanged panels keep their DOM (build menu and top bar)', async () => {

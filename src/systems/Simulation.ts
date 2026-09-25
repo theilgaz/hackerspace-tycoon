@@ -3141,6 +3141,14 @@ export class Simulation {
     };
   }
 
+  /**
+   * Builds shipped, **print orders not counted** — they are a client's file on the printer,
+   * and counted in they handed the player Most Projects on volume alone.
+   */
+  private projectsShipped(): number {
+    return store.getState().shipped.filter((r) => !r.order).length;
+  }
+
   /** Everybody on one leaderboard, the player included. */
   scoreboard(): ScoreRow[] {
     const state = store.getState();
@@ -3175,8 +3183,8 @@ export class Simulation {
       name: state.identity?.name ?? 'Your space',
       icon: state.identity?.icon ?? 'wrench',
       colour: state.identity?.colour ?? '#5ecfc0',
-      projects: state.shippedCount,
-      projectsThisYear: state.shippedCount - this.yearStart.projects,
+      projects: this.projectsShipped(),
+      projectsThisYear: Math.max(0, this.projectsShipped() - this.yearStart.projects),
       members: this.members.length + 1, // you count
       cash: state.cash,
       reputation: state.reputation,
@@ -3284,7 +3292,7 @@ export class Simulation {
     const state = store.getState();
     this.yearStart = {
       day: this.day,
-      projects: state.shippedCount,
+      projects: this.projectsShipped(),
       reputation: state.reputation,
       upvotes: state.upvotes,
     };

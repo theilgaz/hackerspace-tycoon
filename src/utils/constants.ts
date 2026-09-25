@@ -1088,7 +1088,7 @@ export const RESALE = { share: 0.5 };
  * Days before an awards night on which the log says how the race stands. Close together at
  * the end on purpose: fifty days out is a reminder, five days out is a deadline.
  */
-export const AWARDS_COUNTDOWN = [50, 30, 20, 10, 5, 1];
+export const AWARDS_COUNTDOWN = [30, 10, 3, 1];
 
 /** Standing jobs (§3b). */
 export const ROLES = {

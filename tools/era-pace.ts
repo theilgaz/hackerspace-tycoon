@@ -18,6 +18,7 @@ import { STAGE_STATION, STATIONS, GRID, DOOR, IDLE_TILES, isBlocked } from '@/ma
 import { findPath } from '@/utils/grid';
 import { furnish } from './furnish';
 import { freshMarket } from '@/utils/market';
+import { CALENDAR } from '@/utils/format';
 import { CAMPAIGNS, campaignGain, campaignRange, campaignSales } from '@/utils/campaigns';
 import type { CampaignId } from '@/game/types';
 
@@ -103,7 +104,7 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
   const banked = new Set<string>();
   const advertised = new Set<string>();
   const ads = { runs: 0, spent: 0, gain: 0 };
-  // Past the first awards night (day 90) and well into the third year.
+  // Past the first awards night and well into the third year.
   while (sim.day <= DAYS) {
     if (sim.day !== eveDay) {
       eve = sim.scoreboard();
@@ -229,7 +230,8 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
             return `you ${pick(me)} / field ${v[0]}-${v[Math.floor(v.length / 2)]}-${v[v.length - 1]}`;
           };
           return `\n           votes ${spread((r) => r.upvotesThisYear)}  ·  best ${spread((r) => r.bestBuild?.score ?? 0)}` +
-            `  ·  rise% ${spread((r) => r.growthThisYear)}`;
+            `  ·  rise% ${spread((r) => r.growthThisYear)}` +
+            `\n           ships ${spread((r) => r.projectsThisYear)}  ·  space ${spread((r) => r.reputationThisYear)}`;
         })() +
         `\n           crews: ` +
         board
@@ -403,8 +405,13 @@ for (let seed = 1; seed <= SEEDS; seed += 1) {
 }
 console.log(`\n  ERA PACING (${DAYS} days, engaged player, ${LEVEL})\n` + rows.join('\n'));
 const wins = firstNight.reduce((n, line) => n + (line.match(/: US/g) ?? []).length, 0);
+// Which awards the player takes on the first night, and how many nights they take none —
+// the shape to tune the first night by, not only the total.
+const perNight = firstNight.map((line) => (line.match(/: US/g) ?? []).length);
+const byAward = AWARDS.map((a) => `${a.short} ${firstNight.filter((line) => line.includes(`${a.label}: US`)).length}`).join(' · ');
 console.log(
-  `\n  FIRST AWARDS NIGHT (day 90) — you took ${wins} of ${firstNight.length * AWARDS.length} across ${firstNight.length} runs\n` +
+  `\n  FIRST AWARDS NIGHT (day ${CALENDAR.awardsOnDay}) — you took ${wins} of ${firstNight.length * AWARDS.length} across ${firstNight.length} runs\n` +
+    `  per night ${perNight.join(' ')} · nights with none ${perNight.filter((n) => n === 0).length} · by award: ${byAward}\n` +
     firstNight.join('\n'),
 );
 const pct = (a: number[], q: number) => (a.length ? [...a].sort((x, y) => x - y)[Math.floor((a.length - 1) * q)] : 0);

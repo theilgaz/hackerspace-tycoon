@@ -70,9 +70,14 @@ export function dayName(day: number): string {
  */
 export const CALENDAR = {
   startYear: 2026,
-  daysPerYear: 100,
+  /**
+   * A year is sixty days (CLAUDE.md §3c). It was a hundred, with the night on day 90: at a
+   * couple of real minutes a day that put the first awards three and a half hours in and the
+   * second past seven — most players would never have seen a second night.
+   */
+  daysPerYear: 60,
   /** Day of the year (1-based) the awards are held on. */
-  awardsOnDay: 90,
+  awardsOnDay: 55,
 };
 
 /** The first day of year-day `index` (0-based) for a month, spreading 100 days over 12. */

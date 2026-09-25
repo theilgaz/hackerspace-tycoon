@@ -70,7 +70,7 @@ export const ui: typeof en = {
   'ui.top.allocated': 'projede',
   'ui.top.allocatedHint': 'herkes aynı anda yalnızca bir projede çalışabilir',
   'ui.top.reputationHint': 'teslim ettiğin her şeyden biriken ilgi',
-  'ui.top.seasonHint': (p) => `${p.year} · ödüllere ${p.days} gün (yılın 90. günü)`,
+  'ui.top.seasonHint': (p) => `${p.year} · ödüllere ${p.days} gün`,
   'ui.top.mySpaceHint': 'Mekânın: sıralama, itibar, ekip ve ödüller',
   'ui.start.versionHint': 'Oynadığın sürüm — hata bildirirken belirtmekte fayda var',
   'ui.cal.hint': 'Bugün, ödül gecesine kadar yıl ve yaklaşanlar. Liste için tıkla.',
@@ -175,7 +175,7 @@ export const ui: typeof en = {
   'ui.chart.noTable': (p) =>
     `Önceki gecelerin sıralaması kayıtlı değil; çizgi bu yılın ödülleriyle başlıyor — ${p.when}.`,
   'ui.chart.empty': (p) =>
-    `Henüz çizilecek bir şey yok. İlk ödül gecesi 90. günde, ${p.when}; sonraki her gece çizgiye bir nokta ekler.`,
+    `Henüz çizilecek bir şey yok. İlk ödül gecesi ${p.when}; sonraki her gece çizgiye bir nokta ekler.`,
   'ui.chart.point': (p) => `${p.year} — ${p.field} mekân arasında ${p.place}, ${p.reputation} itibar`,
   'ui.space.allTime': 'tüm zamanlar',
 
@@ -257,7 +257,7 @@ export const ui: typeof en = {
 
   // --- On the bench -------------------------------------------------------------------
   'ui.bench.empty': 'Tezgâh boş.',
-  'ui.bench.emptyHint': (p) => `Alttaki ${p.jobs} menüsünden bir şey tasarla.`,
+  'ui.bench.emptyHint': (p) => `Alttaki ${p.jobs} butonuna bas ve bir şey tasarla.`,
   'ui.bench.partsMade': (p) => `${p.made}/${p.total} parça`,
   'ui.bench.waitingOnParts': 'parça bekliyor',
   'ui.bench.resolving': 'sonuçlanıyor',

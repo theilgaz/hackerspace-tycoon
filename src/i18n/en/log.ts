@@ -23,7 +23,7 @@ function ordinal(n: number): string {
 export const log = {
   // --- The log ---------------------------------------------------------------
   'log.day1': 'Day 1. The garage smells of PLA and instant coffee.',
-  'log.pickSomething': 'Pick something to build — open + New Project.',
+  'log.pickSomething': 'Pick something to build — press + Project.',
   'log.noHours': 'No hours left today for that.',
 
   'log.amenity.needsEra': (p: { item: string; era: string }) => `The ${p.item} needs ${p.era}.`,
