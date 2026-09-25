@@ -73,6 +73,27 @@ function personColor(id: string): string {
 /** How far forward of a seat's centre somebody sits, so the chair back stays behind them. */
 const SIT_FORWARD = 0.08;
 
+/**
+ * A screen on a station (§4d): the code on a desk's monitors, the trace on a scope, the
+ * lesson at the Learning Station. **It is on while somebody works in the chair it serves,
+ * and asleep otherwise** — a room of glowing editors at three in the morning read as a room
+ * somebody forgot to leave. A bouncing screensaver on every empty desk was tried and was
+ * tiring to look at; an empty desk's screen is simply dark.
+ */
+interface ScreenRig {
+  /** The chairs it serves, as x along its station's own frame; each at `CHAIR_REACH`. */
+  chairs: number[];
+  /** What shows while somebody works at it. */
+  live: THREE.Object3D[];
+  /** The panel, dark when the screen is asleep, and what it wears when it is not. */
+  panel?: THREE.Mesh;
+  panelOn?: THREE.Material | THREE.Material[];
+  glow?: THREE.Object3D;
+  on?: boolean;
+}
+
+const SCREEN_OFF = new THREE.MeshStandardMaterial({ color: '#050607', flatShading: true });
+
 /** A colour a little darker (negative) or lighter — trousers under a shirt. */
 function shade(color: string, amount: number): string {
   return `#${new THREE.Color(color).offsetHSL(0, 0, amount * 0.5).getHexString()}`;
@@ -641,6 +662,12 @@ export class SpaceView {
     for (const object of [this.stationNodes.get(id), this.stationZones.get(id)]) {
       if (!object) continue;
       this.group.remove(object);
+      // A dark screen wears the shared off material; give it its own back before disposing,
+      // or every other screen that is off loses theirs.
+      object.traverse((child) => {
+        const rig = child.userData.screen as ScreenRig | undefined;
+        if (rig?.panel && rig.panelOn) rig.panel.material = rig.panelOn;
+      });
       object.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
         child.geometry.dispose();
@@ -843,6 +870,44 @@ export class SpaceView {
     }
   }
 
+  /**
+   * Every station screen to its state (`ScreenRig`): on for whoever is working in a chair it
+   * serves, asleep otherwise. A rig is found once per station node and kept on it; only a
+   * change of state touches the scene.
+   */
+  private updateScreens(runtime: RuntimeSnapshot) {
+    const everyone = [...runtime.members, ...(runtime.player ? [runtime.player] : [])];
+    const working = everyone
+      .filter((p) => p.present && p.activity === 'working' && p.seat && !p.seat.stand)
+      .map((p) => toWorld(p.seat!.x, p.seat!.y));
+    const at = new THREE.Vector3();
+    for (const node of this.stationNodes.values()) {
+      let rigs = node.userData.screens as { rig: ScreenRig; holder: THREE.Object3D }[] | undefined;
+      if (!rigs) {
+        rigs = [];
+        node.traverse((child) => {
+          if (child.userData.screen) rigs!.push({ rig: child.userData.screen as ScreenRig, holder: child });
+        });
+        node.userData.screens = rigs;
+      }
+      if (!rigs.length) continue;
+      node.updateMatrixWorld();
+      const model = node.children[0];
+      for (const { rig } of rigs) {
+        const on = rig.chairs.some((x) => {
+          model.localToWorld(at.set(x, 0, CHAIR_REACH));
+          return working.some((w) => Math.hypot(w.x - at.x, w.z - at.z) < 0.3);
+        });
+        if (on !== rig.on) {
+          rig.on = on;
+          for (const part of rig.live) part.visible = on;
+          if (rig.panel && rig.panelOn) rig.panel.material = on ? rig.panelOn : SCREEN_OFF;
+          if (rig.glow) rig.glow.visible = on;
+        }
+      }
+    }
+  }
+
   /** Status light + progress bar: the at-a-glance machine readout. */
   private addReadout(g: THREE.Group, id: string, height: number, head?: THREE.Object3D, bedTop?: number) {
     const light = new THREE.Mesh(
@@ -1028,8 +1093,8 @@ export class SpaceView {
       leg.position.set(sx, 0.31, sz);
       g.add(leg);
     }
-    g.add(this.monitor(-0.2, 0.38, 0.2, 0));
-    g.add(this.monitor(0.22, 0.38, -0.2, 3));
+    g.add(this.monitor(-0.2, 0.38, 0.2, 0, 0));
+    g.add(this.monitor(0.22, 0.38, -0.2, 3, 0));
     g.add(this.keyboard(0, 0.34));
     g.add(this.chair(0, CHAIR_REACH));
     return g;
@@ -1057,7 +1122,7 @@ export class SpaceView {
    * it, and a soft backlight halo. `seed` shifts which lines and which halo, so a bench of six
    * is not one screen copied six times. Faces +z, the user's side, like everything else.
    */
-  private monitor(x: number, width: number, turn = 0, seed = 0): THREE.Group {
+  private monitor(x: number, width: number, turn = 0, seed = 0, chairX = x): THREE.Group {
     const g = new THREE.Group();
     const h = width * 0.6;
     const face = new THREE.Group();
@@ -1081,6 +1146,8 @@ export class SpaceView {
     const inner = width - 0.06;
     const rows = 6;
     const step = (h - 0.07) / (rows - 1);
+    const code = new THREE.Group();
+    face.add(code);
     for (let i = 0; i < rows; i += 1) {
       const [indent, length, colour] = CODE[(i + seed) % CODE.length];
       const line = new THREE.Mesh(
@@ -1088,7 +1155,7 @@ export class SpaceView {
         new THREE.MeshStandardMaterial({ color: colour, emissive: colour, emissiveIntensity: 0.85, flatShading: true }),
       );
       line.position.set(-inner / 2 + inner * indent + (inner * length) / 2, h / 2 - 0.035 - i * step, 0.019);
-      face.add(line);
+      code.add(line);
     }
     const halo = ['#5ecfc0', '#c58ef0', '#5aa9f0'][seed % 3];
     const glow = new THREE.Mesh(
@@ -1097,6 +1164,7 @@ export class SpaceView {
     );
     glow.position.z = -0.019;
     face.add(glow);
+    face.userData.screen = { chairs: [chairX], live: [code], panel, panelOn: panel.material, glow } satisfies ScreenRig;
     const neck = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.16, 0.028), mat('#2b313b'));
     neck.position.set(0, 0.74, -0.03);
     g.add(neck);
@@ -1127,8 +1195,8 @@ export class SpaceView {
   private buildLongBench(): THREE.Group {
     const g = this.deskTop(1.9, 0.6, '#8a6a4a');
     [-0.6, 0, 0.6].forEach((x, i) => {
-      g.add(this.monitor(x - 0.1, 0.24, 0.15, i * 2));
-      g.add(this.monitor(x + 0.12, 0.24, -0.15, i * 2 + 5));
+      g.add(this.monitor(x - 0.1, 0.24, 0.15, i * 2, x));
+      g.add(this.monitor(x + 0.12, 0.24, -0.15, i * 2 + 5, x));
       g.add(this.keyboard(x, 0.28, ['#5ecfc0', '#c58ef0', '#5aa9f0'][i]));
       g.add(this.chair(x, CHAIR_REACH));
     });
@@ -1178,12 +1246,16 @@ export class SpaceView {
     const scope = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.18), mat('#d6d9de'));
     scope.position.set(0.26, top + 0.09, -0.16);
     g.add(scope);
+    // The scope's screen: a trace while somebody probes a board, dark while nobody does.
+    const screen = new THREE.Group();
+    screen.position.set(0.24, top + 0.1, -0.065);
+    g.add(screen);
     const trace = new THREE.Mesh(
       new THREE.BoxGeometry(0.18, 0.1, 0.01),
       new THREE.MeshStandardMaterial({ color: '#0d2b1c', emissive: '#3ddc84', emissiveIntensity: 0.5, flatShading: true }),
     );
-    trace.position.set(0.24, top + 0.1, -0.065);
-    g.add(trace);
+    screen.add(trace);
+    screen.userData.screen = { chairs: [0], live: [trace] } satisfies ScreenRig;
     g.add(this.solderIron(-0.3, top));
     // The fume arm reaching over the work.
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.3, 6), mat('#c9d1dd'));
@@ -1443,6 +1515,8 @@ export class SpaceView {
     );
     glow.position.z = -0.019;
     face.add(glow);
+    // The lesson plays while somebody sits at either chair.
+    face.userData.screen = { chairs: [-0.24, 0.24], live: [video], glow } satisfies ScreenRig;
     const neck = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.04), mat('#2b313b'));
     neck.position.set(0, top + 0.1, -0.16);
     g.add(neck);
@@ -3236,6 +3310,7 @@ export class SpaceView {
   update(runtime: RuntimeSnapshot, dt: number) {
     this.elapsed += dt;
     this.syncStations();
+    this.updateScreens(runtime);
 
     // Props that move on their own — fish, lava — carry a `userData.tick` and are handed
     // the clock here. A prop animates itself; the view only keeps time.

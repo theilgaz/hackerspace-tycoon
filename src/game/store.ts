@@ -188,7 +188,6 @@ export interface GameState {
   forgetStation: (id: string) => void;
   placeAmenity: (id: string, placement: Placement) => void;
   placeStation: (id: string, placement: StationPlacement) => void;
-  clearStationPlacements: () => void;
   setMoving: (id: string | null) => void;
   setBuildMode: (on: boolean) => void;
   setPlacingBuy: (item: BuyItem | null) => void;
@@ -442,9 +441,6 @@ export const store = createStore<GameState>((set, get) => ({
       stationPlacements: { ...s.stationPlacements, [id]: placement },
       amenityRev: s.amenityRev + 1,
     })),
-  // A lease carries everything to a new wall, so what you had arranged is no longer a fact
-  // about the room. `applyEraLayout` drops it on its side; this drops it on ours.
-  clearStationPlacements: () => set((s) => ({ stationPlacements: {}, amenityRev: s.amenityRev + 1 })),
   setMoving: (id) => set({ moving: id }),
   // Build mode stops the clock: arranging the room is not something to do while a print fails
   // behind you. Leaving it puts down whatever was held, forgets what was being placed, and

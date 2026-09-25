@@ -320,6 +320,12 @@ shelf — what a piece is *for*, not what kind of seat it is:
 | | Meeting Corner (two tiles) | 6 | 3,600 | kicks off 35% faster |
 | | Learning Station | 2 | 3,200 | courses — a screen playing a lesson (`courseTexture`, one canvas shared by every station), headphones at each seat |
 
+**The chairs of a long bench are not a corridor** (`seatTiles`). A long bench's crew walk
+to the one stand tile in front of its first tile and are drawn along the whole front — so
+the tile in front of its second tile carried chairs and people and was open floor, and
+anybody crossing the room walked straight through them. Those tiles are solid now,
+reserved like a stand, and a bench only goes where its whole chair row is free.
+
 **The Assembly Bench is the one three-tile piece**: twelve on their feet, two to a tile down
 each long side — or, against a wall, four to a tile down the open one, because six of them
 were otherwise drawn standing in it. It sits after the plain table on the shelf, so it is
@@ -1624,7 +1630,14 @@ four leases. **The Old Factory keeps three** — the dearest comforts in the gam
 **Big-Screen TV** on the back wall, an **Espresso Bar** and a **Nap Pod**.
 
 **The lights go out when the last person leaves** (`SceneManager.setLit`) and come on with
-the first one in; screens and lamps that glow on their own keep glowing. The console's
+the first one in; lamps that glow on their own keep glowing. **Station screens follow the
+room** (`ScreenRig`, `SpaceView.updateScreens`): a desk's monitors, the scope on a Maker
+Station and the lesson at the Learning Station are on while somebody works in the chair
+they serve, and asleep — dark — otherwise, the lights out included. A room of glowing
+editors at three in the morning read as a room somebody forgot to leave. A screensaver on
+every empty desk was tried and taken out: a room of bouncing marks was tiring to look at. Each screen knows its chairs in its
+station's frame and is matched to whoever is sitting there, so the three screens on a
+Long Hacker Bench switch one by one. The console's
 screen is off (black) whenever nobody is playing.
 
 **While somebody plays, the console shows a game** (`drawConsoleGame`): racing, football,
@@ -1723,9 +1736,9 @@ is the only place a person can stand to use it. So **turning a station means cho
 side they stand on** — the yaw is a request, the first legal quarter turn from it is what
 actually happens, and a tile with no legal side at all is not a place a bench can go. The
 painted bay and the model's facing both follow, because they are derived from the stand
-rather than stored. A lease wipes the arrangement: `applyEraLayout` has just carried every
-bench to a new wall in a bigger unit, and re-applying yesterday's tiles on top of that is
-the exact thing it exists to prevent.
+rather than stored. **A lease keeps the arrangement** (§8, `applyEraLayout(era, true)`):
+the room you left comes with you, only bigger. It used to be wiped and every bench carried
+to a fresh wall, which threw away the one thing about the room the player had decided.
 
 Five things that were wrong first, or nearly were:
 
@@ -1741,10 +1754,9 @@ Five things that were wrong first, or nearly were:
   use the solder bench does not block the bench, it *strands* it: the path finder never
   arrives and the station goes quiet with nothing on screen to explain why. The legal-tile
   test excludes every station's tile *and* its stand, the door, and the idle tiles.
-- **A placement has to survive a lease, or be dropped.** Signing for the warehouse moves
-  every bench, so a tile that was fine can end up under one. Placements are re-derived on
-  every layout change and an illegal one falls back to a default slot rather than leaving
-  the aquarium inside a table.
+- **A placement has to survive a lease, or be dropped.** A tile that was fine can end up
+  under a bench in the new room. Placements are re-derived on every layout change and an
+  illegal one falls back to a default slot rather than leaving the aquarium inside a table.
 - **Dots, not plates.** Filling every legal tile with a translucent square washed the whole
   floor teal, which says "the room is highlighted" rather than "these are the tiles". A
   small marker per tile reads as a placement grid and leaves the floor alone.
@@ -1761,11 +1773,16 @@ Five things that were wrong first, or nearly were:
 
 Two more, from getting the props on screen at all:
 
-- **A prop faces the camera, not the room.** An isometric camera only ever sees the +x and
-  +z faces, so a fridge turned to look up the room — which is what a station's stand tile
-  asks for — presents its back and is a dark box. These have no stand tile and nobody
-  operates them, so the only thing their facing decides is whether you can see what you
-  bought.
+- **A prop is used from open floor, and faces the camera when it can** (`propYaw`,
+  `useTiles`). The camera only ever sees the +x and +z faces, so the first version turned
+  every comfort to +z — and the derived slots run along the bottom row, the edge with no
+  wall drawn, so every sofa seat, fridge door and arcade screen there faced out past the
+  floor. Now the tile a comfort is used from — in front, or both ends of the table tennis
+  table — must be open floor that nothing else may take, stations included; the turn the
+  player asked for comes first, then +z, then +x (a bottom-row comfort turns sideways and
+  still shows the camera its front), then the two the camera cannot see.
+- **Every seat a station draws is on the floor** (`fitsAt`, `SEAT_MARGIN`). A long table on
+  the tile next to an edge drew its end chair past it.
 - **Their tiles are derived from the grid and rebuilt on a lease**, not cleared. The first
   version folded them into `BLOCKED`, which `applyEraLayout` wipes and refills from the
   stations — so the aquarium would have quietly stopped being solid the moment you moved.
@@ -1792,10 +1809,19 @@ unlocks it.** Moving costs ₺18,000 to Unit 4B and ₺52,000 to the Warehouse, 
 up with the space — so staying in the garage one more month to bank the cash is a real option.
 It used to happen *to* you on a day you had no say in.
 
-**Each lease is a bigger room.** The floor grows with it — 6x8 in the garage, 9x10 in Unit 4B,
-12x12 in the Warehouse — and `applyEraLayout` puts every bench back against a wall, because a
-station left on the tile it had in the garage would be standing in the middle of the
-warehouse. Station ids and types are preserved; only their tiles move. The floor and walls
+**Each lease is a bigger room, and the room you arranged comes with it.** The floor grows —
+6x8 in the garage, 9x10 in Unit 4B, 12x12 in the Warehouse, 15x14 in the Old Factory — to
+the right and toward the camera; the back and left walls stay where they were. So
+`grownOffset` keeps everything on its tile except what was within a tile of the right-hand
+or bottom edge (and not the left or back), which moves with that edge and stays as close
+to it as it was. Each piece goes on its carried tile, or the nearest that fits, or its
+derived slot; the result is saved as the arrangement (`stationPlacements`), comforts placed
+by hand follow the same rule, and the player changes whatever they like from there.
+It used to put every bench back against a wall in a derived layout, which was tidy and
+threw away the player's room. `setStationLayout` now lifts everything it is about to place
+before placing any of it: one at a time over the derived room, a bench's saved tile could be
+another bench's default, not yet moved, and it was quietly dropped — rare with a few moves
+by hand, certain once a lease saves the whole room. `npm run layout-check` holds both rules. The floor and walls
 repaint too: cold concrete, then warmer paint, then a pale poured floor. A move you paid
 ₺52,000 for should be visible the moment it happens, and the camera reframes to fit the new
 room unless the player has already set their own zoom.
@@ -2415,6 +2441,10 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
     door. Every stall in §4d was found with this, not by tuning.
   - `tools/furnish.ts` — the one furnishing rule every harness shares: buy the seat or table
     people are queueing for (`Simulation.workspaceNeeds`), when comfortably affordable.
+  - `npm run layout-check` — every lease furnished to the rafters: every seat on the floor,
+    no long bench's chair row walkable, no comfort facing off the floor; then each lease signed in turn: every piece carried with its
+    edge, and a reload giving back the same room. Each of the three rules was seen to fail
+    with it broken. Run it after touching `layout.ts`, `furniture.ts` or `amenities.ts`.
   - `npm run kickoff-check` — a crew of four, one kept at home: the kickoff must not move
     without them, must move once all four sit down, and everybody must leave the table when
     it is done. Seen to fail with the rule broken; run it after touching the kickoff.

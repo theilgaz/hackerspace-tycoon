@@ -16,6 +16,7 @@
     "era-pace": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/era-pace.js",
     "hype-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/hype-check.js",
     "kickoff-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/kickoff-check.js",
+    "layout-check": "vite build --config vite.headless.config.ts --logLevel error && node dist-headless/layout-check.js",
     "itch": "tsc --noEmit && vite build --base=./ --sourcemap=false --outDir=dist-itch --emptyOutDir && rm -f release/hackerspace-tycoon-web.zip && mkdir -p release && cd dist-itch && zip -qr ../release/hackerspace-tycoon-web.zip . && cd .. && ls -la release/hackerspace-tycoon-web.zip"
   },
   "dependencies": {

@@ -33,13 +33,14 @@ import {
   freeSlots,
   MACHINE_LABEL,
   applyEraLayout,
+  growAmenityPlacements,
   installStation,
   installedStations,
   removeStation,
   STATION_MAP,
   amenityMoveSafe,
   amenityTileFree,
-  pairYaw,
+  propYaw,
   GRID,
   isBlocked,
   leisureSpots,
@@ -602,8 +603,8 @@ export class Simulation {
       return true;
     }
     if (!amenityTileFree({ x, y }, id) || !amenityMoveSafe(id, { x, y })) return false;
-    // A table for two turns to whichever way round leaves both its ends open.
-    const turn = pairYaw(id, { x, y }, yaw) ?? yaw;
+    // A comfort turns to whichever way leaves what it is used from on open floor.
+    const turn = propYaw(id, { x, y }, yaw) ?? yaw;
     state.placeAmenity(id, { x, y, yaw: ((turn % 4) + 4) % 4 });
     return true;
   }
@@ -623,7 +624,7 @@ export class Simulation {
     // Sync the floor first, then check there is somewhere to stand it: a comfort paid for
     // that never appears in the room is the worst thing this shop could do.
     void this.comforts;
-    if (def.mount === 'floor' && !amenityRoom()) {
+    if (def.mount === 'floor' && !amenityRoom(id)) {
       this.log(msg('build.log.noFloor', { item: def.name }), 'warn');
       return false;
     }
@@ -2522,6 +2523,24 @@ export class Simulation {
     };
   }
 
+  /**
+   * The floor grows with the lease, **and the room you arranged comes with it** (§8): what
+   * was against the right-hand or bottom edge stays against it, the rest keeps its tile
+   * (`grownOffset`), and the result is saved as the arrangement for the player to change.
+   * Comforts placed by hand follow the same rule; the rest are re-derived on the new edges.
+   */
+  private growInto(era: number) {
+    const from = { width: GRID.width, height: GRID.height };
+    const placements = applyEraLayout(era, true);
+    const state = store.getState();
+    store.setState({
+      stationPlacements: placements,
+      amenityPlacements: growAmenityPlacements(state.amenityPlacements, from),
+      amenityRev: state.amenityRev + 1,
+    });
+    this.amenityRev = -1;
+  }
+
   /** Move up. The reputation opens the door; the removal van still has to be paid for. */
   signLease(): boolean {
     const next = this.nextLease();
@@ -2531,13 +2550,7 @@ export class Simulation {
       return false;
     }
     store.setState({ era: next.era });
-    // The floor grows with the lease, and everything goes back against a wall.
-    applyEraLayout(next.era);
-    // Stations moved, so an arrangement that was legal in the old room may not be in this
-    // one. Re-deriving drops anything that now sits under a bench back to a default slot,
-    // and the station arrangement goes entirely — every bench is against a new wall.
-    store.getState().clearStationPlacements();
-    this.amenityRev = -1;
+    this.growInto(next.era);
     this.log(msg('log.lease.signed', { space: next.def.name, cost: next.def.moveCost }), 'good');
     this.publish();
     return true;
@@ -2590,8 +2603,7 @@ export class Simulation {
       // `ERAS` is one-based by `era`, not by index — `ERAS.length - 1` clamped era 3 to 2.
       const next = Math.min(ERAS.length, Math.max(1, Math.round(era)));
       store.setState({ era: next });
-      applyEraLayout(next);
-      this.amenityRev = -1;
+      this.growInto(next);
       this.publish();
     },
   };

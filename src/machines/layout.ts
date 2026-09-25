@@ -164,6 +164,7 @@ function reservedTiles(): Set<string> {
   for (const station of STATIONS) {
     for (const tile of footprint(station)) out.add(key(tile));
     out.add(key(station.stand));
+    for (const tile of seatTiles(station)) out.add(key(tile));
     // A table's chairs are drawn on the tiles round it, so nothing else stands there.
     if (isTable(station.type)) {
       for (const tile of footprint(station)) {
@@ -183,10 +184,10 @@ export function amenityTileFree(tile: Tile, ignoreId?: string, placingId = ignor
   for (const [id, place] of amenityPlaces) {
     if (id !== ignoreId && place.x === tile.x && place.y === tile.y) return false;
   }
-  if (pairEndTaken(tile, ignoreId)) return false;
-  if (placingId && amenityDef(placingId)?.use?.pair) {
+  if (useTileTaken(tile, ignoreId)) return false;
+  if (placingId && amenityDef(placingId)?.use) {
     const was = amenityPlaces.get(placingId)?.yaw ?? 0;
-    if (pairYaw(placingId, tile, was) === null) return false;
+    if (propYaw(placingId, tile, was) === null) return false;
   }
   return true;
 }
@@ -215,35 +216,38 @@ function endTile(place: Tile, at: { x: number; y: number }): Tile {
 }
 
 /**
- * The tiles a game for two is played from — the two ends of the table tennis table —
- * or null for anything that is not played in pairs.
+ * **The tiles a comfort is used from**: both ends of the table tennis table, or the tile in
+ * front of anything else people use — the sofa's seat, the fridge's door, the arcade's
+ * screen. Null for what nobody uses (a plant, the duck).
  */
-function pairEnds(id: string, place: Placement): Tile[] | null {
+function useTiles(id: string, place: Placement): Tile[] | null {
   const use = amenityDef(id)?.use;
-  if (!use?.pair) return null;
+  if (!use) return null;
   const toGrid = propFrame(place);
-  return use.spots.map((spot) => endTile(place, toGrid(spot.x, spot.z)));
+  if (use.pair) return use.spots.map((spot) => endTile(place, toGrid(spot.x, spot.z)));
+  return [endTile(place, toGrid(0, 1))];
 }
 
 /**
- * **A table tennis table keeps both its ends clear.** The derived slots along the bottom
- * row put the next comfort a tile away — exactly where a player stands — and the rally was
- * played shoulder to shoulder along one side. Nothing else may stand on an end, and the
- * table itself only goes where both ends are floor.
+ * **Nothing stands where a comfort is used from.** The table tennis table's ends came first:
+ * the derived slots along the bottom row put the next comfort a tile away — exactly where a
+ * player stands — and the rally was played shoulder to shoulder along one side. The same
+ * holds for the tile in front of a sofa or a fridge.
  */
-function pairEndTaken(tile: Tile, ignoreId?: string): boolean {
+function useTileTaken(tile: Tile, ignoreId?: string): boolean {
   for (const [id, place] of amenityPlaces) {
     if (id === ignoreId) continue;
-    if (pairEnds(id, place)?.some((end) => end.x === tile.x && end.y === tile.y)) return true;
+    if (useTiles(id, place)?.some((end) => end.x === tile.x && end.y === tile.y)) return true;
   }
   return false;
 }
 
-function endsClear(id: string, place: Placement, ignoreId = id): boolean {
-  const ends = pairEnds(id, place);
+function useTilesClear(id: string, place: Placement, ignoreId = id): boolean {
+  const ends = useTiles(id, place);
   if (!ends) return true;
   return ends.every((end) => {
     if (!inBounds(end) || (end.x === DOOR.x && end.y === DOOR.y) || BLOCKED.has(key(end))) return false;
+    if (STATIONS.some((s) => s.stand.x === end.x && s.stand.y === end.y)) return false;
     for (const [other, at] of amenityPlaces) {
       if (other !== ignoreId && at.x === end.x && at.y === end.y) return false;
     }
@@ -252,13 +256,22 @@ function endsClear(id: string, place: Placement, ignoreId = id): boolean {
 }
 
 /**
- * The way round a pair table goes on this tile: the turn asked for if both its ends are
- * floor there, else a quarter turn, else null — the same "first legal turn" a bench uses.
+ * Which way a comfort goes on this tile: the turn asked for if what it is used from is open
+ * floor there, else the first turn that is — the same "first legal turn" a bench uses — or
+ * null if none is. **The used side never faces an edge of the floor.** Derived slots run
+ * along the bottom row and the right-hand column, the two edges with no wall drawn, and
+ * every comfort there used to face the camera — its seat, its door, its screen — out
+ * past the edge of the room. The turns after the one asked for go camera-facing first
+ * (+y, +x), so a comfort that can show the camera its front still does.
  */
-export function pairYaw(id: string, tile: Tile, yaw: number): number | null {
-  for (const turn of [0, 1]) {
-    const next = (((yaw + turn) % 4) + 4) % 4;
-    if (endsClear(id, { x: tile.x, y: tile.y, yaw: next })) return next;
+export function propYaw(id: string, tile: Tile, yaw: number): number | null {
+  const use = amenityDef(id)?.use;
+  if (!use) return ((yaw % 4) + 4) % 4;
+  const asked = ((yaw % 4) + 4) % 4;
+  // A table for two is the same either way round, so only two turns are different.
+  const turns = use.pair ? [asked, (asked + 1) % 4] : [asked, 0, 1, 3, 2];
+  for (const next of turns) {
+    if (useTilesClear(id, { x: tile.x, y: tile.y, yaw: next })) return next;
   }
   return null;
 }
@@ -276,9 +289,9 @@ function rebuildProps() {
     const at = key(place);
     if (place.x >= GRID.width || place.y >= GRID.height) return false;
     if (reserved.has(at) || PROPS.has(at)) return false;
-    if (pairEndTaken(place, id)) return false;
-    if (pairEnds(id, place)) {
-      const yaw = pairYaw(id, place, place.yaw);
+    if (useTileTaken(place, id)) return false;
+    if (amenityDef(id)?.use) {
+      const yaw = propYaw(id, place, place.yaw);
       if (yaw === null) return false;
       place = { ...place, yaw };
     }
@@ -328,13 +341,16 @@ function openTiles(): Tile[] {
 }
 
 /** Is there anywhere left to stand one more floor item? Asked before selling one. */
-export function amenityRoom(): boolean {
+export function amenityRoom(id?: string): boolean {
   const reserved = reservedTiles();
   for (const tile of openTiles()) {
     const at = key(tile);
-    if (reserved.has(at) || PROPS.has(at)) continue;
+    if (reserved.has(at) || PROPS.has(at) || useTileTaken(tile)) continue;
+    // A comfort people use needs a tile it can face without its front off the floor.
+    const yaw = id ? propYaw(id, tile, 0) : 0;
+    if (yaw === null) continue;
     PROPS.add(at);
-    const ok = everyStandReachable();
+    const ok = roomWalkable(id ? { id, place: { x: tile.x, y: tile.y, yaw } } : undefined);
     PROPS.delete(at);
     if (ok) return true;
   }
@@ -597,15 +613,37 @@ const inBounds = (tile: Tile) =>
 const covers = (station: StationDef, tile: Tile) =>
   footprint(station).some((t) => t.x === tile.x && t.y === tile.y);
 
+/** The pieces that seat a row of people down one long side. */
+const BENCHES = new Set(['long-bench', 'maker-bench', 'assembly-bench']);
+
+/**
+ * **The chairs of a long bench are not a corridor.** Its crew walk to the one stand tile in
+ * front of its first tile and are drawn along the whole front, in the chairs — so the tile in
+ * front of its second tile has chairs and people on it, and it used to be open floor: anybody
+ * crossing the room walked straight through them. Those tiles are solid now, and nothing else
+ * may be put on them.
+ */
+export function seatTiles(def: Pick<StationDef, 'tile' | 'stand' | 'span' | 'model'>): Tile[] {
+  if (!def.model || !BENCHES.has(def.model) || def.tile.x < 0) return [];
+  const front = { x: def.stand.x - def.tile.x, y: def.stand.y - def.tile.y };
+  return footprint(def)
+    .map((t) => ({ x: t.x + front.x, y: t.y + front.y }))
+    .filter((t) => t.x !== def.stand.x || t.y !== def.stand.y);
+}
+
+const onSeats = (station: StationDef, tile: Tile) =>
+  seatTiles(station).some((t) => t.x === tile.x && t.y === tile.y);
+
 /** Can this station's body go here? */
 export function stationTileFree(tile: Tile, ignoreId?: string): boolean {
   if (!inBounds(tile)) return false;
   if (DOOR.x === tile.x && DOOR.y === tile.y) return false;
   if (PROPS.has(key(tile))) return false;
+  if (useTileTaken(tile)) return false;
   return !STATIONS.some(
     (other) =>
       other.id !== ignoreId &&
-      (covers(other, tile) || (other.stand.x === tile.x && other.stand.y === tile.y)),
+      (covers(other, tile) || onSeats(other, tile) || (other.stand.x === tile.x && other.stand.y === tile.y)),
   );
 }
 
@@ -616,8 +654,8 @@ function standFree(tile: Tile, ignoreId: string): boolean {
   if (PROPS.has(key(tile))) return false;
   return !STATIONS.some(
     (other) =>
-      (other.id !== ignoreId && covers(other, tile)) ||
-      (other.id !== ignoreId && other.stand.x === tile.x && other.stand.y === tile.y),
+      other.id !== ignoreId &&
+      (covers(other, tile) || onSeats(other, tile) || (other.stand.x === tile.x && other.stand.y === tile.y)),
   );
 }
 
@@ -630,8 +668,24 @@ function fitsAt(def: StationDef, tile: Tile, yaw: number): { stand: Tile } | nul
   // Its own stand must not be under its own second tile.
   if (body.some((t) => t.x === stand.x && t.y === stand.y)) return null;
   if (!standFree(stand, def.id)) return null;
+  // A long bench's chairs need their row of floor too, and it cannot be anybody's way in.
+  const chairs = seatTiles({ ...def, tile, stand });
+  if (chairs.some((t) => !standFree(t, def.id) || useTileTaken(t) || body.some((b) => b.x === t.x && b.y === t.y))) return null;
+  // **Everybody it seats is on the floor.** A long table on the tile next to an edge drew
+  // its end chair past it, out where there is no wall and no floor.
+  const trial = { ...def, tile, stand };
+  const seats = Math.min(seatsOf(def) ?? 1, 12);
+  for (let i = 0; i < seats; i += 1) {
+    const at = seatPosition(trial, i);
+    if (at.x < -SEAT_MARGIN || at.y < -SEAT_MARGIN || at.x > GRID.width - 1 + SEAT_MARGIN || at.y > GRID.height - 1 + SEAT_MARGIN) {
+      return null;
+    }
+  }
   return { stand };
 }
+
+/** How far past the middle of an edge tile a seat may be drawn: inside its half of the tile. */
+const SEAT_MARGIN = 0.4;
 
 /** Is there any way this station could stand on this tile? What the move markers ask. */
 export function stationFits(id: string, tile: Tile): boolean {
@@ -681,7 +735,7 @@ export function amenityMoveSafe(id: string, tile: Tile): boolean {
   if (!previous) return true;
   PROPS.delete(key(previous));
   PROPS.add(key(tile));
-  const yaw = pairYaw(id, tile, previous.yaw) ?? previous.yaw;
+  const yaw = propYaw(id, tile, previous.yaw) ?? previous.yaw;
   const ok = roomWalkable({ id, place: { x: tile.x, y: tile.y, yaw } });
   PROPS.delete(key(tile));
   PROPS.add(key(previous));
@@ -710,7 +764,7 @@ function roomWalkable(moving?: { id: string; place: Placement }): boolean {
   if (!STATIONS.every((station) => station.stand.x < 0 || reached.has(key(station.stand)))) return false;
   const pairs = [...amenityPlaces].filter(([id]) => id !== moving?.id);
   if (moving) pairs.push([moving.id, moving.place]);
-  return pairs.every(([id, place]) => (pairEnds(id, place) ?? []).every((end) => reached.has(key(end))));
+  return pairs.every(([id, place]) => (useTiles(id, place) ?? []).every((end) => reached.has(key(end))));
 }
 
 /** Every floor tile somebody can walk to from the door. One flood fill, not a path per tile. */
@@ -739,16 +793,120 @@ export function stationPlacements(): Record<string, StationPlacement> {
 /** Put the saved arrangement back. Anything that no longer fits is quietly dropped. */
 export function setStationLayout(custom: Record<string, StationPlacement>) {
   stationCustom = {};
-  for (const [id, place] of Object.entries(custom ?? {})) {
-    if (!STATION_MAP[id]) continue;
-    placeStation(id, { x: place.x, y: place.y }, place.yaw);
+  const ids = Object.keys(custom ?? {}).filter((id) => STATION_MAP[id]);
+  if (!ids.length) {
+    rebuildBlocked();
+    return;
+  }
+  // **Everything named is lifted first, then put down in turn.** Placed one at a time over
+  // the derived room, a bench's saved tile could be where another bench's *default* stood,
+  // not yet moved — and it was quietly dropped. Rare while only a few pieces had been moved
+  // by hand; certain once a lease saves the whole room.
+  const derived = new Map(ids.map((id) => [id, { tile: { ...STATION_MAP[id].tile }, stand: { ...STATION_MAP[id].stand } }]));
+  liftAll(ids);
+  for (const id of ids) {
+    const def = STATION_MAP[id];
+    const place = custom[id];
+    if (settle(def, [{ tile: { x: place.x, y: place.y }, yaw: place.yaw }])) {
+      stationCustom[id] = { x: def.tile.x, y: def.tile.y, yaw: yawOf(def) };
+      continue;
+    }
+    const was = derived.get(id)!;
+    if (!settle(def, [{ tile: was.tile, yaw: yawOfStand(was.tile, was.stand) }])) seatFurniture(def);
   }
   rebuildBlocked();
 }
 
+/** Take these stations off the floor, and the comforts with them, to be laid down again. */
+function liftAll(ids: string[]) {
+  for (const id of ids) {
+    STATION_MAP[id].tile = { x: -1, y: -1 };
+    STATION_MAP[id].stand = { x: -1, y: -1 };
+  }
+  PROPS.clear();
+  amenityPlaces.clear();
+  blockStations();
+}
+
+const yawOfStand = (tile: Tile, stand: Tile): number =>
+  Math.max(0, STAND_OFFSET.findIndex((o) => o.x === stand.x - tile.x && o.y === stand.y - tile.y));
+
+/**
+ * Put a lifted station down at the first of these that fits — each tried with its own turn
+ * first, then the others — with every stand still reachable from the door. False if none do.
+ */
+function settle(def: StationDef, tries: { tile: Tile; yaw: number }[]): boolean {
+  for (const { tile, yaw } of tries) {
+    for (const turn of [0, 1, 3, 2]) {
+      const fit = fitsAt(def, tile, yaw + turn);
+      if (!fit) continue;
+      def.tile = { ...tile };
+      def.stand = fit.stand;
+      blockStations();
+      if (everyStandReachable()) return true;
+      def.tile = { x: -1, y: -1 };
+      def.stand = { x: -1, y: -1 };
+      blockStations();
+    }
+  }
+  return false;
+}
+
+/** Tiles in rings round `at`, nearest first — where to look when the exact tile is taken. */
+function around(at: Tile, radius: number): Tile[] {
+  const out: Tile[] = [];
+  for (let r = 0; r <= radius; r += 1) {
+    for (let dy = -r; dy <= r; dy += 1) {
+      for (let dx = -r; dx <= r; dx += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const tile = { x: at.x + dx, y: at.y + dy };
+        if (inBounds(tile)) out.push(tile);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * **A bigger room keeps the arrangement you had.** Something against the right-hand or the
+ * bottom edge of the old floor — or a tile off it — stays that close to the same edge of
+ * the new one; everything else keeps its tile, since the back and left walls are where they
+ * were. The new floor opens up to the right and toward the camera, and the room is the one
+ * you left, only bigger. A lease used to carry every bench to a fresh wall and throw the
+ * player's arrangement away.
+ */
+export function grownOffset(region: Tile[], from: { width: number; height: number }): Tile {
+  const left = region.some((t) => t.x <= 1);
+  const back = region.some((t) => t.y <= 1);
+  const right = !left && region.some((t) => t.x >= from.width - 2);
+  const bottom = !back && region.some((t) => t.y >= from.height - 2);
+  return { x: right ? GRID.width - from.width : 0, y: bottom ? GRID.height - from.height : 0 };
+}
+
+/** The comforts you placed by hand, carried into the bigger room by the same rule. */
+export function growAmenityPlacements(
+  placements: Record<string, Placement>,
+  from: { width: number; height: number },
+): Record<string, Placement> {
+  const out: Record<string, Placement> = {};
+  for (const [id, place] of Object.entries(placements)) {
+    // Hung on the back wall: the column is all there is, and the back wall does not move.
+    if (place.y < 0) {
+      out[id] = place;
+      continue;
+    }
+    const off = grownOffset([{ x: place.x, y: place.y }], from);
+    out[id] = { ...place, x: place.x + off.x, y: place.y + off.y };
+  }
+  return out;
+}
+
 function rebuildBlocked() {
   BLOCKED.clear();
-  for (const station of STATIONS) for (const tile of footprint(station)) BLOCKED.add(key(tile));
+  for (const station of STATIONS) {
+    for (const tile of footprint(station)) BLOCKED.add(key(tile));
+    for (const tile of seatTiles(station)) BLOCKED.add(key(tile));
+  }
   rebuildProps();
   deriveIdleTiles();
 }
@@ -903,7 +1061,10 @@ function tooCloseToATable(id: string, body: Tile[]): boolean {
 
 function blockStations() {
   BLOCKED.clear();
-  for (const station of STATIONS) for (const tile of footprint(station)) BLOCKED.add(key(tile));
+  for (const station of STATIONS) {
+    for (const tile of footprint(station)) BLOCKED.add(key(tile));
+    for (const tile of seatTiles(station)) BLOCKED.add(key(tile));
+  }
 }
 
 /** Can a new piece of this furniture go anywhere at all? The Build menu asks before selling. */
@@ -957,7 +1118,7 @@ export function newAmenityFitsAt(tile: Tile, id?: string): boolean {
   if (!amenityTileFree(tile, undefined, id)) return false;
   const at = key(tile);
   PROPS.add(at);
-  const yaw = id ? pairYaw(id, tile, 0) : null;
+  const yaw = id ? propYaw(id, tile, 0) : null;
   const ok = roomWalkable(id && yaw !== null ? { id, place: { x: tile.x, y: tile.y, yaw } } : undefined);
   PROPS.delete(at);
   return ok;
@@ -1079,7 +1240,12 @@ export const IDLE_TILES: Tile[] = [
  * unit means rearranging — a bench left on the tile it had in the garage would be standing in
  * the middle of the warehouse. Station **ids and types are preserved**; only their tiles move.
  */
-export function applyEraLayout(era: number) {
+export function applyEraLayout(era: number, grow = false): Record<string, StationPlacement> {
+  // Where everything stood, for a lease that keeps the arrangement (`grow`).
+  const from = { width: GRID.width, height: GRID.height };
+  const before = grow
+    ? STATIONS.filter((s) => s.tile.x >= 0).map((s) => ({ id: s.id, tile: { ...s.tile }, yaw: yawOf(s), region: [...footprint(s), s.stand] }))
+    : [];
   const size = ERA_SIZE[Math.min(ERA_SIZE.length - 1, Math.max(1, era))];
   GRID.width = size.width;
   GRID.height = size.height;
@@ -1138,11 +1304,34 @@ export function applyEraLayout(era: number) {
     seatFurniture(station);
   }
   rebuildBlocked();
-  // **A lease resets the room, and that includes anything you rearranged.** Everything has
-  // just been carried to a new wall in a bigger unit; putting the old tiles back on top of
-  // that would drop a bench into the middle of the warehouse, which is the exact thing
-  // `applyEraLayout` exists to prevent.
   stationCustom = {};
+  if (!grow) return {};
+  // The derived room above is the fallback; now each piece goes back where it was, carried
+  // with its edge (`grownOffset`), or as near to that as fits — or, failing that, to the
+  // derived place it was just given.
+  const derived = new Map(STATIONS.map((s) => [s.id, { tile: { ...s.tile }, stand: { ...s.stand } }]));
+  const settleDerived = (def: StationDef) => {
+    const was = derived.get(def.id)!;
+    return was.tile.x >= 0 && settle(def, [{ tile: was.tile, yaw: yawOfStand(was.tile, was.stand) }]);
+  };
+  liftAll(STATIONS.map((s) => s.id));
+  for (const was of before) {
+    const def = STATION_MAP[was.id];
+    if (!def) continue;
+    const off = grownOffset(was.region, from);
+    const target = { x: was.tile.x + off.x, y: was.tile.y + off.y };
+    if (!settle(def, around(target, 3).map((tile) => ({ tile, yaw: was.yaw }))) && !settleDerived(def)) seatFurniture(def);
+  }
+  // Anything that was off the floor before gets its derived place, or any room there is.
+  for (const def of STATIONS) {
+    if (def.tile.x < 0 && !settleDerived(def)) seatFurniture(def);
+  }
+  rebuildBlocked();
+  // The room as it now stands is the arrangement: it is saved, and the player's to change.
+  for (const def of STATIONS) {
+    if (def.tile.x >= 0) stationCustom[def.id] = { x: def.tile.x, y: def.tile.y, yaw: yawOf(def) };
+  }
+  return { ...stationCustom };
 }
 
 // The garage as it stands on day one, before anything has been moved or bought.
