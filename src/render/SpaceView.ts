@@ -1093,8 +1093,9 @@ export class SpaceView {
       leg.position.set(sx, 0.31, sz);
       g.add(leg);
     }
-    g.add(this.monitor(-0.2, 0.38, 0.2, 0, 0));
-    g.add(this.monitor(0.22, 0.38, -0.2, 3, 0));
+    // Two screens the width of the desk between them, angled in toward the chair.
+    g.add(this.monitor(-0.23, 0.46, 0.2, 0, 0));
+    g.add(this.monitor(0.24, 0.46, -0.2, 3, 0));
     g.add(this.keyboard(0, 0.34));
     g.add(this.chair(0, CHAIR_REACH));
     return g;
@@ -1132,13 +1133,31 @@ export class SpaceView {
     const bezel = new THREE.Mesh(new THREE.BoxGeometry(width, h, 0.03), mat('#15181d'));
     bezel.castShadow = true;
     face.add(bezel);
+    this.screenFace(face, width, h, seed, chairX, 0.016);
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.16, 0.028), mat('#2b313b'));
+    neck.position.set(0, 0.74, -0.03);
+    g.add(neck);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.012, 0.09), mat('#2b313b'));
+    foot.position.set(0, 0.667, -0.02);
+    g.add(foot);
+    g.position.set(x, 0, -0.17);
+    g.rotation.y = turn;
+    return g;
+  }
+
+  /**
+   * What is on a screen, onto the front of `face` at depth `z`: a near-black panel, a few
+   * lines of lit code, a soft backlight halo behind — and the `ScreenRig` that switches it
+   * with the chair it serves. Shared by the monitors and the laptop, so they sleep alike.
+   */
+  private screenFace(face: THREE.Group, width: number, h: number, seed: number, chairX: number, z: number, halo = true) {
     const panel = new THREE.Mesh(
       new THREE.BoxGeometry(width - 0.024, h - 0.024, 0.004),
       new THREE.MeshStandardMaterial({ color: '#08161b', emissive: '#062028', flatShading: true }),
     );
-    panel.position.z = 0.016;
+    panel.position.z = z;
     face.add(panel);
-    // Code: indent, length, colour — an editor, not a screensaver.
+    // Code: indent, length, colour — an editor.
     const CODE: [number, number, string][] = [
       [0, 0.55, '#5ecfc0'], [0.1, 0.42, '#c58ef0'], [0.1, 0.62, '#3ddc84'], [0.2, 0.3, '#f0b429'],
       [0.2, 0.48, '#3ddc84'], [0.1, 0.22, '#c58ef0'], [0, 0.35, '#5ecfc0'], [0.1, 0.5, '#3ddc84'],
@@ -1154,25 +1173,60 @@ export class SpaceView {
         new THREE.BoxGeometry(inner * length, 0.011, 0.003),
         new THREE.MeshStandardMaterial({ color: colour, emissive: colour, emissiveIntensity: 0.85, flatShading: true }),
       );
-      line.position.set(-inner / 2 + inner * indent + (inner * length) / 2, h / 2 - 0.035 - i * step, 0.019);
+      line.position.set(-inner / 2 + inner * indent + (inner * length) / 2, h / 2 - 0.035 - i * step, z + 0.003);
       code.add(line);
     }
-    const halo = ['#5ecfc0', '#c58ef0', '#5aa9f0'][seed % 3];
-    const glow = new THREE.Mesh(
-      new THREE.BoxGeometry(width + 0.03, h + 0.03, 0.004),
-      new THREE.MeshStandardMaterial({ color: halo, emissive: halo, emissiveIntensity: 0.45, transparent: true, opacity: 0.55, flatShading: true }),
-    );
-    glow.position.z = -0.019;
-    face.add(glow);
+    let glow: THREE.Mesh | undefined;
+    if (halo) {
+      const tone = ['#5ecfc0', '#c58ef0', '#5aa9f0'][seed % 3];
+      glow = new THREE.Mesh(
+        new THREE.BoxGeometry(width + 0.03, h + 0.03, 0.004),
+        new THREE.MeshStandardMaterial({ color: tone, emissive: tone, emissiveIntensity: 0.45, transparent: true, opacity: 0.55, flatShading: true }),
+      );
+      glow.position.z = -0.019;
+      face.add(glow);
+    }
     face.userData.screen = { chairs: [chairX], live: [code], panel, panelOn: panel.material, glow } satisfies ScreenRig;
-    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.16, 0.028), mat('#2b313b'));
-    neck.position.set(0, 0.74, -0.03);
-    g.add(neck);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.012, 0.09), mat('#2b313b'));
-    foot.position.set(0, 0.667, -0.02);
-    g.add(foot);
-    g.position.set(x, 0, -0.17);
-    g.rotation.y = turn;
+  }
+
+  /**
+   * A MacBook Pro, open: a space-grey base with a black keyboard well and a trackpad, and
+   * the lid tipped back on its hinge with the screen in a thin black bezel. The one seat on
+   * the Long Hacker Bench that brought its own machine.
+   */
+  private laptop(x: number, seed: number, chairX = x): THREE.Group {
+    const g = new THREE.Group();
+    const aluminium = mat('#9da3ab');
+    const top = 0.66;
+    const w = 0.36;
+    const d = 0.25;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(w, 0.014, d), aluminium);
+    base.position.set(0, top + 0.007, 0);
+    base.castShadow = true;
+    g.add(base);
+    const keys = new THREE.Mesh(new THREE.BoxGeometry(w - 0.04, 0.003, 0.1), mat('#1b1e23'));
+    keys.position.set(0, top + 0.015, -0.03);
+    g.add(keys);
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.002, 0.075), mat('#b4b9c0'));
+    pad.position.set(0, top + 0.015, 0.07);
+    g.add(pad);
+    // The lid, hinged at the back edge of the base and tipped back past upright.
+    const hinge = new THREE.Group();
+    hinge.position.set(0, top + 0.014, -d / 2);
+    hinge.rotation.x = -0.28;
+    g.add(hinge);
+    const h = 0.23;
+    const face = new THREE.Group();
+    face.position.set(0, h / 2, 0);
+    hinge.add(face);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.01), aluminium);
+    lid.castShadow = true;
+    face.add(lid);
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(w - 0.01, h - 0.01, 0.002), mat('#0b0c0e'));
+    bezel.position.z = 0.006;
+    face.add(bezel);
+    this.screenFace(face, w - 0.02, h - 0.02, seed, chairX, 0.008, false);
+    g.position.set(x, 0, 0.02);
     return g;
   }
 
@@ -1191,13 +1245,17 @@ export class SpaceView {
     return g;
   }
 
-  /** Long Hacker Bench: one long desk across two tiles, three pairs of screens, three chairs. */
+  /** Long Hacker Bench: one long desk across two tiles, a screen a seat — one of them a MacBook — and three chairs. */
   private buildLongBench(): THREE.Group {
     const g = this.deskTop(1.9, 0.6, '#8a6a4a');
     [-0.6, 0, 0.6].forEach((x, i) => {
-      g.add(this.monitor(x - 0.1, 0.24, 0.15, i * 2, x));
-      g.add(this.monitor(x + 0.12, 0.24, -0.15, i * 2 + 5, x));
-      g.add(this.keyboard(x, 0.28, ['#5ecfc0', '#c58ef0', '#5aa9f0'][i]));
+      // One screen a seat, and the middle seat brought its own MacBook.
+      if (i === 1) {
+        g.add(this.laptop(x, i * 2));
+      } else {
+        g.add(this.monitor(x, 0.44, 0, i * 2, x));
+        g.add(this.keyboard(x, 0.3, ['#5ecfc0', '#c58ef0', '#5aa9f0'][i]));
+      }
       g.add(this.chair(x, CHAIR_REACH));
     });
     // The cables everybody means to tidy.
