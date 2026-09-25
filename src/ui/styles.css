@@ -1184,6 +1184,8 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
   color: var(--muted-foreground);
 }
 .start-wordmark .ui-icon { width: 15px; height: 15px; color: var(--primary); }
+/* Which build this is — for a bug report, not for show. */
+.start-version { align-self: center; margin: -14px 0 2px; font-family: var(--font); font-size: 10.5px; font-weight: 500; letter-spacing: 0.08em; color: var(--subtle-foreground); }
 
 .start-card {
   width: 100%;

@@ -75,6 +75,7 @@ export const ui = {
   'ui.top.reputationHint': "cumulative hype from everything you've shipped",
   'ui.top.seasonHint': (p: { year: number; days: number }) => `${p.year} · ${p.days} days to the awards (day 90 of the year)`,
   'ui.top.mySpaceHint': 'Your space: rank, reputation, crew and trophies',
+  'ui.start.versionHint': 'The version you are playing — worth mentioning in a bug report',
   'ui.cal.hint': 'Today, the year up to its awards night, and what is coming. Click for the list.',
   'ui.cal.title': 'Coming up',
   'ui.cal.today': 'Today',

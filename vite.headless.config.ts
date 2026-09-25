@@ -1,11 +1,15 @@
 import { defineConfig } from 'vite';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
+
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 
 /** Builds the sim + CLI harnesses for headless balance runs (CLAUDE.md §11). */
 export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
+  define: { __APP_VERSION__: JSON.stringify(version) },
   build: {
     ssr: true,
     outDir: 'dist-headless',

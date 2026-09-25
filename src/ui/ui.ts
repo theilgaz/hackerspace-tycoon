@@ -99,6 +99,7 @@ import { FURNITURE, FURNITURE_MAP, furnitureOf, furnitureSeats, type FurnitureCo
 import { CATEGORY_ICON, icon, type IconName } from './icons';
 import { AWARDS, LOGOS, NAME_SUGGESTIONS, RIVAL_MAP } from '@/utils/rivals';
 import type { DifficultyKey } from '@/utils/difficulty';
+import { VERSION } from '@/version';
 import { ECONOMY } from '@/utils/economy';
 import { CAMPAIGN, CAMPAIGNS, CAMPAIGN_MAP, REPORT, campaignGain, campaignRange, campaignSales } from '@/utils/campaigns';
 import { MACHINE_LABEL, STATIONS, STATION_MAP } from '@/machines/layout';
@@ -1901,6 +1902,7 @@ export class UI {
         <div class="start-wordmark">
           ${icon('wrench', 'ui-icon')}<span>Hackerspace Tycoon</span>
         </div>
+        <div class="start-version" title="${esc(t('ui.start.versionHint'))}">v${VERSION}</div>
         ${this.languagePicker()}
         ${saved ? this.resumeCard(saved) : ''}
         ${

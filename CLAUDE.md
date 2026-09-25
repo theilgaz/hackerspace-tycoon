@@ -651,7 +651,9 @@ which of eight badges it wears; nothing ticks until the doors open. The name and
 you into the top bar and onto the leaderboard. Both arrive pre-filled with a suggestion — an
 empty field under a dead **Open the doors** button is a poor first frame, and the field is
 selected so typing replaces it. The title and the button update as you type, without a
-re-render that would replace the input under the caret.
+re-render that would replace the input under the caret. **The version is on the start
+screen** beside the wordmark (`src/version.ts`, injected from package.json by Vite), so a
+player reporting a bug can say which build they were on.
 
 **A setting has to state its terms.** The three difficulty cards used to be stacked boxes of
 different heights carrying flavour text only, so the one thing the choice actually changes for
@@ -2269,6 +2271,18 @@ is visible rather than rediscovered:
 
 ## 14. Development Priority
 
+**Phase 1.19 (v0.2.0) — a report for every build, a room that keeps its shape — BUILT.**
+Bigger builds ship with a report against the pitch's own forecast (`forecastBuild`, one
+function for the wizard and the sim), and can be advertised from it — campaigns multiply
+the build's hype and pay back in sales, the YouTube review tears a weak build apart (§4c).
+The wizard's days count a failed test. A crew over five kicks off with any five seated.
+The Assembly Bench seats twelve; the Build shelf scrolls sideways; a purchase lets go once
+placed; the Learning Station plays a lesson; hacker screens are bigger, one a seat on the
+long bench, with a MacBook in the middle, and every screen sleeps unless somebody works at
+it. Nothing is used from off the floor, a long bench's chair row is not a corridor, and a
+bigger lease keeps the arrangement (§8, `npm run layout-check`). The space's name opens its
+own standings page. The version is on the start screen, and releases follow §15.
+
 **Phase 1.18 — itch.io playtest fixes, traits that act, and a calendar — BUILT.**
 From the first playtest on itch.io, on a MacBook: the room lines up on Retina screens (§11's
 canvas rule), Build mode has an **Exit Build** button and right-click puts back what is held
@@ -2411,7 +2425,18 @@ Phase 8 — Save/load, run-over post-mortem, balance pass, audio, polish.
 
 - This directory is the git root. Working branch: `development`.
 - Commands: `npm run dev` (http://localhost:5174), `npm run build` (tsc + vite build),
-  `npm run typecheck`.
+  `npm run typecheck`, `npm run itch` (the web build zipped for itch.io, named by version).
+- **Releasing to itch.io — every upload, no exceptions:**
+  1. Bump `version` in `package.json` — it is the number on the start screen and in the zip's
+     name. Minor for features (0.2.0 → 0.3.0), patch for fixes only (0.2.0 → 0.2.1).
+  2. Write the devlog as `docs/itch/devlog/v<version>.md`, English then Turkish, covering
+     every commit since the last one (`git log v<previous>..HEAD`). Plain words for players,
+     not commit messages: what changed for them, and why.
+  3. Bring `docs/itch/description.md` (the itch page text) up to date if the game changed.
+  4. Keep README.md and this file true to the build — a feature shipped is a feature
+     described.
+  5. `npm run itch`, commit, tag `v<version>`, upload the zip.
+  v0.1.0 was the first web build (`d2c8b91`); v0.2.0 is the first with a version shown.
 - **Balance harnesses** (these are the reason the sim stays free of `three` and the DOM):
   - `npm run sim-check` — replays full playthroughs under three player archetypes and fails
     if any run cannot ship. Run it after touching anything in `constants.ts` or the sim.

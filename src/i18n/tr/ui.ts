@@ -72,6 +72,7 @@ export const ui: typeof en = {
   'ui.top.reputationHint': 'teslim ettiğin her şeyden biriken ilgi',
   'ui.top.seasonHint': (p) => `${p.year} · ödüllere ${p.days} gün (yılın 90. günü)`,
   'ui.top.mySpaceHint': 'Mekânın: sıralama, itibar, ekip ve ödüller',
+  'ui.start.versionHint': 'Oynadığın sürüm — hata bildirirken belirtmekte fayda var',
   'ui.cal.hint': 'Bugün, ödül gecesine kadar yıl ve yaklaşanlar. Liste için tıkla.',
   'ui.cal.title': 'Yaklaşanlar',
   'ui.cal.today': 'Bugün',

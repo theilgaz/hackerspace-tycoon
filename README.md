@@ -18,7 +18,8 @@ Meanwhile the work is physical. Fabrication isn't a progress bar — it's jobs q
 that run overnight, burn through filament and fail at hour 19 of 22. Half of any build arrives in
 a box, and assembly waits for it. Build a CNC router, and now you own a CNC.
 
-Runs in the browser, in English and Turkish.
+Runs in the browser, in English and Turkish. The version you are playing is on the start
+screen; the latest is **v0.2.0** ([devlog](./docs/itch/devlog/v0.2.0.md)).
 
 ## What a run looks like
 
@@ -38,7 +39,12 @@ Runs in the browser, in English and Turkish.
   has one more idea, a Mentor lifts the whole crew, a Night Owl watches the prints, a Ghost
   quietly stops turning up. When one of them does something, you hear about it.
 - **Build mode** is where the room happens: desks, benches, printers, a coffee machine, a table
-  tennis table. Comforts raise mood, which is what gets people through the door.
+  tennis table. Comforts raise mood, which is what gets people through the door. Screens
+  are on only while somebody works at them.
+- **Every bigger build ships with a report**: quality, pay, reputation and days against what
+  the design promised, and whether the client got what they asked for. Advertise it from
+  there — a great new build pays back its campaign in sales, a weak one gets torn apart by
+  an honest YouTube reviewer.
 - **Socials** turns work into attention — and what you claim has to be backed by the work, or
   the room turns on you. Attention fades a little every day.
 - **The calendar under the clock** shows today, the monthly bill, a client's deadline, parts
@@ -47,7 +53,7 @@ Runs in the browser, in English and Turkish.
   on with it. A year is 100 days, and on day 90 there is an awards night: most projects, biggest
   crew, deepest pockets, space of the year and best project.
 - **Four leases**: the Garage, Unit 4B, the Warehouse, the Old Factory. Reputation unlocks the
-  next one; signing it is your call. You may run an overdraft down to −₺30,000 — get back above
+  next one; signing it is your call, and the room you arranged comes with you. You may run an overdraft down to −₺30,000 — get back above
   zero within 60 days, or the lease is gone.
 
 ## Development
@@ -59,8 +65,12 @@ npm install
 npm run dev            # http://localhost:5174
 npm run typecheck
 npm run build
-npm run itch           # release/hackerspace-tycoon-web.zip, ready for itch.io's HTML upload
+npm run itch           # release/hackerspace-tycoon-web-v<version>.zip, for itch.io's HTML upload
 ```
+
+**Releasing to itch.io:** bump `version` in `package.json` (it is what the start screen shows),
+write the devlog in `docs/itch/devlog/v<version>.md`, bring `docs/itch/description.md` up to
+date if the game changed, then `npm run itch` and upload the zip.
 
 The simulation imports neither `three` nor the DOM, so a whole playthrough replays in Node.
 That is what makes the balance testable:
@@ -70,7 +80,8 @@ npm run sim-check      # full playthroughs under three player archetypes
 npm run era-pace       # 8 seeds by default: era pacing, awards nights, final standings
 npm run project-times  # every brief against its declared length tier
 npm run hype-check     # does posting pay for the hour it costs?
-npm run kickoff-check  # a kickoff needs the whole crew at once
+npm run kickoff-check  # a kickoff needs the whole crew (or five of a big one)
+npm run layout-check   # nothing is used from off the floor; a bigger room keeps the layout
 npm run time-budget    # where a volunteer's day actually goes
 npm run click-check    # drives the real UI with real mouse events (needs `npm run dev`)
 ```
