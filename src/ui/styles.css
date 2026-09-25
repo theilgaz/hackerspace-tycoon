@@ -54,7 +54,10 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-#scene { position: fixed; inset: 0; display: block; }
+/* A canvas is a replaced element: `inset: 0` alone does not stretch it, it keeps its drawing
+   buffer's size — twice the window on a Retina screen — and the room slid off to the
+   bottom-right while picking and labels stayed on the window. Size it outright. */
+#scene { position: fixed; inset: 0; display: block; width: 100%; height: 100%; }
 #labels { position: fixed; inset: 0; pointer-events: none; }
 #ui { position: fixed; inset: 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
@@ -1589,6 +1592,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 }
 .label--station b { font-family: var(--sans); font-size: 11.5px; font-weight: 600; }
 .label--station span { font-size: 10px; color: var(--muted-foreground); }
+.label--station span.bad { color: var(--destructive); }
 
 /* --- the monthly books --------------------------------------------------- */
 
@@ -3025,7 +3029,7 @@ button.step:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px;
 .wing-card__taste { margin-top: auto; font-size: 11px; color: var(--muted-foreground); }
 
 /* The build's name, required (design §6.2), and the own-project card on the brief step. */
-.np-name { margin-top: 12px; }
+.np-name { display: flex; flex-direction: column; gap: 5px; margin: 0 0 10px; }
 .np-name .ui-input { flex: 1; }
 .ui-input {
   height: 32px; padding: 0 10px; background: var(--card); color: var(--foreground);

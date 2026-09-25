@@ -177,11 +177,16 @@ function reservedTiles(): Set<string> {
 }
 
 /** Can this comfort stand here? Used by the room's move mode to light the legal tiles. */
-export function amenityTileFree(tile: Tile, ignoreId?: string): boolean {
+export function amenityTileFree(tile: Tile, ignoreId?: string, placingId = ignoreId): boolean {
   if (tile.x < 0 || tile.y < 0 || tile.x >= GRID.width || tile.y >= GRID.height) return false;
   if (reservedTiles().has(key(tile))) return false;
   for (const [id, place] of amenityPlaces) {
     if (id !== ignoreId && place.x === tile.x && place.y === tile.y) return false;
+  }
+  if (pairEndTaken(tile, ignoreId)) return false;
+  if (placingId && amenityDef(placingId)?.use?.pair) {
+    const was = amenityPlaces.get(placingId)?.yaw ?? 0;
+    if (pairYaw(placingId, tile, was) === null) return false;
   }
   return true;
 }
@@ -189,6 +194,73 @@ export function amenityTileFree(tile: Tile, ignoreId?: string): boolean {
 /** Where a given comfort currently stands, custom or derived. */
 export function amenityPlacement(id: string): Placement | undefined {
   return amenityPlaces.get(id);
+}
+
+/**
+ * A prop's own frame into the grid's: the renderer turns the node by `rotation.y`, and the
+ * grid's x and y are the world's x and z.
+ */
+function propFrame(place: Placement) {
+  const turn = (place.yaw * Math.PI) / 2;
+  const c = Math.cos(turn);
+  const s = Math.sin(turn);
+  return (x: number, z: number) => ({ x: place.x + x * c + z * s, y: place.y - x * s + z * c });
+}
+
+/** The tile past the edge of a one-tile prop in the direction of `at`. */
+function endTile(place: Tile, at: { x: number; y: number }): Tile {
+  const dx = at.x - place.x;
+  const dy = at.y - place.y;
+  return Math.abs(dx) >= Math.abs(dy) ? { x: place.x + Math.sign(dx), y: place.y } : { x: place.x, y: place.y + Math.sign(dy) };
+}
+
+/**
+ * The tiles a game for two is played from — the two ends of the table tennis table —
+ * or null for anything that is not played in pairs.
+ */
+function pairEnds(id: string, place: Placement): Tile[] | null {
+  const use = amenityDef(id)?.use;
+  if (!use?.pair) return null;
+  const toGrid = propFrame(place);
+  return use.spots.map((spot) => endTile(place, toGrid(spot.x, spot.z)));
+}
+
+/**
+ * **A table tennis table keeps both its ends clear.** The derived slots along the bottom
+ * row put the next comfort a tile away — exactly where a player stands — and the rally was
+ * played shoulder to shoulder along one side. Nothing else may stand on an end, and the
+ * table itself only goes where both ends are floor.
+ */
+function pairEndTaken(tile: Tile, ignoreId?: string): boolean {
+  for (const [id, place] of amenityPlaces) {
+    if (id === ignoreId) continue;
+    if (pairEnds(id, place)?.some((end) => end.x === tile.x && end.y === tile.y)) return true;
+  }
+  return false;
+}
+
+function endsClear(id: string, place: Placement, ignoreId = id): boolean {
+  const ends = pairEnds(id, place);
+  if (!ends) return true;
+  return ends.every((end) => {
+    if (!inBounds(end) || (end.x === DOOR.x && end.y === DOOR.y) || BLOCKED.has(key(end))) return false;
+    for (const [other, at] of amenityPlaces) {
+      if (other !== ignoreId && at.x === end.x && at.y === end.y) return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * The way round a pair table goes on this tile: the turn asked for if both its ends are
+ * floor there, else a quarter turn, else null — the same "first legal turn" a bench uses.
+ */
+export function pairYaw(id: string, tile: Tile, yaw: number): number | null {
+  for (const turn of [0, 1]) {
+    const next = (((yaw + turn) % 4) + 4) % 4;
+    if (endsClear(id, { x: tile.x, y: tile.y, yaw: next })) return next;
+  }
+  return null;
 }
 
 function rebuildProps() {
@@ -204,8 +276,14 @@ function rebuildProps() {
     const at = key(place);
     if (place.x >= GRID.width || place.y >= GRID.height) return false;
     if (reserved.has(at) || PROPS.has(at)) return false;
+    if (pairEndTaken(place, id)) return false;
+    if (pairEnds(id, place)) {
+      const yaw = pairYaw(id, place, place.yaw);
+      if (yaw === null) return false;
+      place = { ...place, yaw };
+    }
     PROPS.add(at);
-    if (!everyStandReachable()) {
+    if (!roomWalkable({ id, place })) {
       PROPS.delete(at);
       return false;
     }
@@ -580,7 +658,8 @@ export function amenityMoveSafe(id: string, tile: Tile): boolean {
   if (!previous) return true;
   PROPS.delete(key(previous));
   PROPS.add(key(tile));
-  const ok = everyStandReachable();
+  const yaw = pairYaw(id, tile, previous.yaw) ?? previous.yaw;
+  const ok = roomWalkable({ id, place: { x: tile.x, y: tile.y, yaw } });
   PROPS.delete(key(tile));
   PROPS.add(key(previous));
   return ok;
@@ -595,6 +674,20 @@ export function amenityMoveSafe(id: string, tile: Tile): boolean {
 function everyStandReachable(): boolean {
   const reached = reachableFromDoor();
   return STATIONS.every((station) => station.stand.x < 0 || reached.has(key(station.stand)));
+}
+
+/**
+ * Every station's spot *and* both ends of every table tennis table can be walked to — the
+ * test a comfort has to pass to go down. `moving` is the prop being put somewhere, at the
+ * placement it would take; its old spot, if any, is left out. An end that can only be
+ * reached across the table is no end at all: the pair ended up side by side on one edge.
+ */
+function roomWalkable(moving?: { id: string; place: Placement }): boolean {
+  const reached = reachableFromDoor();
+  if (!STATIONS.every((station) => station.stand.x < 0 || reached.has(key(station.stand)))) return false;
+  const pairs = [...amenityPlaces].filter(([id]) => id !== moving?.id);
+  if (moving) pairs.push([moving.id, moving.place]);
+  return pairs.every(([id, place]) => (pairEnds(id, place) ?? []).every((end) => reached.has(key(end))));
 }
 
 /** Every floor tile somebody can walk to from the door. One flood fill, not a path per tile. */
@@ -837,11 +930,12 @@ export function newStationFitsAt(type: MachineType, span: number, tile: Tile): b
 }
 
 /** Could a new floor comfort stand on this tile without walling anything in? */
-export function newAmenityFitsAt(tile: Tile): boolean {
-  if (!amenityTileFree(tile)) return false;
+export function newAmenityFitsAt(tile: Tile, id?: string): boolean {
+  if (!amenityTileFree(tile, undefined, id)) return false;
   const at = key(tile);
   PROPS.add(at);
-  const ok = everyStandReachable();
+  const yaw = id ? pairYaw(id, tile, 0) : null;
+  const ok = roomWalkable(id && yaw !== null ? { id, place: { x: tile.x, y: tile.y, yaw } } : undefined);
   PROPS.delete(at);
   return ok;
 }
@@ -1047,12 +1141,7 @@ export function leisureSpots(id: string): { tile: Tile; seat: Seat }[] {
   const use = amenityDef(id)?.use;
   const place = amenityPlaces.get(id);
   if (!use || !place) return [];
-  const turn = (place.yaw * Math.PI) / 2;
-  const c = Math.cos(turn);
-  const s = Math.sin(turn);
-  // The prop's frame into the grid's: the renderer turns the node by `rotation.y`, and the
-  // grid's x and y are the world's x and z.
-  const toGrid = (x: number, z: number) => ({ x: place.x + x * c + z * s, y: place.y - x * s + z * c });
+  const toGrid = propFrame(place);
   const stands = new Set(STATIONS.map((station) => key(station.stand)));
   // Reachable, not merely free: the tile between two props on the bottom row is empty
   // and walled in, and a break chosen there is somebody walking nowhere.
@@ -1075,7 +1164,13 @@ export function leisureSpots(id: string): { tile: Tile; seat: Seat }[] {
     }
     // **On their feet, on a floor tile of their own.** A spot drawn at the prop's edge put
     // people half inside the fridge, or outside the room when the prop stood by a wall.
-    const tile = around.filter((t) => !used.has(key(t))).sort((a, b) => rank(a, at) - rank(b, at))[0];
+    // **A pair plays from its own end, or not at all.** Nearest-free let the second player
+    // take a side tile when the far end was blocked, and the rally was played shoulder to
+    // shoulder along one edge of the table.
+    const end = use.pair ? endTile(place, at) : null;
+    const tile = end
+      ? around.find((t) => t.x === end.x && t.y === end.y && !used.has(key(t)))
+      : around.filter((t) => !used.has(key(t))).sort((a, b) => rank(a, at) - rank(b, at))[0];
     if (!tile) continue;
     used.add(key(tile));
     const lean = 0.22; // a step toward the thing, so they read as using it
@@ -1089,7 +1184,7 @@ export function leisureSpots(id: string): { tile: Tile; seat: Seat }[] {
       },
     });
   }
-  // Nobody plays table tennis with one end of the table against a wall.
+  // Nobody plays table tennis with one end of the table against a wall, or a sofa.
   if (use.pair && out.length < use.spots.length) return [];
   return out;
 }

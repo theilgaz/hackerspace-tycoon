@@ -34,8 +34,12 @@ export class SceneManager {
   private target = new THREE.Vector3(0, 0, 0);
   private dragging = false;
   private last = { x: 0, y: 0 };
+  private readonly canvas: HTMLCanvasElement;
+  /** Where the canvas sits on the page, re-read on every resize — it is fixed, so it only moves then. */
+  private rect = { left: 0, top: 0, width: 1, height: 1 };
 
   constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -51,6 +55,9 @@ export class SceneManager {
     this.addLights();
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    // Inside an iframe (itch.io) the page can change size without the window saying so —
+    // going fullscreen, the embed settling after load — so watch the canvas itself too.
+    new ResizeObserver(() => this.resize()).observe(canvas);
     this.bindControls(canvas);
   }
 
@@ -107,8 +114,9 @@ export class SceneManager {
     });
     canvas.addEventListener('pointermove', (e) => {
       if (!this.dragging) return;
-      const dx = (e.clientX - this.last.x) / window.innerHeight;
-      const dy = (e.clientY - this.last.y) / window.innerHeight;
+      const height = this.canvas.clientHeight || window.innerHeight;
+      const dx = (e.clientX - this.last.x) / height;
+      const dy = (e.clientY - this.last.y) / height;
       this.last = { x: e.clientX, y: e.clientY };
       // Screen-space drag mapped onto the ground plane of an iso view.
       const scale = this.frustum * 2;
@@ -133,9 +141,17 @@ export class SceneManager {
     this.camera.lookAt(this.target);
   }
 
+  /**
+   * **Everything is measured off the canvas, never the window.** The two agree on a plain
+   * page and nowhere else: on itch.io the game is in an iframe, and a canvas that is not
+   * the window's size put the room in one place and its hover and name labels in another.
+   */
   resize() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    const width = this.canvas.clientWidth || window.innerWidth;
+    const height = this.canvas.clientHeight || window.innerHeight;
+    if (!width || !height) return;
+    const r = this.canvas.getBoundingClientRect();
+    this.rect = { left: r.left, top: r.top, width: r.width || width, height: r.height || height };
     const aspect = width / height;
     // A bigger lease needs a wider shot. Only until the player touches the wheel, though —
     // after that the framing is theirs and the camera stops having opinions about it.
@@ -150,8 +166,14 @@ export class SceneManager {
   }
 
   /** Which of `objects` the cursor is over, if any. Returns the ancestor's stationId. */
+  /** A pointer position in client pixels → normalised device coordinates on the canvas. */
+  private aim(clientX: number, clientY: number) {
+    const r = this.rect;
+    this.pointer.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  }
+
   pick(clientX: number, clientY: number, objects: THREE.Object3D[]): string | null {
-    this.pointer.set((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1);
+    this.aim(clientX, clientY);
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const hit = this.raycaster.intersectObjects(objects, true)[0];
     if (!hit) return null;
@@ -166,7 +188,7 @@ export class SceneManager {
    * rather than against the tiles themselves.
    */
   pickTile(clientX: number, clientY: number): { x: number; y: number } | null {
-    this.pointer.set((clientX / window.innerWidth) * 2 - 1, -(clientY / window.innerHeight) * 2 + 1);
+    this.aim(clientX, clientY);
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const point = new THREE.Vector3();
     if (!this.raycaster.ray.intersectPlane(GROUND, point)) return null;
@@ -180,9 +202,10 @@ export class SceneManager {
   /** World position → CSS pixel position, for HTML labels over the scene. */
   project(world: THREE.Vector3): { x: number; y: number } {
     const v = world.clone().project(this.camera);
+    const r = this.rect;
     return {
-      x: (v.x * 0.5 + 0.5) * window.innerWidth,
-      y: (-v.y * 0.5 + 0.5) * window.innerHeight,
+      x: r.left + (v.x * 0.5 + 0.5) * r.width,
+      y: r.top + (-v.y * 0.5 + 0.5) * r.height,
     };
   }
 

@@ -529,8 +529,10 @@ export class UI {
     crew: Set<string>;
     /** A crew the player has edited is never re-suggested over (§4c). */
     crewTouched: boolean;
-    /** What the build will be called — required, and what the projects table ranks by. */
+    /** What the build will be called — what the projects table ranks by. */
     name: string;
+    /** A name the player typed or shuffled is never replaced by the next brief's (§4c). */
+    nameTouched: boolean;
   } = this.freshWizard();
 
   private freshWizard() {
@@ -544,6 +546,7 @@ export class UI {
       crew: new Set<string>(),
       crewTouched: false,
       name: '',
+      nameTouched: false,
     };
   }
 
@@ -754,8 +757,7 @@ export class UI {
       // that would take the input from under the caret.
       if (target.id === 'np-name') {
         this.np.name = (target as HTMLInputElement).value;
-        const go = this.root.querySelector<HTMLButtonElement>('[data-action="np-start"]');
-        if (go) go.disabled = !this.np.name.trim() || go.dataset.blocked === '1';
+        this.np.nameTouched = true;
       }
     });
 
@@ -1051,6 +1053,7 @@ export class UI {
           break;
         case 'np-name-suggest':
           this.np.name = suggestName();
+          this.np.nameTouched = true;
           this.rerender();
           break;
         case 'np-brief':
@@ -1106,8 +1109,8 @@ export class UI {
         case 'np-start': {
           const def = this.npDef();
           if (!def) break;
-          if (!this.np.name.trim()) break;
-          h.pitch(def.id, this.np.offerId ?? undefined, [...this.np.crew], this.npPlan(), this.np.name.trim());
+          // Cleared and never retyped, it is the brief's own name again.
+          h.pitch(def.id, this.np.offerId ?? undefined, [...this.np.crew], this.npPlan(), this.npName(def));
           this.openModal = null;
           this.np = this.freshWizard();
           this.rerender();
@@ -1496,7 +1499,10 @@ export class UI {
     this.setHTML(
       this.buildEl.querySelector<HTMLElement>('.build-shelves')!,
       'build-shelves',
-      `${shelves}<button class="ui-btn ui-btn--primary ui-btn--sm build-exit" data-action="build-exit">${icon('check')}${t('ui.done')}</button>`,
+      // **A way out that is not Escape.** In fullscreen — itch.io's, or the browser's — Esc
+      // belongs to the browser and leaves fullscreen instead, so the button has to say
+      // plainly what it does rather than read as a quiet "Done" at the end of the tabs.
+      `${shelves}<button class="ui-btn ui-btn--primary build-exit" data-action="build-exit" title="${t('build.mode.exitHint')}">${icon('x')}${t('build.mode.exit')}</button>`,
     );
     this.setHTML(this.buildEl.querySelector<HTMLElement>('.build-info')!, 'build-info', info);
     const tilesEl = this.buildEl.querySelector<HTMLElement>('.build-tiles')!;
@@ -3743,7 +3749,16 @@ export class UI {
     this.np.seats = this.seatsFor(def, state);
     this.np.crew = new Set();
     this.np.crewTouched = false;
+    // **The build arrives already named** — after its brief, or with a codename for one of
+    // your own — and the field on the crew step is there to change it, not to fill it in.
+    // An empty box that held Start shut until it was typed in was a chore, not a decision.
+    if (!this.np.nameTouched) this.np.name = def.custom ? suggestName() : def.name;
     this.npSuggestCrew(state);
+  }
+
+  /** What the build is called: as typed, or the brief's name if the box was cleared. */
+  private npName(def: ProjectDef): string {
+    return this.np.name.trim() || (def.custom ? suggestName() : def.name);
   }
 
   /** Everybody free, best match for this genre first — the picker's order, and the suggestion's. */
@@ -4196,7 +4211,19 @@ export class UI {
           <p class="ui-desc" style="margin:0">${t('build.np.everyoneBusy')}</p>
         </div>`;
 
+    // The name first: it is the first thing about a build that is the player's own, and
+    // with the brief just chosen it is the moment to say what this one is called.
+    const nameField = `<div class="np-name">
+        <label class="ui-label" for="np-name">${t('build.np.nameLabel')}</label>
+        <div class="row" style="gap:6px">
+          <input id="np-name" class="ui-input" maxlength="40" autocomplete="off" value="${esc(this.np.name)}"
+            placeholder="${esc(def.custom ? t('build.np.namePlaceholder') : def.name)}" />
+          <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="np-name-suggest" title="${esc(t('build.np.nameSuggestHint'))}">${icon('shuffle')}${t('build.np.nameSuggest')}</button>
+        </div>
+      </div>`;
+
     return `${this.npHeader(def)}
+      ${nameField}
       ${fitCard}
       ${picker}
       ${
@@ -4280,17 +4307,8 @@ export class UI {
         ${esc(crew.length ? t('build.review.asking', { names: crew.map((m) => m.name).join(', ') }) : t('build.review.nobodyAsked'))}
         ${this.npProposer(state) ? esc(t('build.review.proposerSigns')) : ''}
       </p>
-      <div class="np-name">
-        <label class="ui-label" for="np-name">${t('build.np.nameLabel')}</label>
-        <div class="row" style="gap:6px">
-          <input id="np-name" class="ui-input" maxlength="40" autocomplete="off" value="${esc(this.np.name)}"
-            placeholder="${esc(def.custom ? t('build.np.namePlaceholder') : def.name)}" />
-          <button class="ui-btn ui-btn--outline ui-btn--sm" data-action="np-name-suggest" title="${esc(t('build.np.nameSuggestHint'))}">${icon('shuffle')}${t('build.np.nameSuggest')}</button>
-        </div>
-        <p class="ui-desc" style="margin:4px 0 0;font-size:11px">${t('build.np.nameHint')}</p>
-      </div>
       <button class="ui-btn ui-btn--primary ui-btn--lg pitch-cta" data-action="np-start" data-blocked="${blocked ? 1 : 0}"
-        ${blocked || !this.np.name.trim() ? 'disabled' : ''}>
+        ${blocked ? 'disabled' : ''}>
         ${esc(t('build.review.start', { project: this.np.name.trim() || def.name }))}${cost ? ` · ${money(cost)}` : ''}
       </button>
       ${

@@ -6,7 +6,7 @@ import { furnitureFits } from '@/machines/layout';
 import { Simulation } from '@/systems/Simulation';
 import { UI } from '@/ui/ui';
 import { store } from './store';
-import { GRID, STATIONS, STATION_MAP, amenityPlacement, yawOf } from '@/machines/layout';
+import { GRID, STATIONS, STATION_MAP, amenityPlacement, leisureSpots, yawOf } from '@/machines/layout';
 import { pct, span } from '@/utils/format';
 import { CATEGORY_PROFILES } from '@/utils/categories';
 import { CATEGORY_ICON, icon } from '@/ui/icons';
@@ -182,9 +182,24 @@ export class Game {
     canvas.addEventListener('pointerup', (event) => {
       const from = this.pressedAt;
       this.pressedAt = null;
-      if (!from) return;
+      if (!from || event.button !== 0) return;
       if (Math.hypot(event.clientX - from.x, event.clientY - from.y) > 5) return;
       this.clickRoom(event.clientX, event.clientY);
+    });
+    // **Right-click puts it back**, one layer a press, like Escape — which fullscreen takes
+    // for itself, so in itch.io's fullscreen this is the only key-free way to let go of
+    // something. It never leaves Build mode on its own; the Exit Build button does that.
+    canvas.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      const state = store.getState();
+      if (state.buyConfirm) state.setBuyConfirm(null);
+      else if (state.placingBuy) {
+        this.placingYaw = 0;
+        state.setPlacingBuy(null);
+      }
+      else if (state.moving) state.setMoving(null);
+      else return;
+      this.sim.publish();
     });
     canvas.addEventListener('pointerleave', () => {
       this.hovered = null;
@@ -521,7 +536,12 @@ export class Game {
           const p = this.scene.project(world);
           parts.push(
             `<div class="label label--station" style="left:${p.x}px;top:${p.y}px">
-              <b>${comfort.name}</b>${moveHint}
+              <b>${comfort.name}</b>${
+                // Say why a table nobody plays at is idle, where the player is looking at it.
+                comfort.use?.pair && !leisureSpots(this.hovered).length
+                  ? `<span class="bad">${t('build.mode.endBlocked')}</span>`
+                  : ''
+              }${moveHint}
             </div>`,
           );
         }

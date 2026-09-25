@@ -37,6 +37,7 @@ import {
   STATION_MAP,
   amenityMoveSafe,
   amenityTileFree,
+  pairYaw,
   GRID,
   isBlocked,
   leisureSpots,
@@ -500,7 +501,7 @@ export class Simulation {
     if (!def || store.getState().amenities.includes(item.id)) return false;
     // A hung thing goes on the back wall above whatever tile was chosen.
     if (def.mount === 'wall') return x >= 0 && x < GRID.width && y >= 0 && y < GRID.height;
-    return newAmenityFitsAt(tile);
+    return newAmenityFitsAt(tile, item.id);
   }
 
   /**
@@ -544,7 +545,9 @@ export class Simulation {
       return true;
     }
     if (!amenityTileFree({ x, y }, id) || !amenityMoveSafe(id, { x, y })) return false;
-    state.placeAmenity(id, { x, y, yaw: ((yaw % 4) + 4) % 4 });
+    // A table for two turns to whichever way round leaves both its ends open.
+    const turn = pairYaw(id, { x, y }, yaw) ?? yaw;
+    state.placeAmenity(id, { x, y, yaw: ((turn % 4) + 4) % 4 });
     return true;
   }
 

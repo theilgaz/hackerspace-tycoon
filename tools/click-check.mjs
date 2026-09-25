@@ -282,13 +282,12 @@ async function walkWizard({ start = true } = {}) {
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
   await pickCrew();
+  // The build arrives named after its brief; the crew step is where that can change.
+  const named = await evaluate(`document.querySelector('#np-name')?.value`);
+  if (!named) console.log('      the crew step opened with no name in the box');
   await click('#modal [data-action="np-next"]');
   await click('#modal [data-action="np-next"]');
-  if (start) {
-    // Every build is named now; the suggestion is a name like any other.
-    await click('#modal [data-action="np-name-suggest"]');
-    await click('#modal [data-action="np-start"]:not([disabled])');
-  }
+  if (start) await click('#modal [data-action="np-start"]:not([disabled])');
 }
 await click('[data-action="new-open"]');
 await walkWizard();
@@ -381,9 +380,9 @@ await check('typing a build\'s name keeps the focus while the panel redraws', as
   await click('#modal [data-action="np-genre"]:not([disabled])');
   await click('#modal [data-action="np-brief"]:not([disabled])');
   await pickCrew();
-  await click('#modal [data-action="np-next"]');
-  await click('#modal [data-action="np-next"]');
+  // On the crew step now, and already holding the brief's name: select it to type over.
   await click('#np-name');
+  await evaluate(`document.querySelector('#np-name')?.select()`);
   for (const ch of 'Neon Kestrel') {
     await send('Input.insertText', { text: ch });
     await sleep(90);
@@ -1010,6 +1009,33 @@ await check('unchanged panels keep their DOM (build menu and top bar)', async ()
   if (churn > 4) console.log(`      ${churn} rebuilds in 1.2s — panels are churning`);
   return churn <= 4;
 }, { live: true });
+
+await check('on a Retina screen the room, its hover and its labels line up', async () => {
+  // The canvas used to be sized by `inset: 0` alone, which a canvas ignores: it kept its
+  // drawing buffer's size, twice the window at devicePixelRatio 2, so the room drew off to
+  // the bottom-right while hover and name labels stayed on the window. At ratio 1 the two
+  // agree, which is why this has to emulate the screen it broke on.
+  const size = JSON.parse(await evaluate(`JSON.stringify([innerWidth, innerHeight])`));
+  await send('Emulation.setDeviceMetricsOverride', { width: size[0], height: size[1], deviceScaleFactor: 2, mobile: false });
+  await sleep(600);
+  const result = JSON.parse(
+    await evaluate(`(() => {
+      const r = document.querySelector('#scene').getBoundingClientRect();
+      const g = __game;
+      const id = 'printer-1';
+      const world = g.view.stationWorldById(id);
+      world.y = 0.4;
+      const p = g.scene.project(world);
+      const hit = g.scene.pick(p.x, p.y, g.view.pickables);
+      return JSON.stringify({ w: r.width, h: r.height, iw: innerWidth, ih: innerHeight, hit });
+    })()`),
+  );
+  await send('Emulation.clearDeviceMetricsOverride');
+  await sleep(300);
+  const ok = Math.abs(result.w - result.iw) < 1 && Math.abs(result.h - result.ih) < 1 && result.hit === 'printer-1';
+  if (!ok) console.log(`      canvas ${result.w}x${result.h} in a ${result.iw}x${result.ih} window, picked ${result.hit}`);
+  return ok;
+});
 
 await check('no exceptions', async () => exceptions.length === 0);
 

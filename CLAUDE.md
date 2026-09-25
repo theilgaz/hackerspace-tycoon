@@ -867,6 +867,12 @@ Winning pays reputation. Two tuning notes worth keeping:
   to a state with one of each blocker and photographing it is what found both; neither would
   have shown up in a test that only asks whether an element exists.
 
+- **A canvas is not stretched by `inset: 0`.** It is a replaced element and keeps its drawing
+  buffer's size, which is twice the window on a Retina screen: on itch.io the room drew off to
+  the bottom-right while hover and name labels stayed on the window. `#scene` is sized
+  outright, and `SceneManager` measures the canvas, never `window.inner*`. It looked right
+  on every screen at ratio 1, so `click-check` emulates ratio 2 to catch it.
+
 - **A counter that restarts with the page is not an id.** `uid()` counted from zero on
   every load, so after a reload the next build could be handed the id of a saved one — and
   the bench opened, closed and put "you" on both cards at once. Loading now moves the
