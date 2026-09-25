@@ -4,3 +4,5 @@ dist/
 *.local
 .vite/
 /dist-headless
+/dist-itch
+/release
